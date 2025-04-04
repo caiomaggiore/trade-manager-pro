@@ -83,36 +83,61 @@ const getTradeParameters = (settings, analysis, availablePeriods) => {
  * @param {object} message - Mensagem recebida
  * @returns {Promise<string>} Data URL da imagem processada
  */
-const handleCaptureRequest = async (message) => {
-  try {
-    isProcessing = true;
-    
-    const dataUrl = await captureTabImage();
-    const tab = await getActiveTab();
-
-    const response = await Promise.race([
-      new Promise((resolve, reject) => {
-        chrome.tabs.sendMessage(tab.id, {
-          action: 'processCapture',
-          dataUrl: dataUrl,
-          iframeWidth: message.iframeWidth
-        }, (response) => {
-          chrome.runtime.lastError ? 
-            reject(chrome.runtime.lastError) : 
-            resolve(response);
+async function handleCaptureRequest(request, sender, sendResponse) {
+    try {
+        console.log('Iniciando captura de tela...');
+        
+        // Captura a tela visível
+        const dataUrl = await chrome.tabs.captureVisibleTab(null, {
+            format: 'png',
+            quality: 100
         });
-      }),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout de processamento')), 5000)
-      )
-    ]);
-    
-    return response.dataUrl;
 
-  } finally {
-    isProcessing = false;
-  }
-};
+        console.log('Captura concluída, processando imagem...');
+
+        // Se não precisar de processamento, retorna a imagem
+        if (!request.requireProcessing) {
+            if (request.openWindow !== false) {
+                // Abre a imagem em uma nova janela
+                chrome.windows.create({
+                    url: dataUrl,
+                    type: 'popup',
+                    width: 800,
+                    height: 600
+                });
+            }
+            return { dataUrl };
+        }
+
+        // Envia para o content script processar
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        const response = await chrome.tabs.sendMessage(tab.id, {
+            action: 'processImage',
+            imageData: dataUrl,
+            iframeWidth: request.iframeWidth
+        });
+
+        if (response.error) {
+            throw new Error(response.error);
+        }
+
+        // Só abre a janela se não for uma análise
+        if (request.openWindow !== false && request.actionType !== 'analyze') {
+            // Abre a imagem processada em uma nova janela
+            chrome.windows.create({
+                url: response.processedImage,
+                type: 'popup',
+                width: 800,
+                height: 600
+            });
+        }
+
+        return { dataUrl: response.processedImage };
+    } catch (error) {
+        console.error('Erro na captura:', error);
+        return { error: error.message };
+    }
+}
 
 /**
  * Executa a análise após injetar o content script se necessário

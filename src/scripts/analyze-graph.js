@@ -1,4 +1,11 @@
 // =============================================
+// Configurações Globais
+// =============================================
+console.log('AnalyzeGraph: Iniciando carregamento...');
+
+// Removendo as constantes duplicadas e usando as do index.js
+
+// =============================================
 // Funções de Log
 // =============================================
 const sendLog = (message) => {
@@ -173,3 +180,64 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 });
+
+// Expor o objeto AnalyzeGraph globalmente
+window.TradeManager = window.TradeManager || {};
+window.TradeManager.AnalyzeGraph = {
+    processImage: async (imageData) => {
+        try {
+            console.log('AnalyzeGraph: processImage chamado');
+            sendLog('Processando imagem para análise...');
+            
+            // Montar payload para análise
+            const payload = {
+                contents: [{
+                    parts: [
+                        { text: generateAnalysisPrompt([1, 5, 15, 30, 60], 0) },
+                        { 
+                            inline_data: {
+                                mime_type: "image/png",
+                                data: imageData.split(',')[1]
+                            }
+                        }
+                    ]
+                }]
+            };
+
+            console.log('AnalyzeGraph: Enviando para API...');
+            // Enviar para API usando a URL do index.js
+            const response = await fetch(window.API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                throw new Error(`Erro HTTP: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const text = data.candidates[0].content.parts[0].text;
+            
+            // Processar resposta
+            const result = validateAndProcessResponse(text);
+            
+            sendLog(`Análise concluída: ${result.action} (${result.trust}% de confiança)`);
+            
+            return {
+                success: true,
+                results: result
+            };
+
+        } catch (error) {
+            console.error('AnalyzeGraph: Erro na análise:', error);
+            sendLog(`Erro na análise: ${error.message}`);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+};
+
+console.log('AnalyzeGraph: Carregamento concluído');

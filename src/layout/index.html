@@ -165,6 +165,38 @@
       </div>
     </div>
   </div>
+
+  <!-- Modal de Resultados da Análise -->
+  <div id="analysis-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title">
+          <h2>Resultado da Análise</h2>
+        </div>
+        <div class="modal-controls">
+          <div class="countdown-info">
+            <span class="countdown" id="countdown">15s</span>
+            <i id="info-icon" class="info-icon" title="Clique duas vezes para cancelar o fechamento automático">ⓘ</i>
+          </div>
+          <button id="close-modal" class="info-icon">×</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="result-item">
+          <strong>Ação:</strong> <span id="result-action" class="result-action"></span>
+        </div>
+        <div class="result-item">
+          <strong>Confiança:</strong> <span id="result-confidence"></span>
+        </div>
+        <div class="result-item">
+          <strong>Razão:</strong>
+          <div id="result-reason" class="result-reason"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../scripts/analyze-graph.js"></script>
   <script src="../scripts/index.js"></script>
 </body>
 </html>

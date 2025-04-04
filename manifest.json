@@ -32,9 +32,9 @@
     {
       "matches": ["https://pocketoption.com/*"],
       "js": [
+        "src/scripts/analyze-graph.js",
         "src/content/content.js",
-        "src/scripts/index.js",
-        "src/scripts/analyze-graph.js"
+        "src/scripts/index.js"
       ],
       "css": [
         "src/layout/content.css"

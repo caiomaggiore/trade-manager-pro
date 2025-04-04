@@ -55,7 +55,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 action: 'initiateCapture',
                 actionType: 'analyze',
                 requireProcessing: true,
-                iframeWidth: 480
+                iframeWidth: 480,
+                openWindow: true // Abrir janela ao capturar do popup
             }, (response) => {
                 if (chrome.runtime.lastError) {
                     console.error('Erro ao capturar:', chrome.runtime.lastError);

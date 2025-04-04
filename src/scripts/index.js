@@ -29,8 +29,10 @@ const UI = {
 // ================== VARIÁVEIS GLOBAIS ==================
 let isAutomationRunning = false;
 let automationTimeout = null;
-const API_KEY = 'AIzaSyDeYcYUxAN52DNrgZeFNcEfceVMoWJDjWk';
-const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
+
+// Expor as constantes globalmente
+window.API_KEY = 'AIzaSyDeYcYUxAN52DNrgZeFNcEfceVMoWJDjWk';
+window.API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${window.API_KEY}`;
 
 // ================== FUNÇÕES DE ANÁLISE ==================
 /**
@@ -39,32 +41,104 @@ const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-
 const runAnalysis = async () => {
     try {
         updateStatus('Iniciando análise...', 'info');
+        addLog('Iniciando análise do gráfico...');
         
+        // Verificar se o AnalyzeGraph está disponível
+        if (!window.TradeManager?.AnalyzeGraph) {
+            throw new Error('Módulo de análise não está disponível');
+        }
+
         // Captura a tela
         const response = await chrome.runtime.sendMessage({ 
             action: 'initiateCapture',
             actionType: 'analyze',
             requireProcessing: true,
-            iframeWidth: 480 
+            iframeWidth: 480
         });
 
         if (response.error) {
             throw new Error(response.error);
         }
 
+        addLog('Captura de tela concluída, processando imagem...');
+
         // Processa a imagem e analisa
         const result = await window.TradeManager.AnalyzeGraph.processImage(response.dataUrl);
         
+        if (!result.success) {
+            throw new Error(result.error);
+        }
+
         // Atualiza a interface com os resultados
         updateStatus(`Análise concluída: ${result.results.action}`, 'success');
-        addLog(`Análise: ${result.results.action} - Confiança: ${result.results.confidence.toFixed(2)}%`);
+        addLog(`Análise: ${result.results.action} - Confiança: ${result.results.trust}%`);
+        
+        // Mostra o modal com os resultados
+        showAnalysisModal(result.results);
         
         return result;
     } catch (error) {
         console.error('Erro na análise:', error);
         updateStatus('Erro ao realizar análise', 'error');
+        addLog(`Erro na análise: ${error.message}`);
         throw error;
     }
+};
+
+// Função para mostrar o modal de resultados
+const showAnalysisModal = (result) => {
+    const modal = document.getElementById('analysis-modal');
+    const actionElement = document.getElementById('result-action');
+    const confidenceElement = document.getElementById('result-confidence');
+    const reasonElement = document.getElementById('result-reason');
+    const countdownElement = document.getElementById('countdown');
+    const closeButton = document.getElementById('close-modal');
+    const infoIcon = document.getElementById('info-icon');
+
+    // Atualiza o conteúdo do modal
+    actionElement.textContent = result.action;
+    actionElement.className = `result-action ${result.action.toLowerCase()}`;
+    confidenceElement.textContent = `${result.trust}%`;
+    reasonElement.textContent = result.reason;
+
+    // Mostra o modal
+    modal.style.display = 'block';
+
+    // Configura o countdown
+    let countdown = 15;
+    let countdownInterval = null;
+
+    const updateCountdown = () => {
+        countdownElement.textContent = `${countdown}s`;
+        if (countdown <= 0) {
+            clearInterval(countdownInterval);
+            modal.style.display = 'none';
+        }
+        countdown--;
+    };
+
+    countdownInterval = setInterval(updateCountdown, 1000);
+
+    // Evento para fechar o modal
+    closeButton.onclick = () => {
+        clearInterval(countdownInterval);
+        modal.style.display = 'none';
+    };
+
+    // Evento para cancelar o fechamento automático
+    countdownElement.ondblclick = () => {
+        clearInterval(countdownInterval);
+        countdownElement.textContent = 'Fechamento cancelado';
+        countdownElement.classList.add('cancelled');
+    };
+
+    // Fecha o modal ao clicar fora
+    window.onclick = (event) => {
+        if (event.target === modal) {
+            clearInterval(countdownInterval);
+            modal.style.display = 'none';
+        }
+    };
 };
 
 // =======================================================================================
