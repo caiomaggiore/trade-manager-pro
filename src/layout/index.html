@@ -166,33 +166,45 @@
     </div>
   </div>
 
-  <!-- Modal de Resultados da Análise -->
+  <!-- Modal de Resultados -->
   <div id="analysis-modal" class="modal">
     <div class="modal-content">
-      <div class="modal-header">
-        <div class="modal-title">
-          <h2>Resultado da Análise</h2>
+        <div class="modal-header">
+            <div class="modal-title">
+                <h2>Resultado da Análise</h2>
+            </div>
+            <div class="modal-controls">
+                <div class="countdown-info">
+                    <span id="countdown">15s</span>
+                    <span id="info-icon" class="info-icon" title="Clique duas vezes para cancelar o fechamento automático">i</span>
+                </div>
+                <button id="close-modal" class="btn menu">
+                    <img src="../assets/icons/close-icon.png" class="close-icon" alt="Fechar">
+                </button>
+            </div>
         </div>
-        <div class="modal-controls">
-          <div class="countdown-info">
-            <span class="countdown" id="countdown">15s</span>
-            <i id="info-icon" class="info-icon" title="Clique duas vezes para cancelar o fechamento automático">ⓘ</i>
-          </div>
-          <button id="close-modal" class="info-icon">×</button>
+        <div class="modal-body">
+            <div class="result-item">
+                <strong>Ação:</strong>
+                <span id="result-action" class="result-action">-</span>
+            </div>
+            <div class="result-item">
+                <strong>Confiança:</strong>
+                <span id="result-confidence">-</span>
+            </div>
+            <div class="result-item">
+                <strong>Período:</strong>
+                <span id="result-period">-</span>
+            </div>
+            <div class="result-item">
+                <strong>Valor de Entrada:</strong>
+                <span id="result-value">-</span>
+            </div>
+            <div class="result-item">
+                <strong>Resumo:</strong>
+                <div id="result-reason" class="result-reason">-</div>
+            </div>
         </div>
-      </div>
-      <div class="modal-body">
-        <div class="result-item">
-          <strong>Ação:</strong> <span id="result-action" class="result-action"></span>
-        </div>
-        <div class="result-item">
-          <strong>Confiança:</strong> <span id="result-confidence"></span>
-        </div>
-        <div class="result-item">
-          <strong>Razão:</strong>
-          <div id="result-reason" class="result-reason"></div>
-        </div>
-      </div>
     </div>
   </div>
 

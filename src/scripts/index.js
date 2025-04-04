@@ -86,11 +86,13 @@ const runAnalysis = async () => {
 };
 
 // Função para mostrar o modal de resultados
-const showAnalysisModal = (result) => {
+function showAnalysisModal(result) {
     const modal = document.getElementById('analysis-modal');
     const actionElement = document.getElementById('result-action');
     const confidenceElement = document.getElementById('result-confidence');
     const reasonElement = document.getElementById('result-reason');
+    const periodElement = document.getElementById('result-period');
+    const valueElement = document.getElementById('result-value');
     const countdownElement = document.getElementById('countdown');
     const closeButton = document.getElementById('close-modal');
     const infoIcon = document.getElementById('info-icon');
@@ -100,6 +102,8 @@ const showAnalysisModal = (result) => {
     actionElement.className = `result-action ${result.action.toLowerCase()}`;
     confidenceElement.textContent = `${result.trust}%`;
     reasonElement.textContent = result.reason;
+    periodElement.textContent = result.period || 'Não especificado';
+    valueElement.textContent = result.entry || 'Não especificado';
 
     // Mostra o modal
     modal.style.display = 'block';
@@ -109,7 +113,7 @@ const showAnalysisModal = (result) => {
     let countdownInterval = null;
 
     const updateCountdown = () => {
-        countdownElement.textContent = `${countdown}s`;
+        countdownElement.textContent = `Janela fecha em ${countdown}s`;
         if (countdown <= 0) {
             clearInterval(countdownInterval);
             modal.style.display = 'none';
@@ -128,7 +132,7 @@ const showAnalysisModal = (result) => {
     // Evento para cancelar o fechamento automático
     countdownElement.ondblclick = () => {
         clearInterval(countdownInterval);
-        countdownElement.textContent = 'Fechamento cancelado';
+        countdownElement.textContent = 'Cancelado';
         countdownElement.classList.add('cancelled');
     };
 
@@ -139,7 +143,7 @@ const showAnalysisModal = (result) => {
             modal.style.display = 'none';
         }
     };
-};
+}
 
 // =======================================================================================
 // ================== FUNCOES INTERFACE UI.X ==================
@@ -554,7 +558,7 @@ const addEventListeners = () => {
             // Envia mensagem para o content.js
             window.parent.postMessage({
                 action: 'captureScreen',
-                actionType: 'analyze',
+                actionType: 'capture',
                 requireProcessing: true,
                 iframeWidth: 480
             }, '*');

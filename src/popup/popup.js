@@ -53,10 +53,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Envia mensagem para o background iniciar a captura
             chrome.runtime.sendMessage({
                 action: 'initiateCapture',
-                actionType: 'analyze',
+                actionType: 'capture',
                 requireProcessing: true,
-                iframeWidth: 480,
-                openWindow: true // Abrir janela ao capturar do popup
+                iframeWidth: 480
             }, (response) => {
                 if (chrome.runtime.lastError) {
                     console.error('Erro ao capturar:', chrome.runtime.lastError);

@@ -83,7 +83,7 @@ const getTradeParameters = (settings, analysis, availablePeriods) => {
  * @param {object} message - Mensagem recebida
  * @returns {Promise<string>} Data URL da imagem processada
  */
-async function handleCaptureRequest(request, sender, sendResponse) {
+async function handleCaptureRequest(request) {
     try {
         console.log('Iniciando captura de tela...');
         
@@ -97,23 +97,14 @@ async function handleCaptureRequest(request, sender, sendResponse) {
 
         // Se não precisar de processamento, retorna a imagem
         if (!request.requireProcessing) {
-            if (request.openWindow !== false) {
-                // Abre a imagem em uma nova janela
-                chrome.windows.create({
-                    url: dataUrl,
-                    type: 'popup',
-                    width: 800,
-                    height: 600
-                });
-            }
-            return { dataUrl };
+            return dataUrl;
         }
 
         // Envia para o content script processar
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         const response = await chrome.tabs.sendMessage(tab.id, {
-            action: 'processImage',
-            imageData: dataUrl,
+            action: 'processCapture',
+            dataUrl: dataUrl,
             iframeWidth: request.iframeWidth
         });
 
@@ -121,21 +112,10 @@ async function handleCaptureRequest(request, sender, sendResponse) {
             throw new Error(response.error);
         }
 
-        // Só abre a janela se não for uma análise
-        if (request.openWindow !== false && request.actionType !== 'analyze') {
-            // Abre a imagem processada em uma nova janela
-            chrome.windows.create({
-                url: response.processedImage,
-                type: 'popup',
-                width: 800,
-                height: 600
-            });
-        }
-
-        return { dataUrl: response.processedImage };
+        return response.dataUrl;
     } catch (error) {
         console.error('Erro na captura:', error);
-        return { error: error.message };
+        throw error;
     }
 }
 
@@ -160,73 +140,30 @@ const executeAnalysis = (tabId, sendResponse) => {
 };
 
 // ================== EVENT LISTENERS ==================
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    console.log('Mensagem recebida no background:', request);
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    console.log('Mensagem recebida no background:', message);
     
-    if (request.action === 'initiateCapture') {
-        console.log('Iniciando captura de tela...');
-        // Primeiro, obtemos a aba ativa
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (!tabs[0]) {
-                console.error('Nenhuma aba ativa encontrada');
-                sendResponse({ error: 'Nenhuma aba ativa encontrada' });
-                return;
-            }
-
-            const activeTab = tabs[0];
-            console.log('Aba ativa:', activeTab);
-
-            // Agora capturamos a tela
-            chrome.tabs.captureVisibleTab(null, { format: 'png' }, (dataUrl) => {
-                if (chrome.runtime.lastError) {
-                    console.error('Erro na captura:', chrome.runtime.lastError);
-                    sendResponse({ error: chrome.runtime.lastError.message });
-                    return;
-                }
-                
-                console.log('Captura realizada com sucesso');
-                if (request.requireProcessing) {
-                    console.log('Processando imagem...');
-                    chrome.tabs.sendMessage(activeTab.id, {
-                        action: 'processCapture',
-                        dataUrl: dataUrl,
-                        iframeWidth: request.iframeWidth
-                    }, (response) => {
-                        if (chrome.runtime.lastError) {
-                            console.error('Erro no processamento:', chrome.runtime.lastError);
-                            sendResponse({ error: chrome.runtime.lastError.message });
-                            return;
-                        }
-                        console.log('Imagem processada com sucesso');
-                        
-                        // Abrir a imagem em uma nova janela
-                        chrome.windows.create({
-                            url: response.dataUrl,
-                            type: 'popup',
-                            width: 800,
-                            height: 600
-                        });
-                        
-                        sendResponse({ dataUrl: response.dataUrl });
-                    });
-                } else {
-                    // Abrir a imagem em uma nova janela
+    // Handler para captura de imagem
+    if (message.action === 'initiateCapture' && !isProcessing) {
+        handleCaptureRequest(message)
+            .then(dataUrl => {
+                // Só abre a janela se for uma captura normal (não análise)
+                if (message.actionType !== 'analyze') {
                     chrome.windows.create({
                         url: dataUrl,
                         type: 'popup',
                         width: 800,
                         height: 600
                     });
-                    
-                    sendResponse({ dataUrl: dataUrl });
                 }
-            });
-        });
-        return true; // Indica que a resposta será assíncrona
+                sendResponse({ dataUrl });
+            })
+            .catch(error => sendResponse({ error: error.message }));
+        return true;
     }
 
   // Handler para início de análise
-  if (request.action === 'START_ANALYSIS') {
+  if (message.action === 'START_ANALYSIS') {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (!tabs[0]?.id) {
         sendResponse({ success: false, error: "Nenhuma guia ativa encontrada" });
@@ -250,7 +187,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   // Novo handler para obtenção de períodos
-  if (request.action === 'GET_TRADE_PARAMS') {
+  if (message.action === 'GET_TRADE_PARAMS') {
     chrome.storage.sync.get(['tradeValue', 'tradeTime', 'galeEnabled'], (settings) => {
       chrome.tabs.query({active: true, currentWindow: true}, ([tab]) => {
         chrome.tabs.sendMessage(tab.id, {
@@ -258,7 +195,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }, (response) => {
           const params = getTradeParameters(
             settings,
-            request.analysis,
+            message.analysis,
             response?.periods || []
           );
           sendResponse(params);
@@ -268,20 +205,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request.action === 'FETCH_AVAILABLE_PERIODS') {
-    chrome.tabs.sendMessage(sender.tab.id, request, sendResponse);
+  if (message.action === 'FETCH_AVAILABLE_PERIODS') {
+    chrome.tabs.sendMessage(sender.tab.id, message, sendResponse);
     return true;
   }
 
   // Handler para logs
-  if (request.action === 'ADD_LOG') {
+  if (message.action === 'ADD_LOG') {
     chrome.runtime.sendMessage({
       action: 'ADD_LOG',
-      log: request.log
+      log: message.log
     });
   }
 
-  if (request.action === 'TEST_CONNECTION') {
+  if (message.action === 'TEST_CONNECTION') {
     chrome.tabs.sendMessage(sender.tab.id, {
       action: 'TEST_CONNECTION'
     }, sendResponse);
