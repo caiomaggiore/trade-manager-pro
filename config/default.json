@@ -1,0 +1,11 @@
+{
+  "gale": {
+    "active": true,
+    "level": "1.2x"
+  },
+  "dailyProfit": 150,
+  "stopLoss": 30,
+  "automation": false,
+  "value": 10,
+  "period": 1
+} 

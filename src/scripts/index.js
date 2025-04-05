@@ -574,22 +574,27 @@ const addEventListeners = () => {
         elements.backBtn.addEventListener('click', () => toggleSettings(false));
     }
     if (elements.saveBtn) {
-        elements.saveBtn.addEventListener('click', () => {
-            const settings = {
-                galeEnabled: document.querySelector('#toggleGale')?.checked ?? true,
-                galeLevel: document.querySelector('#gale-select')?.value || '1x',
-                dailyProfit: document.querySelector('#daily-profit')?.value || '',
-                stopLoss: document.querySelector('#stop-loss')?.value || '',
-                tradeValue: document.querySelector('#trade-value')?.value || '',
-                tradeTime: document.querySelector('#trade-time')?.value || '',
-                autoActive: document.querySelector('#toggleAuto')?.checked || false
-            };
+        elements.saveBtn.addEventListener('click', async () => {
+            try {
+                const config = {
+                    gale: {
+                        active: UI.toggleGale.checked,
+                        level: UI.galeSelect.value
+                    },
+                    dailyProfit: parseInt(document.getElementById('daily-profit').value),
+                    stopLoss: parseInt(document.getElementById('stop-loss').value),
+                    automation: UI.toggleAuto.checked,
+                    value: parseInt(document.getElementById('trade-value').value),
+                    period: parseInt(document.getElementById('trade-time').value)
+                };
 
-            chrome.storage.sync.set(settings, () => {
-                updateCurrentSettings(settings);
-                toggleSettings(false);
-                updateStatus('Configurações salvas com sucesso', 'success');
-            });
+                await saveConfig(config);
+                toggleSettings(false); // Fechar painel de configurações
+            } catch (error) {
+                console.error('Erro ao salvar configurações:', error);
+                addLog(`Erro ao salvar configurações: ${error.message}`);
+                updateStatus('Erro ao salvar configurações', 'error');
+            }
         });
     }
 };
@@ -598,4 +603,196 @@ const addEventListeners = () => {
 document.addEventListener('DOMContentLoaded', () => {
     addEventListeners();
     updateStatus('Sistema iniciado com sucesso!', 'info');
+});
+
+// Configurações padrão
+const DEFAULT_CONFIG = {
+    gale: {
+        active: true,
+        level: '1.2x'
+    },
+    dailyProfit: 150,
+    stopLoss: 30,
+    automation: false,
+    value: 10,
+    period: 1
+};
+
+// Função para limpar configurações antigas
+function clearOldConfig() {
+    return new Promise((resolve) => {
+        chrome.storage.sync.remove(['userConfig'], () => {
+            addLog('Configurações antigas removidas do storage.');
+            resolve();
+        });
+    });
+}
+
+// Função para carregar configurações
+function loadConfig() {
+    return new Promise((resolve) => {
+        addLog('Iniciando carregamento das configurações...');
+        updateStatus('Carregando configurações...', 'info');
+
+        chrome.storage.sync.get(['userConfig'], (result) => {
+            addLog(`Resultado do storage: ${JSON.stringify(result)}`);
+            
+            if (!result.userConfig || Object.keys(result.userConfig).length === 0) {
+                addLog('Configuração do usuário não encontrada ou vazia. Usando configuração padrão.');
+                updateStatus('Usando configurações padrão...', 'info');
+                
+                // Se não houver configuração do usuário, usa a padrão
+                chrome.storage.sync.set({ userConfig: DEFAULT_CONFIG }, () => {
+                    addLog('Configurações padrão salvas no storage.');
+                    updateStatus('Configurações padrão salvas', 'success');
+                    
+                    // Atualizar campos da página principal
+                    updateCurrentSettings({
+                        galeEnabled: DEFAULT_CONFIG.gale.active,
+                        galeLevel: DEFAULT_CONFIG.gale.level,
+                        dailyProfit: DEFAULT_CONFIG.dailyProfit,
+                        stopLoss: DEFAULT_CONFIG.stopLoss,
+                        tradeValue: DEFAULT_CONFIG.value,
+                        tradeTime: DEFAULT_CONFIG.period,
+                        autoActive: DEFAULT_CONFIG.automation
+                    });
+                    
+                    resolve(DEFAULT_CONFIG);
+                });
+            } else {
+                // Garantir que o período seja um número inteiro
+                if (typeof result.userConfig.period === 'string') {
+                    result.userConfig.period = parseInt(result.userConfig.period.replace(/[^0-9]/g, '')) || 1;
+                }
+                
+                addLog('Configuração do usuário encontrada e carregada.');
+                updateStatus('Configurações do usuário carregadas', 'success');
+                
+                // Atualizar campos da página principal
+                updateCurrentSettings({
+                    galeEnabled: result.userConfig.gale.active,
+                    galeLevel: result.userConfig.gale.level,
+                    dailyProfit: result.userConfig.dailyProfit,
+                    stopLoss: result.userConfig.stopLoss,
+                    tradeValue: result.userConfig.value,
+                    tradeTime: result.userConfig.period,
+                    autoActive: result.userConfig.automation
+                });
+                
+                resolve(result.userConfig);
+            }
+        });
+    });
+}
+
+// Função para salvar configurações
+function saveConfig(config) {
+    return new Promise((resolve) => {
+        addLog('Iniciando salvamento das configurações...');
+        updateStatus('Salvando configurações...', 'info');
+
+        // Salvar no storage
+        chrome.storage.sync.set({ userConfig: config }, () => {
+            addLog('Configurações salvas no storage.');
+            
+            // Atualizar campos da página principal
+            updateCurrentSettings({
+                galeEnabled: config.gale.active,
+                galeLevel: config.gale.level,
+                dailyProfit: config.dailyProfit,
+                stopLoss: config.stopLoss,
+                tradeValue: config.value,
+                tradeTime: config.period,
+                autoActive: config.automation
+            });
+
+            addLog('Campos da página principal atualizados.');
+            updateStatus('Configurações salvas com sucesso', 'success');
+            resolve();
+        });
+    });
+}
+
+// Função para preencher campos do HTML
+function fillHTMLFields(config) {
+    addLog('Iniciando preenchimento dos campos HTML...');
+    updateStatus('Preenchendo campos...', 'info');
+
+    // Mapeamento dos campos HTML para as configurações usando a variável UI
+    const fieldMappings = {
+        'galeActive': {
+            element: UI.toggleGale,
+            value: config.gale.active,
+            type: 'checkbox'
+        },
+        'galeLevel': {
+            element: UI.galeSelect,
+            value: config.gale.level,
+            type: 'text'
+        },
+        'dailyProfit': {
+            element: document.getElementById('daily-profit'),
+            value: config.dailyProfit,
+            type: 'number'
+        },
+        'stopLoss': {
+            element: document.getElementById('stop-loss'),
+            value: config.stopLoss,
+            type: 'number'
+        },
+        'automation': {
+            element: UI.toggleAuto,
+            value: config.automation,
+            type: 'checkbox'
+        },
+        'value': {
+            element: document.getElementById('trade-value'),
+            value: config.value,
+            type: 'number'
+        },
+        'period': {
+            element: document.getElementById('trade-time'),
+            value: config.period,
+            type: 'number'
+        }
+    };
+
+    // Preencher cada campo
+    Object.entries(fieldMappings).forEach(([fieldName, field]) => {
+        if (field.element) {
+            if (field.type === 'checkbox') {
+                field.element.checked = field.value;
+            } else {
+                field.element.value = field.value;
+            }
+            addLog(`${fieldName}: ${field.value}`);
+        } else {
+            addLog(`Campo ${fieldName} não encontrado no HTML`, 'error');
+        }
+    });
+
+    addLog('Preenchimento dos campos HTML concluído.');
+    updateStatus('Campos preenchidos com sucesso', 'success');
+}
+
+// Carregar configurações e preencher campos do HTML quando o DOM estiver pronto
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        addLog('DOM carregado, iniciando carregamento de configurações...');
+        updateStatus('Iniciando sistema...', 'info');
+        
+        // Primeiro, limpar configurações antigas
+        await clearOldConfig();
+        
+        // Depois, carregar novas configurações
+        const config = await loadConfig();
+        addLog(`Configurações carregadas: ${JSON.stringify(config)}`);
+        
+        fillHTMLFields(config);
+        updateStatus('Sistema inicializado com sucesso!', 'success');
+    } catch (error) {
+        console.error('Erro ao carregar configurações:', error);
+        addLog(`Erro ao carregar configurações: ${error.message}`);
+        updateStatus('Erro ao carregar configurações', 'error');
+    }
 }); 
