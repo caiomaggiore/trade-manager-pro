@@ -17,22 +17,13 @@ Uma extensão Chrome profissional para análise e automação de operações de 
 ```
 trade-manager-pro/
 ├── src/                    # Código fonte
-│   ├── components/         # Componentes da interface
-│   ├── services/          # Serviços (API, análise, etc.)
-│   ├── utils/             # Utilitários e helpers
-│   ├── background/        # Scripts background da extensão
-│   └── popup/             # Interface do popup da extensão
-├── assets/                # Recursos estáticos
-│   ├── icons/            # Ícones da extensão
-│   ├── images/           # Imagens
-│   └── styles/           # Arquivos CSS
-├── docs/                  # Documentação
-│   ├── api/              # Documentação da API
-│   ├── setup/            # Guias de instalação
-│   └── usage/            # Guias de uso
-├── tests/                # Testes
-│   ├── unit/            # Testes unitários
-│   └── integration/     # Testes de integração
+│   ├── assets/            # Recursos estáticos
+│   │   ├── icons/        # Ícones da extensão
+│   │   └── styles/       # Arquivos CSS
+│   ├── background/       # Scripts background da extensão
+│   ├── content/          # Scripts de conteúdo
+│   ├── layout/           # Templates HTML
+│   └── popup/            # Interface do popup da extensão
 ├── config/               # Arquivos de configuração
 ├── manifest.json         # Configuração da extensão
 └── package.json         # Dependências e scripts
@@ -45,7 +36,6 @@ trade-manager-pro/
 - Gemini AI API
 - HTML5/CSS3
 - WebSocket para dados em tempo real
-- Jest para testes
 
 ## 📦 Instalação
 

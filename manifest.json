@@ -26,18 +26,18 @@
     }
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "src/background/background.js"
   },
   "content_scripts": [
     {
       "matches": ["https://pocketoption.com/*"],
       "js": [
-        "src/scripts/analyze-graph.js",
+        "src/content/analyze-graph.js",
         "src/content/content.js",
-        "src/scripts/index.js"
+        "src/content/index.js"
       ],
       "css": [
-        "src/layout/content.css"
+        "src/assets/styles/content.css"
       ],
       "all_frames": true
     }
@@ -46,9 +46,8 @@
     {
       "resources": [
         "src/layout/index.html",
-        "src/layout/style.css",
-        "src/layout/content.css",
-        "src/scripts/*",
+        "src/assets/styles/style.css",
+        "src/content/*",
         "src/assets/*"
       ],
       "matches": ["https://pocketoption.com/*"]
