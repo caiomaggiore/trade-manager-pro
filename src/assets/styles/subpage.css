@@ -1,0 +1,115 @@
+/* Estilos para subpáginas (test-page, etc) */
+.subpage-container {
+    position: fixed;
+    right: -480px;
+    top: 0;
+    width: 480px;
+    height: 100vh;
+    z-index: 9999999;
+    display: flex;
+    justify-content: flex-end;
+    transition: all 0.3s ease-in-out;
+}
+
+.subpage-container.active {
+    right: 0;
+}
+
+.subpage-iframe {
+    width: 480px;
+    height: 100%;
+    border: none;
+    background: #fff;
+    box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+}
+
+/* Estilos da página interna */
+body.subpage {
+    background: #fff;
+    margin: 0;
+    padding: 20px;
+    width: 800px;
+    height: 100vh;
+    box-sizing: border-box;
+    overflow-y: auto;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-right: 10px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 15px;
+}
+
+.page-header h2 {
+    margin: 0;
+    font-size: 1.5em;
+    color: #333;
+}
+
+.test-content {
+    padding: 20px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.test-content h3 {
+    margin-top: 0;
+    color: #444;
+}
+
+.test-content p {
+    color: #666;
+    line-height: 1.5;
+}
+
+/* Ajustes para o conteúdo */
+.settings-group {
+    margin-bottom: 20px;
+    max-width: 100%;
+    background: #fff;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.settings-group h3 {
+    margin-top: 0;
+    color: #444;
+}
+
+.setting-item {
+    margin-bottom: 15px;
+}
+
+#test-results {
+    max-height: calc(100vh - 400px);
+    overflow-y: auto;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #fafafa;
+}
+
+.test-result {
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+    background: #fff;
+    margin-bottom: 5px;
+    border-radius: 4px;
+}
+
+.test-result:last-child {
+    border-bottom: none;
+}
+
+.empty-state {
+    color: #666;
+    text-align: center;
+    padding: 20px;
+    font-style: italic;
+} 

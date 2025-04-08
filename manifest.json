@@ -32,6 +32,7 @@
     {
       "matches": ["https://pocketoption.com/*"],
       "js": [
+        "src/content/navigation.js",
         "src/content/analyze-graph.js",
         "src/content/content.js",
         "src/content/index.js"
@@ -45,8 +46,9 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "src/layout/index.html",
+        "src/layout/*",
         "src/assets/styles/style.css",
+        "src/assets/styles/subpage.css",
         "src/content/*",
         "src/assets/*"
       ],

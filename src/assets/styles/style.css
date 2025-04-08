@@ -774,3 +774,21 @@ input:checked + .slider:before {
 #trade-manager-toggle {
     z-index: 9998;
 }
+
+.settings-frame {
+    position: fixed;
+    top: 70px;
+    left: 0;
+    right: 0;
+    bottom: 80px;
+    width: 100%;
+    height: calc(100% - 150px);
+    border: none;
+    background: white;
+    z-index: 1000;
+    display: none;
+}
+
+.settings-frame.active {
+    display: block;
+}
