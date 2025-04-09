@@ -23,7 +23,11 @@ const UI = {
     statusProcesso: document.querySelector('#status-processo'),
     analysisResults: document.querySelector('#analysis-results'),
     copyLogBtn:     document.querySelector('#copy-log-btn'),
-    saveLogBtn:     document.querySelector('#save-log-btn')
+    saveLogBtn:     document.querySelector('#save-log-btn'),
+    dailyProfit:    document.querySelector('#daily-profit'),
+    stopLoss:       document.querySelector('#stop-loss'),
+    entryValue:     document.querySelector('#trade-value'),
+    timePeriod:     document.querySelector('#trade-time')
 };
 
 // ================== VARIÁVEIS GLOBAIS ==================
@@ -685,28 +689,44 @@ function loadConfig() {
     });
 }
 
-// Função para salvar configurações
+// Função para salvar configurações (LOGS AGORA COM addLog)
 function saveConfig(config) {
-    return new Promise((resolve) => {
+    addLog('[saveConfig][DEBUG] Iniciada com config: ' + JSON.stringify(config)); // Log DEBUG com addLog
+    return new Promise((resolve, reject) => {
         addLog('Iniciando salvamento das configurações...');
         updateStatus('Salvando configurações...', 'info');
 
         // Salvar no storage
+        addLog('[saveConfig][DEBUG] Chamando chrome.storage.sync.set...'); // Log DEBUG com addLog
         chrome.storage.sync.set({ userConfig: config }, () => {
-            addLog('Configurações salvas no storage.');
+            if (chrome.runtime.lastError) {
+                console.error('[saveConfig] Erro ao salvar no storage:', chrome.runtime.lastError); // Manter console.error para erros
+                addLog('[saveConfig][ERROR] Erro ao salvar no storage: ' + chrome.runtime.lastError.message);
+                updateStatus('Erro ao salvar configurações', 'error');
+                return reject(chrome.runtime.lastError);
+            }
             
+            addLog('[saveConfig][DEBUG] Salvo no storage com sucesso.'); // Log DEBUG com addLog
+            
+            // Atualizar campos do HTML (se existirem no index.html)
+            addLog('[saveConfig][DEBUG] Chamando fillHTMLFields...'); // Log DEBUG com addLog
+            fillHTMLFields(config);
+            addLog('[saveConfig][DEBUG] fillHTMLFields concluído.'); // Log DEBUG com addLog
+
             // Atualizar campos da página principal
+            addLog('[saveConfig][DEBUG] Chamando updateCurrentSettings...'); // Log DEBUG com addLog
             updateCurrentSettings({
-                galeEnabled: config.gale.active,
-                galeLevel: config.gale.level,
+                galeEnabled: config.gale?.active,
+                galeLevel: config.gale?.level,
                 dailyProfit: config.dailyProfit,
                 stopLoss: config.stopLoss,
                 tradeValue: config.value,
                 tradeTime: config.period,
                 autoActive: config.automation
             });
+            addLog('[saveConfig][DEBUG] updateCurrentSettings concluído.'); // Log DEBUG com addLog
 
-            addLog('Campos da página principal atualizados.');
+            addLog('Configurações salvas no storage e UI atualizada.'); // Mensagem combinada
             updateStatus('Configurações salvas com sucesso', 'success');
             resolve();
         });
@@ -794,5 +814,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error('Erro ao carregar configurações:', error);
         addLog(`Erro ao carregar configurações: ${error.message}`);
         updateStatus('Erro ao carregar configurações', 'error');
+    }
+});
+
+console.log('[index.js] Adicionando listener de mensagens...');
+
+window.addEventListener('message', (event) => {
+    console.log(`[index.js] ---> Listener de mensagem disparado! Action=${event.data?.action}`);
+    console.log(`[index.js] Mensagem recebida: Origem=${event.origin}, Action=${event.data?.action}`);
+
+    // !! REMOVIDO TEMPORARIAMENTE: Verificação de origem 
+
+    // Listener APENAS para solicitar salvamento
+    if (event.data.action === 'requestSaveSettings') { 
+        addLog('[index.js][DEBUG] Entrou no bloco requestSaveSettings (sem verificar origem).');
+        const config = event.data.settings;
+        addLog('[index.js][DEBUG] Config recebida para salvar: ' + JSON.stringify(config));
+
+        saveConfig(config)
+            .then(() => {
+                addLog('[index.js][DEBUG] saveConfig chamado via mensagem concluído com sucesso.');
+            })
+            .catch(error => {
+                console.error('[index.js] Erro ao executar saveConfig chamado via mensagem:', error);
+                addLog('[index.js][ERROR] Erro ao executar saveConfig via mensagem: ' + error.message);
+            });
+
+    // REMOVIDO: Bloco else if (event.data.action === 'closePage') {...}
+    // A lógica de fechar a página agora é tratada diretamente pelo NavigationManager
     }
 }); 

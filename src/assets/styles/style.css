@@ -227,35 +227,29 @@ select:disabled {
     transition: all 0.2s ease;
     font-family: 'Lato', sans-serif;
     font-weight: 500;
-    margin: 5px;
 }
 
 .btn.confirm-btn {
     background: #2ecc71;
     color: white;
-    width: inherit;
-    
 }
 
 .btn.secondary {
     background: #3498db;
     color: white;
-    left: 50%;
-    margin-left: 100px;
-    position: relative;
 }
 
 .btn.menu {
-  background: #373737;
-  color: white;
-  border-radius: 50%;
-  width: 36px;
-  height: 36px;
-  padding: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    background: #373737;
+    color: white;
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
 }
 
 .btn:hover {
@@ -791,4 +785,41 @@ input:checked + .slider:before {
 
 .settings-frame.active {
     display: block;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 1px solid #e0e0e0;
+    margin-bottom: 1rem;
+    width: 100%;
+}
+
+.page-header h2 {
+    margin: 0;
+    font-size: 1.25rem;
+    color: #333;
+}
+
+.page-header .btn {
+    padding: 0.5rem;
+    margin-left: 1rem;
+}
+
+.log-actions {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    padding: 10px;
+}
+
+.log-actions .btn {
+    width: 140px;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
 }

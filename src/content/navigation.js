@@ -3,8 +3,7 @@ class NavigationManager {
     constructor() {
         this.currentPage = null;
         this.pages = {
-            test: chrome.runtime.getURL('src/layout/test-page.html')
-            // Adicione outras páginas aqui conforme necessário
+            settings: chrome.runtime.getURL('src/layout/settings.html')
         };
         
         // Bind dos métodos
@@ -23,18 +22,63 @@ class NavigationManager {
 
     // Inicialização
     init() {
-        // Adiciona o event listener para o botão de teste
+        // Adiciona o event listener para o botão de teste (se existir)
         const testBtn = document.getElementById('test-btn');
         if (testBtn) {
-            testBtn.addEventListener('click', () => this.openPage('test'));
+            testBtn.addEventListener('click', () => this.openPage('settings'));
         }
 
-        // Adiciona listener para mensagens do iframe
-        window.addEventListener('message', (event) => {
-            if (event.data.action === 'closePage') {
-                this.closePage();
+        // Adiciona listener APENAS para closePage (vindo do iframe)
+        window.addEventListener('message', async (event) => {
+            // Restaurado: Se a mensagem for para fechar, chama o método local
+            if (event.data.action === 'closePage') { 
+                 console.log('[NavigationManager] Mensagem closePage recebida, chamando this.closePage()'); // Log DEBUG
+                 this.closePage(); 
             }
+            
+            // REMOVIDO: Bloco if (event.data.action === 'settingsSaved') {...}
+            // A lógica de salvar e atualizar a UI agora é tratada pelo index.js
+            // ao receber a mensagem 'requestSaveSettings' do iframe.
         });
+    }
+
+    // Atualiza a UI principal com as novas configurações
+    updateMainUI(config) {
+        // Atualiza o display de Gale
+        const currentGale = document.getElementById('current-gale');
+        if (currentGale) {
+            currentGale.textContent = `Gale: ${config.gale.active ? config.gale.level : 'Desativado'}`;
+        }
+
+        // Atualiza o display de Lucro Diário
+        const currentProfit = document.getElementById('current-profit');
+        if (currentProfit) {
+            currentProfit.textContent = `Lucro Diário: R$ ${config.dailyProfit}`;
+        }
+
+        // Atualiza o display de Stop Loss
+        const currentStop = document.getElementById('current-stop');
+        if (currentStop) {
+            currentStop.textContent = `Stop Loss: R$ ${config.stopLoss}`;
+        }
+
+        // Atualiza o status de automação
+        const automationStatus = document.getElementById('automation-status');
+        if (automationStatus) {
+            automationStatus.textContent = `Automação: ${config.automation ? 'Ativa' : 'Inativa'}`;
+        }
+
+        // Atualiza o valor de entrada
+        const currentValue = document.getElementById('current-value');
+        if (currentValue) {
+            currentValue.textContent = `Valor de entrada: R$ ${config.value}`;
+        }
+
+        // Atualiza o período
+        const currentTime = document.getElementById('current-time');
+        if (currentTime) {
+            currentTime.textContent = `Período: ${config.period}m`;
+        }
     }
 
     // Função para injetar os estilos das subpáginas
@@ -143,22 +187,37 @@ class NavigationManager {
         }
     }
 
-    // Função para fechar a página atual
+    // Função para fechar a página atual (ADICIONANDO LOGS)
     closePage() {
+        console.log('[NavigationManager] closePage chamada.'); // Log DEBUG
+        console.log('[NavigationManager] Valor de this.currentPage no início:', this.currentPage); // Log DEBUG
+
         if (this.currentPage) {
-            // Remove a classe active para iniciar a animação de saída
+            console.log('[NavigationManager] Removendo classe active de:', this.currentPage); // Log DEBUG
             this.currentPage.classList.remove('active');
             
-            // Remove os listeners globais
+            console.log('[NavigationManager] Chamando removeGlobalListeners...'); // Log DEBUG
             this.removeGlobalListeners();
             
-            // Aguarda a animação terminar antes de remover o elemento
+            console.log('[NavigationManager] Agendando remoção do elemento em 300ms...'); // Log DEBUG
             setTimeout(() => {
+                console.log('[NavigationManager] Dentro do setTimeout para remover. this.currentPage:', this.currentPage);
                 if (this.currentPage) {
-                    this.currentPage.remove();
-                    this.currentPage = null;
+                    console.log('[NavigationManager] Chamando this.currentPage.remove()...');
+                    try {
+                      this.currentPage.remove();
+                      console.log('[NavigationManager] Elemento removido com sucesso.');
+                      this.currentPage = null;
+                      console.log('[NavigationManager] this.currentPage definido como null.');
+                    } catch (removeError) {
+                        console.error('[NavigationManager] Erro ao remover elemento:', removeError);
+                    }
+                } else {
+                    console.log('[NavigationManager] this.currentPage era null/undefined dentro do setTimeout.');
                 }
-            }, 300); // Mesmo tempo da transição CSS
+            }, 500); // <<< TEMPO AUMENTADO PARA 500ms
+        } else {
+             console.log('[NavigationManager] this.currentPage era null/undefined, nada a fazer.');
         }
     }
 
@@ -168,55 +227,18 @@ class NavigationManager {
         const document = contentWindow.document;
 
         switch(pageName) {
-            case 'test':
-                this.initTestPage(document);
+            case 'settings':
+                this.initSettingsPage(document);
                 break;
             // Adicione outros casos aqui para outras páginas
         }
     }
 
-    // Handlers específicos para a página de teste
-    initTestPage(doc) {
-        const UI = {
-            closeBtn: doc.getElementById('close-test'),
-            saveBtn: doc.getElementById('save-test'),
-            cancelBtn: doc.getElementById('cancel-test'),
-            testInput: doc.getElementById('test-input'),
-            testSelect: doc.getElementById('test-select'),
-            resultsContainer: doc.getElementById('test-results')
-        };
-
-        // Função para salvar as configurações de teste
-        const saveTestSettings = () => {
-            const value = UI.testInput.value;
-            const option = UI.testSelect.value;
-            
-            // Adiciona resultado ao container
-            const result = doc.createElement('div');
-            result.className = 'test-result';
-            result.innerHTML = `
-                <p><strong>Valor:</strong> ${value}</p>
-                <p><strong>Opção:</strong> ${option}</p>
-                <p><strong>Data:</strong> ${new Date().toLocaleString()}</p>
-            `;
-            
-            // Remove o estado vazio se existir
-            const emptyState = UI.resultsContainer.querySelector('.empty-state');
-            if (emptyState) {
-                emptyState.remove();
-            }
-            
-            UI.resultsContainer.appendChild(result);
-            
-            // Limpa os campos
-            UI.testInput.value = '';
-            UI.testSelect.value = '1';
-        };
-
-        // Adiciona event listeners
-        UI.closeBtn?.addEventListener('click', () => this.closePage());
-        UI.saveBtn?.addEventListener('click', saveTestSettings);
-        UI.cancelBtn?.addEventListener('click', () => this.closePage());
+    // Handlers específicos para a página de configurações
+    initSettingsPage(doc) {
+        // Não precisamos inicializar nada aqui pois o settings.js
+        // já cuida de toda a lógica da página de configurações
+        console.log('Página de configurações carregada');
     }
 }
 

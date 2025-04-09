@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trade Manager Pro - Configurações</title>
+    <link rel="stylesheet" href="../assets/styles/style.css">
+    <link rel="stylesheet" href="../assets/styles/subpage.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="subpage">
+    <div class="page-header">
+        <h2>Configurações</h2>
+        <button id="close-settings" class="btn menu">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+
+    <div class="settings-grid">
+        <!-- Coluna 1 -->
+        <div class="settings-group">
+            <h3>Controle de Risco</h3>
+            
+            <div class="automation-control">
+                <div class="automation-wrapper">
+                    <label class="switch">
+                        <input type="checkbox" id="toggleGale" checked>
+                        <span class="slider"></span>
+                    </label>
+                    <span class="automation-label">Gale Ativo</span>
+                </div>
+            </div>
+
+            <div class="setting-item">
+                <label>Nível de Gale</label>
+                <select id="gale-select" class="styled-select">
+                    <option value="1x">1x</option>
+                    <option value="1.1x">1.1x</option>
+                    <option value="1.2x">1.2x</option>
+                    <option value="1.3x">1.3x</option>
+                    <option value="1.4x">1.4x</option>
+                    <option value="1.5x">1.5x</option>
+                </select>
+            </div>
+
+            <div class="setting-item">
+                <label>Lucro Diário (R$)</label>
+                <input type="number" id="daily-profit" class="styled-select" min="0">
+            </div>
+
+            <div class="setting-item">
+                <label>Stop Loss (R$)</label>
+                <input type="number" id="stop-loss" class="styled-select" min="0">
+            </div>
+        </div>
+
+        <!-- Coluna 2 -->
+        <div class="settings-group">
+            <h3>Parâmetros de Operação</h3>
+            <div class="automation-control">
+                <div class="automation-wrapper">
+                    <label class="switch">
+                        <input type="checkbox" id="toggleAuto">
+                        <span class="slider"></span>
+                    </label>
+                    <span class="automation-label">Automação</span>
+                </div>
+            </div>
+            <div class="setting-item">
+                <label>Valor</label>
+                <input type="number" id="trade-value" class="styled-select" min="1">
+            </div>
+            <div class="setting-item">
+                <label>Período</label>
+                <input type="number" id="trade-time" class="styled-select" min="5">
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">        
+        <button id="save-settings" class="btn confirm-btn">
+            <i class="fas fa-save"></i> Salvar Configurações
+        </button>        
+    </div>
+
+    <div id="analysis-results" class="analysis-container"></div>
+    
+    <div class="log-actions">
+        <button id="copy-log-btn" class="btn secondary">
+            <i class="fas fa-copy"></i> Copiar Logs
+        </button>
+        <button id="save-log-btn" class="btn confirm-btn">
+            <i class="fas fa-save"></i> Salvar Logs
+        </button>
+        <button id="clear-logs" class="btn secondary">
+            <i class="fas fa-trash"></i> Limpar Logs
+        </button>
+    </div>
+
+    <!-- Carrega o StateManager primeiro -->
+    <script src="../content/state-manager.js"></script>
+    <!-- Depois carrega o settings.js -->
+    <script src="../content/settings.js"></script>
+</body>
+</html> 
