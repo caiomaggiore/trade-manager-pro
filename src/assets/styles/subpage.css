@@ -1,11 +1,8 @@
-/* Estilos para subpáginas (test-page, etc) */
-
-
 /* Estilos da página interna */
 body.subpage {
     background: #fff;
-    margin: 0;
-    padding: 20px;
+    margin: 0px;
+    padding: 10px;
     width: 480px;
     height: 100vh;
     box-sizing: border-box;
@@ -24,8 +21,7 @@ body.subpage * {
     grid-template-columns: repeat(2, 1fr);
     gap: 10px;
     width: 100%;
-    padding: 0;
-    margin: 0;
+    padding: 10px 0px;
 }
 
 .settings-group {
@@ -35,8 +31,8 @@ body.subpage * {
 }
 
 .page-header {
-    margin: -20px -20px 20px -20px;
-    padding: 20px;
+    margin: 0px;
+    padding: 10px;
     width: calc(100% + 40px);
     box-sizing: border-box;
     background: #fff;
@@ -49,22 +45,6 @@ body.subpage * {
     color: #333;
 }
 
-.test-content {
-    padding: 20px;
-    background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.test-content h3 {
-    margin-top: 0;
-    color: #444;
-}
-
-.test-content p {
-    color: #666;
-    line-height: 1.5;
-}
 
 /* Ajustes para o conteúdo */
 .settings-group h3 {

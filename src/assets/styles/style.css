@@ -346,9 +346,9 @@ select:disabled {
     position: sticky;
     display:block;
     background: white;
-    padding: 5px;
+    padding: 10px;
     border-top: 1px solid #e0e0e0;
-    margin-top: 10px;
+    margin: 0px;
     justify-content: center;
     flex-direction: column;
     text-align: center;
@@ -583,6 +583,8 @@ input:checked + .slider:before {
   padding: 5px;
   border-bottom: 1px solid #333;
   animation: fadeIn 0.3s ease-in;
+  word-wrap: break-word;
+  white-space: pre-wrap;
 }
 
 @keyframes fadeIn {
@@ -598,6 +600,8 @@ input:checked + .slider:before {
   font-family: 'Courier New', monospace;
   max-height: 200px;
   overflow-y: auto;
+  word-wrap: break-word;
+  white-space: pre-wrap;
 }
 
 /* ================== MODAL DE ANÁLISE ================== */
@@ -776,7 +780,6 @@ input:checked + .slider:before {
     right: 0;
     bottom: 80px;
     width: 100%;
-    height: calc(100% - 150px);
     border: none;
     background: white;
     z-index: 1000;

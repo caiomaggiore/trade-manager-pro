@@ -22,23 +22,28 @@ class NavigationManager {
 
     // Inicialização
     init() {
-        // Adiciona o event listener para o botão de teste (se existir)
+        // Adiciona o event listener para o botão de teste
         const testBtn = document.getElementById('test-btn');
         if (testBtn) {
             testBtn.addEventListener('click', () => this.openPage('settings'));
         }
 
-        // Adiciona listener APENAS para closePage (vindo do iframe)
+        // Adiciona listener para mensagens do iframe
         window.addEventListener('message', async (event) => {
-            // Restaurado: Se a mensagem for para fechar, chama o método local
-            if (event.data.action === 'closePage') { 
-                 console.log('[NavigationManager] Mensagem closePage recebida, chamando this.closePage()'); // Log DEBUG
-                 this.closePage(); 
+            if (event.data.action === 'closePage') {
+                this.closePage();
             }
-            
-            // REMOVIDO: Bloco if (event.data.action === 'settingsSaved') {...}
-            // A lógica de salvar e atualizar a UI agora é tratada pelo index.js
-            // ao receber a mensagem 'requestSaveSettings' do iframe.
+            if (event.data.action === 'settingsSaved') {
+                // Atualizar a UI principal quando as configurações forem salvas
+                const config = event.data.config;
+                if (config) {
+                    // Atualiza o StateManager
+                    await window.StateManager?.saveConfig(config);
+                    
+                    // Atualiza a UI
+                    this.updateMainUI(config);
+                }
+            }
         });
     }
 
@@ -97,7 +102,7 @@ class NavigationManager {
                 right: -480px;
                 top: 0;
                 width: 480px;
-                height: 100vh;
+                height: calc(100% - 65px);
                 z-index: 9999999;
                 display: flex;
                 justify-content: flex-end;
