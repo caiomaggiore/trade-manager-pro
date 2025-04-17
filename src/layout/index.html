@@ -10,8 +10,8 @@
    <div class="header">
        <h1 class="app-title">TRADE MANAGER PRO</h1>
        <div class="header-controls">
-         <button id="test-btn" class="btn menu">
-             <i class="fas fa-link"></i>
+         <button id="logs-btn" class="btn menu">
+             <i class="fas fa-list"></i>
          </button>
          <button id="back-btn" class="btn menu hidden">
            <i class="fas fa-chevron-right"></i>
@@ -149,7 +149,7 @@
        <button id="save-settings" class="btn confirm-btn">Salvar Configurações</button>        
      </div>
      <div id="analysis-results" class="analysis-container">...</div>
-     <div class="log-actions">
+     <div class="log-actions" style="display:none;">
          <button id="copy-log-btn" class="btn secondary">
              <i class="fas fa-copy"></i> Copiar Logs
          </button>
@@ -157,7 +157,7 @@
              <i class="fas fa-save"></i> Salvar Logs
          </button>
      </div>
-     <button id="clear-logs" class="btn secondary">Limpar Logs</button>
+     <button id="clear-logs" class="btn secondary" style="display:none;">Limpar Logs</button>
    </div>
  
    <div class="global-footer">
@@ -211,6 +211,7 @@
      </div>
    </div>
  
+   <script src="../content/log-sys.js"></script>
    <script src="../content/analyze-graph.js"></script>
    <script src="../content/navigation.js"></script>
    <script src="../content/index.js"></script>

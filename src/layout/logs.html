@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trade Manager Pro - Logs</title>
+    <link rel="stylesheet" href="../assets/styles/style.css">
+    <link rel="stylesheet" href="../assets/styles/subpage.css">
+    <style>
+        .log-container {
+            height: 350px;
+            overflow-y: auto;
+            background-color: #1e1e1e;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: monospace;
+            margin-bottom: 10px;
+            border: 1px solid #333;
+        }
+        
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 3px 5px;
+            border-radius: 3px;
+            word-wrap: break-word;
+        }
+        
+        .log-debug { color: #7B68EE; }
+        .log-info { color: #4FC3F7; }
+        .log-warn { color: #FFD54F; }
+        .log-error { color: #EF5350; }
+        .log-success { color: #66BB6A; }
+        
+        .log-actions {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        
+        .log-actions button {
+            flex: 1;
+            margin: 0 5px;
+        }
+        
+        .log-actions button:first-child {
+            margin-left: 0;
+        }
+        
+        .log-actions button:last-child {
+            margin-right: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container subpage">
+        <div class="header">
+            <h2>Logs do Sistema</h2>
+            <button id="close-logs" class="close-button">×</button>
+        </div>
+        
+        <div class="content">
+            <div class="log-actions">
+                <button id="copy-logs" class="btn btn-secondary">Copiar Logs</button>
+                <button id="save-logs" class="btn btn-primary">Salvar Logs</button>
+                <button id="clear-logs" class="btn btn-danger">Limpar Logs</button>
+            </div>
+            
+            <div id="log-container" class="log-container">
+                <!-- Os logs serão inseridos aqui dinamicamente -->
+                <div class="log-entry log-info">Carregando logs...</div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>Trade Manager Pro v<span id="version">3.1.3</span></p>
+        </div>
+    </div>
+
+    <script src="../content/log-sys.js"></script>
+</body>
+</html> 

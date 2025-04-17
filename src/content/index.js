@@ -1,5 +1,33 @@
+// Verificar se o sistema de logs está disponível
+console.log('Inicializando index.js');
+console.log('logToSystem está disponível?', typeof window.logToSystem === 'function');
+
+// Tentar criar um teste de log se o sistema estiver disponível
+if (typeof window.logToSystem === 'function') {
+    window.logToSystem('Teste de sistema de logs a partir do index.js', 'DEBUG', 'index.js');
+} else {
+    console.warn('Sistema de logs não detectado, tentando carregar via script...');
+    
+    // Função para tentar carregar o sistema de logs
+    const loadLogSystem = () => {
+        const script = document.createElement('script');
+        script.src = '../content/log-sys.js';
+        script.onload = () => {
+            console.log('Sistema de logs carregado dinamicamente!');
+            window.logToSystem && window.logToSystem('Sistema de logs carregado dinamicamente', 'INFO', 'index.js');
+        };
+        script.onerror = (err) => {
+            console.error('Erro ao carregar sistema de logs:', err);
+        };
+        document.head.appendChild(script);
+    };
+    
+    // Tentar carregar o sistema de logs
+    loadLogSystem();
+}
+
 // ================== VERIFICAÇÃO DE ELEMENTOS ==================
-const UI = {
+const indexUI = {
     settingsPanel:  document.querySelector('#settings-panel'),
     settingsBtn:    document.querySelector('#settings-btn'),
     backBtn:        document.querySelector('#back-btn'),
@@ -21,9 +49,6 @@ const UI = {
     captureScreen:  document.querySelector('#captureBtn'),
     cancelOperation: document.querySelector('#cancel-operation'),
     statusProcesso: document.querySelector('#status-processo'),
-    analysisResults: document.querySelector('#analysis-results'),
-    copyLogBtn:     document.querySelector('#copy-log-btn'),
-    saveLogBtn:     document.querySelector('#save-log-btn'),
     dailyProfit:    document.querySelector('#daily-profit'),
     stopLoss:       document.querySelector('#stop-loss'),
     entryValue:     document.querySelector('#trade-value'),
@@ -45,7 +70,7 @@ window.API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini
 const runAnalysis = async () => {
     try {
         updateStatus('Iniciando análise...', 'info');
-        addLog('Iniciando análise do gráfico...');
+        indexAddLog('Iniciando análise do gráfico...');
         
         // Verificar se o AnalyzeGraph está disponível
         if (!window.TradeManager?.AnalyzeGraph) {
@@ -64,7 +89,7 @@ const runAnalysis = async () => {
             throw new Error(response.error);
         }
 
-        addLog('Captura de tela concluída, processando imagem...');
+        indexAddLog('Captura de tela concluída, processando imagem...');
 
         // Processa a imagem e analisa
         const result = await window.TradeManager.AnalyzeGraph.processImage(response.dataUrl);
@@ -75,7 +100,7 @@ const runAnalysis = async () => {
 
         // Atualiza a interface com os resultados
         updateStatus(`Análise concluída: ${result.results.action}`, 'success');
-        addLog(`Análise: ${result.results.action} - Confiança: ${result.results.trust}%`);
+        indexAddLog(`Análise: ${result.results.action} - Confiança: ${result.results.trust}%`);
         
         // Mostra o modal com os resultados
         showAnalysisModal(result.results);
@@ -84,7 +109,7 @@ const runAnalysis = async () => {
     } catch (error) {
         console.error('Erro na análise:', error);
         updateStatus('Erro ao realizar análise', 'error');
-        addLog(`Erro na análise: ${error.message}`);
+        indexAddLog(`Erro na análise: ${error.message}`);
         throw error;
     }
 };
@@ -149,88 +174,40 @@ function showAnalysisModal(result) {
     };
 }
 
-// =======================================================================================
-// ================== FUNCOES INTERFACE UI.X ==================
-// =======================================================================================
-
-// Carregar versão do manifest
-const manifest = chrome.runtime.getManifest();
-if (UI.version) {
-    UI.version.textContent = manifest.version;
-}
-
-// Controle do painel de configurações
-const toggleSettings = (show) => {
-    if (show) {
-        UI.settingsPanel.classList.add('active');
-        UI.backBtn.classList.remove('hidden');
-        UI.settingsBtn.classList.add('hidden');
-    } else {
-        UI.settingsPanel.classList.remove('active');
-        UI.backBtn.classList.add('hidden');
-        UI.settingsBtn.classList.remove('hidden');
+// ================== FUNÇÕES DE LOG ==================
+// Função de log para index.js
+const indexAddLog = (message, level = 'INFO', source = 'index.js') => {
+    // Normalizar nível de log para maiúsculas
+    const normalizedLevel = (level && typeof level === 'string') ? level.toUpperCase() : 'INFO';
+    
+    console.log(`[${normalizedLevel}][${source}] ${message}`);
+    
+    // Usar preferentemente o sistema global de logs
+    if (typeof window.logToSystem === 'function') {
+        window.logToSystem(message, normalizedLevel, source);
+        return;
+    }
+    
+    // Fallback para o sistema direto sysAddLog, se disponível
+    if (typeof sysAddLog === 'function') {
+        sysAddLog(message, normalizedLevel, source).catch(error => {
+            console.error(`[${source}] Erro ao usar sysAddLog:`, error);
+        });
+        return;
+    }
+    
+    // Último recurso: enviar via mensagem Chrome
+    try {
+        chrome.runtime.sendMessage({
+            action: 'logMessage',
+            message: message,
+            level: normalizedLevel,
+            source: source
+        });
+    } catch (error) {
+        console.error(`[${source}] Erro ao enviar log:`, error);
     }
 };
-
-// Função para atualizar a exibição do Gale
-const updateGaleDisplay = (enabled, level) => {
-    if (UI.currentGale) {
-        UI.currentGale.textContent = enabled ? `Gale: ${level}` : "Gale: Desativado";
-    }
-    if (UI.galeSelect) {
-        UI.galeSelect.disabled = !enabled;
-    }
-};  
-
-// Atualizar configurações atuais na página principal
-// ================== GERENCIAMENTO DE ESTADO ==================
-const updateCurrentSettings = (settings) => {
-    if (UI.currentGale) {
-        const galeEnabled = settings.galeEnabled ?? true;
-        updateGaleDisplay(galeEnabled, settings.galeLevel || '1x');
-    }
-    if (UI.currentProfit) {
-        UI.currentProfit.textContent = `Lucro Diário: R$ ${settings.dailyProfit || '0'}`;
-    }
-    if (UI.currentStop) {
-        UI.currentStop.textContent = `Stop Loss: R$ ${settings.stopLoss || '0'}`;
-    }
-    if (UI.currentValue) {
-        UI.currentValue.textContent = `Valor de entrada: R$ ${settings.tradeValue || '0'}`;
-    }
-    if (UI.currentTime) {
-        UI.currentTime.textContent = `Periodo: ${settings.tradeTime || '0'}`;
-    }
-    if (UI.automationStatus) {
-        isAutomationRunning = settings.autoActive ? true: false;
-        UI.automationStatus.value = settings.autoActive ? true : false;
-        UI.automationStatus.textContent = `Automação: ${settings.autoActive ? 'Ativa' : 'Inativa'}`;
-        UI.automationStatus.className = `automation-status ${settings.autoActive ? 'active' : 'inactive'}`;
-    }
-};
-
-// Carregar configurações salvas
-chrome.storage.sync.get(
-    ['galeEnabled', 'galeLevel', 'dailyProfit', 'stopLoss', 'autoActive'], 
-    (settings) => {
-        if (UI.toggleGale) UI.toggleGale.checked = settings.galeEnabled ?? true;
-        if (UI.galeSelect) UI.galeSelect.value = settings.galeLevel || '1x';
-        if (document.getElementById('daily-profit')) {
-            document.getElementById('daily-profit').value = settings.dailyProfit || '';
-        }
-        if (document.getElementById('stop-loss')) {
-            document.getElementById('stop-loss').value = settings.stopLoss || '';
-        }
-        if (document.getElementById('trade-value')) {
-            document.getElementById('trade-value').value = settings.tradeValue || '';
-        }
-        if (document.getElementById('trade-time')) {
-            document.getElementById('trade-time').value = settings.tradeTime || '';
-        }
-        if (UI.toggleAuto) UI.toggleAuto.checked = settings.autoActive || false;
-        updateCurrentSettings(settings);
-    }
-);
 
 // =======================================================================================
 // ================== FUNCOES - STATUS DE INTERFACE ==================
@@ -254,99 +231,120 @@ const updateStatus = (message, type = 'info', duration = 3000) => {
     statusElement.textContent = message;
     statusElement.className = `status-processo ${type} visible`;
     
+    // Registrar o status como log
+    indexAddLog(`Status atualizado: ${message}`, type.toUpperCase());
+    
     // Se duration for 0, manter a mensagem permanentemente
     if (duration > 0) {
         setTimeout(() => {
             if (statusElement) {
                 statusElement.textContent = 'Status: Sistema operando normalmente';
                 statusElement.className = 'status-processo info visible';
+                
+                // Adicionar log quando o sistema volta ao estado "operando normalmente"
+                indexAddLog('Status: Sistema operando normalmente', 'INFO');
             }
         }, duration);
     }
 };
 
 // Exemplo de uso - ao iniciar sistema!
-updateStatus('Sistema iniciado com sucesso!', 'info'); 
+updateStatus('Sistema iniciado com sucesso!', 'success');
 // use 'success' para mensagem verde.
 // use 'info' para mensagem azul.
 // use 'error' para mensagem vermelho.
 
-// ================== FUNÇÕES DE LOG ==================
-// Função para adicionar logs
-let lastLog = {};
+// =======================================================================================
+// ================== FUNCOES INTERFACE UI.X ==================
+// =======================================================================================
 
-const addLog = (message) => {
-    if (!UI.analysisResults) return;
-    
-    const logEntry = document.createElement('div');
-    logEntry.className = 'log-entry';
-    logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-    UI.analysisResults.appendChild(logEntry);
-    UI.analysisResults.scrollTop = UI.analysisResults.scrollHeight;
-    
-    // Atualizar o status no painel principal
-    updateStatus(message, 'info', 0);
-};
+// Carregar versão do manifest
+const manifest = chrome.runtime.getManifest();
+if (indexUI.version) {
+    indexUI.version.textContent = manifest.version;
+}
 
-// Função para copiar logs
-const copyLogs = () => {
-    if (!UI.analysisResults) return;
-    
-    const logs = Array.from(UI.analysisResults.children)
-        .map(entry => entry.textContent)
-        .join('\n');
-    
-    // Criar um elemento textarea temporário
-    const textarea = document.createElement('textarea');
-    textarea.value = logs;
-    textarea.style.position = 'fixed';
-    textarea.style.opacity = '0';
-    document.body.appendChild(textarea);
-    
-    try {
-        // Selecionar e copiar o texto
-        textarea.select();
-        document.execCommand('copy');
-        updateStatus('Logs copiados para a área de transferência!', 'success', 3000);
-    } catch (err) {
-        console.error('Erro ao copiar logs:', err);
-        updateStatus('Erro ao copiar logs', 'error', 3000);
-    } finally {
-        // Remover o elemento temporário
-        document.body.removeChild(textarea);
+// Controle do painel de configurações
+const toggleSettings = (show) => {
+    if (show) {
+        indexUI.settingsPanel.classList.add('active');
+        indexUI.backBtn.classList.remove('hidden');
+        indexUI.settingsBtn.classList.add('hidden');
+    } else {
+        indexUI.settingsPanel.classList.remove('active');
+        indexUI.backBtn.classList.add('hidden');
+        indexUI.settingsBtn.classList.remove('hidden');
     }
 };
 
-// Função para salvar logs
-const saveLogs = () => {
-    if (!UI.analysisResults) return;
-    
-    const logs = Array.from(UI.analysisResults.children)
-        .map(entry => entry.textContent)
-        .join('\n');
-    
-    const blob = new Blob([logs], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `trading-bot-logs-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    updateStatus('Logs salvos com sucesso!', 'success', 3000);
+// Função para atualizar a exibição do Gale
+const updateGaleDisplay = (enabled, level) => {
+    if (indexUI.currentGale) {
+        indexUI.currentGale.textContent = enabled ? `Gale: ${level}` : "Gale: Desativado";
+    }
+    if (indexUI.galeSelect) {
+        indexUI.galeSelect.disabled = !enabled;
+    }
+};  
+
+// Atualizar configurações atuais na página principal
+// ================== GERENCIAMENTO DE ESTADO ==================
+const updateCurrentSettings = (settings) => {
+    if (indexUI.currentGale) {
+        const galeEnabled = settings.galeEnabled ?? true;
+        updateGaleDisplay(galeEnabled, settings.galeLevel || '1x');
+    }
+    if (indexUI.currentProfit) {
+        indexUI.currentProfit.textContent = `Lucro Diário: R$ ${settings.dailyProfit || '0'}`;
+    }
+    if (indexUI.currentStop) {
+        indexUI.currentStop.textContent = `Stop Loss: R$ ${settings.stopLoss || '0'}`;
+    }
+    if (indexUI.currentValue) {
+        indexUI.currentValue.textContent = `Valor de entrada: R$ ${settings.tradeValue || '0'}`;
+    }
+    if (indexUI.currentTime) {
+        indexUI.currentTime.textContent = `Periodo: ${settings.tradeTime || '0'}`;
+    }
+    if (indexUI.automationStatus) {
+        isAutomationRunning = settings.autoActive ? true: false;
+        indexUI.automationStatus.value = settings.autoActive ? true : false;
+        indexUI.automationStatus.textContent = `Automação: ${settings.autoActive ? 'Ativa' : 'Inativa'}`;
+        indexUI.automationStatus.className = `automation-status ${settings.autoActive ? 'active' : 'inactive'}`;
+    }
 };
 
-// Adicionar listeners para os botões de log
-document.getElementById('copy-log-btn')?.addEventListener('click', copyLogs);
-document.getElementById('save-log-btn')?.addEventListener('click', saveLogs);
+// Carregar configurações salvas
+chrome.storage.sync.get(
+    ['galeEnabled', 'galeLevel', 'dailyProfit', 'stopLoss', 'autoActive'], 
+    (settings) => {
+        if (indexUI.toggleGale) indexUI.toggleGale.checked = settings.galeEnabled ?? true;
+        if (indexUI.galeSelect) indexUI.galeSelect.value = settings.galeLevel || '1x';
+        if (document.getElementById('daily-profit')) {
+            document.getElementById('daily-profit').value = settings.dailyProfit || '';
+        }
+        if (document.getElementById('stop-loss')) {
+            document.getElementById('stop-loss').value = settings.stopLoss || '';
+        }
+        if (document.getElementById('trade-value')) {
+            document.getElementById('trade-value').value = settings.tradeValue || '';
+        }
+        if (document.getElementById('trade-time')) {
+            document.getElementById('trade-time').value = settings.tradeTime || '';
+        }
+        if (indexUI.toggleAuto) indexUI.toggleAuto.checked = settings.autoActive || false;
+        updateCurrentSettings(settings);
+    }
+);
+
+// =======================================================================================
+// ================== FUNÇÕES DE LOG ==================
+// =======================================================================================
 
 // Recebe o log que vem pelo background de qualquer lugar.
 chrome.runtime.onMessage.addListener((request) => {
     if (request.action === 'ADD_LOG') {
-        addLog(request.log);
+        indexAddLog(request.log);
     }
     // Novo handler para status
     if (request.action === 'UPDATE_STATUS') {
@@ -361,9 +359,9 @@ chrome.runtime.onMessage.addListener((request) => {
 // ================== NOVAS FUNÇÕES PARA AUTOMAÇÃO ==================
 const updateAutomationStatus = (isActive) => {
     isAutomationRunning = isActive ? true: false;
-    UI.automationStatus.value = isActive ? true : false;
-    UI.automationStatus.textContent = `Automação: ${isActive ? 'Ativa' : 'Inativa'}`;
-    UI.automationStatus.className = `automation-status ${isActive ? 'active' : 'inactive'}`;
+    indexUI.automationStatus.value = isActive ? true : false;
+    indexUI.automationStatus.textContent = `Automação: ${isActive ? 'Ativa' : 'Inativa'}`;
+    indexUI.automationStatus.className = `automation-status ${isActive ? 'active' : 'inactive'}`;
 };
 
 // Função para calcular o lucro
@@ -445,7 +443,7 @@ function startTradeMonitoring() {
 async function testGeminiConnection() {
     try {
         updateStatus('Testando conexão com Gemini...', 'info');
-        addLog('Iniciando teste de conexão...');
+        indexAddLog('Iniciando teste de conexão...');
         
         const response = await fetch(API_URL, {
             method: 'POST',
@@ -466,14 +464,14 @@ async function testGeminiConnection() {
         
         if (text.includes('OK')) {
             updateStatus('Conexão estabelecida!', 'success');
-            addLog('Conexão com Gemini estabelecida com sucesso');
+            indexAddLog('Conexão com Gemini estabelecida com sucesso');
             return true;
         } else {
             throw new Error('Resposta inesperada da API');
         }
     } catch (error) {
         updateStatus(`Erro: ${error.message}`, 'error');
-        addLog(`Erro no teste de conexão: ${error.message}`);
+        indexAddLog(`Erro no teste de conexão: ${error.message}`);
         return false;
     }
 }
@@ -545,9 +543,8 @@ const addEventListeners = () => {
         cancelOperation: document.querySelector('#cancel-operation'),
         captureScreen: document.querySelector('#captureBtn'),
         analyzeBtn: document.querySelector('#analyzeBtn'),
-        settingsBtn: document.querySelector('#settings-btn'),
-        backBtn: document.querySelector('#back-btn'),
-        saveBtn: document.querySelector('#save-settings')
+        logsBtn: document.querySelector('#logs-btn'),
+        settingsBtn: document.querySelector('#settings-btn')
     };
 
     if (elements.startOperation) {
@@ -571,33 +568,21 @@ const addEventListeners = () => {
     if (elements.analyzeBtn) {
         elements.analyzeBtn.addEventListener('click', runAnalysis);
     }
+    if (elements.logsBtn) {
+        elements.logsBtn.addEventListener('click', () => {
+            if (window.Navigation) {
+                window.Navigation.openPage('logs');
+            } else {
+                console.error('Navigation não está disponível');
+            }
+        });
+    }
     if (elements.settingsBtn) {
-        elements.settingsBtn.addEventListener('click', () => toggleSettings(true));
-    }
-    if (elements.backBtn) {
-        elements.backBtn.addEventListener('click', () => toggleSettings(false));
-    }
-    if (elements.saveBtn) {
-        elements.saveBtn.addEventListener('click', async () => {
-            try {
-                const config = {
-                    gale: {
-                        active: UI.toggleGale.checked,
-                        level: UI.galeSelect.value
-                    },
-                    dailyProfit: parseInt(document.getElementById('daily-profit').value),
-                    stopLoss: parseInt(document.getElementById('stop-loss').value),
-                    automation: UI.toggleAuto.checked,
-                    value: parseInt(document.getElementById('trade-value').value),
-                    period: parseInt(document.getElementById('trade-time').value)
-                };
-
-                await saveConfig(config);
-                toggleSettings(false); // Fechar painel de configurações
-            } catch (error) {
-                console.error('Erro ao salvar configurações:', error);
-                addLog(`Erro ao salvar configurações: ${error.message}`);
-                updateStatus('Erro ao salvar configurações', 'error');
+        elements.settingsBtn.addEventListener('click', () => {
+            if (window.Navigation) {
+                window.Navigation.openPage('settings');
+            } else {
+                console.error('Navigation não está disponível');
             }
         });
     }
@@ -605,12 +590,46 @@ const addEventListeners = () => {
 
 // Inicializar quando o DOM estiver pronto
 document.addEventListener('DOMContentLoaded', () => {
+    try {
+        const manifestInfo = chrome.runtime.getManifest();
+        indexAddLog(`Sistema Trade Manager Pro v${manifestInfo.version} inicializado`, 'INFO');
+        indexAddLog(`Ambiente: ${manifestInfo.name} / ${navigator.userAgent}`, 'DEBUG');
+    } catch (e) {
+        indexAddLog('Sistema Trade Manager Pro inicializado (versão desconhecida)', 'INFO');
+    }
+    
     addEventListeners();
-    updateStatus('Sistema iniciado com sucesso!', 'info');
+    indexAddLog('Event listeners configurados com sucesso', 'DEBUG');
+    
+    updateStatus('Sistema iniciado com sucesso!', 'success');
+    indexAddLog('Interface principal carregada e pronta', 'SUCCESS');
+    
+    // Tentar testar a conexão com a API Gemini
+    testGeminiConnection()
+        .then(connected => {
+            if (connected) {
+                indexAddLog('API Gemini conectada com sucesso', 'SUCCESS');
+            } else {
+                indexAddLog('Não foi possível conectar à API Gemini', 'WARN');
+            }
+        })
+        .catch(err => {
+            indexAddLog(`Erro ao testar conexão com API: ${err.message}`, 'ERROR');
+        });
+    
+    // Carregar configurações
+    loadConfig()
+        .then(config => {
+            indexAddLog('Configurações carregadas com sucesso', 'SUCCESS');
+        })
+        .catch(error => {
+            indexAddLog(`Erro ao carregar configurações: ${error.message}`, 'ERROR');
+            updateStatus('Erro ao carregar configurações', 'error');
+        });
 });
 
 // Configurações padrão
-const DEFAULT_CONFIG = {
+const indexDefaultConfig = window.StateManager?.getConfig() || {
     gale: {
         active: true,
         level: '1.2x'
@@ -626,7 +645,7 @@ const DEFAULT_CONFIG = {
 function clearOldConfig() {
     return new Promise((resolve) => {
         chrome.storage.sync.remove(['userConfig'], () => {
-            addLog('Configurações antigas removidas do storage.');
+            indexAddLog('Configurações antigas removidas do storage.');
             resolve();
         });
     });
@@ -635,33 +654,33 @@ function clearOldConfig() {
 // Função para carregar configurações
 function loadConfig() {
     return new Promise((resolve) => {
-        addLog('Iniciando carregamento das configurações...');
+        indexAddLog('Iniciando carregamento das configurações...');
         updateStatus('Carregando configurações...', 'info');
 
         chrome.storage.sync.get(['userConfig'], (result) => {
-            addLog(`Resultado do storage: ${JSON.stringify(result)}`);
+            indexAddLog(`Resultado do storage: ${JSON.stringify(result)}`);
             
             if (!result.userConfig || Object.keys(result.userConfig).length === 0) {
-                addLog('Configuração do usuário não encontrada ou vazia. Usando configuração padrão.');
+                indexAddLog('Configuração do usuário não encontrada ou vazia. Usando configuração padrão.');
                 updateStatus('Usando configurações padrão...', 'info');
                 
                 // Se não houver configuração do usuário, usa a padrão
-                chrome.storage.sync.set({ userConfig: DEFAULT_CONFIG }, () => {
-                    addLog('Configurações padrão salvas no storage.');
+                chrome.storage.sync.set({ userConfig: indexDefaultConfig }, () => {
+                    indexAddLog('Configurações padrão salvas no storage.');
                     updateStatus('Configurações padrão salvas', 'success');
                     
                     // Atualizar campos da página principal
                     updateCurrentSettings({
-                        galeEnabled: DEFAULT_CONFIG.gale.active,
-                        galeLevel: DEFAULT_CONFIG.gale.level,
-                        dailyProfit: DEFAULT_CONFIG.dailyProfit,
-                        stopLoss: DEFAULT_CONFIG.stopLoss,
-                        tradeValue: DEFAULT_CONFIG.value,
-                        tradeTime: DEFAULT_CONFIG.period,
-                        autoActive: DEFAULT_CONFIG.automation
+                        galeEnabled: indexDefaultConfig.gale.active,
+                        galeLevel: indexDefaultConfig.gale.level,
+                        dailyProfit: indexDefaultConfig.dailyProfit,
+                        stopLoss: indexDefaultConfig.stopLoss,
+                        tradeValue: indexDefaultConfig.value,
+                        tradeTime: indexDefaultConfig.period,
+                        autoActive: indexDefaultConfig.automation
                     });
                     
-                    resolve(DEFAULT_CONFIG);
+                    resolve(indexDefaultConfig);
                 });
             } else {
                 // Garantir que o período seja um número inteiro
@@ -669,7 +688,7 @@ function loadConfig() {
                     result.userConfig.period = parseInt(result.userConfig.period.replace(/[^0-9]/g, '')) || 1;
                 }
                 
-                addLog('Configuração do usuário encontrada e carregada.');
+                indexAddLog('Configuração do usuário encontrada e carregada.');
                 updateStatus('Configurações do usuário carregadas', 'success');
                 
                 // Atualizar campos da página principal
@@ -688,159 +707,3 @@ function loadConfig() {
         });
     });
 }
-
-// Função para salvar configurações (LOGS AGORA COM addLog)
-function saveConfig(config) {
-    addLog('[saveConfig][DEBUG] Iniciada com config: ' + JSON.stringify(config)); // Log DEBUG com addLog
-    return new Promise((resolve, reject) => {
-        addLog('Iniciando salvamento das configurações...');
-        updateStatus('Salvando configurações...', 'info');
-
-        // Salvar no storage
-        addLog('[saveConfig][DEBUG] Chamando chrome.storage.sync.set...'); // Log DEBUG com addLog
-        chrome.storage.sync.set({ userConfig: config }, () => {
-            if (chrome.runtime.lastError) {
-                console.error('[saveConfig] Erro ao salvar no storage:', chrome.runtime.lastError); // Manter console.error para erros
-                addLog('[saveConfig][ERROR] Erro ao salvar no storage: ' + chrome.runtime.lastError.message);
-                updateStatus('Erro ao salvar configurações', 'error');
-                return reject(chrome.runtime.lastError);
-            }
-            
-            addLog('[saveConfig][DEBUG] Salvo no storage com sucesso.'); // Log DEBUG com addLog
-            
-            // Atualizar campos do HTML (se existirem no index.html)
-            addLog('[saveConfig][DEBUG] Chamando fillHTMLFields...'); // Log DEBUG com addLog
-            fillHTMLFields(config);
-            addLog('[saveConfig][DEBUG] fillHTMLFields concluído.'); // Log DEBUG com addLog
-
-            // Atualizar campos da página principal
-            addLog('[saveConfig][DEBUG] Chamando updateCurrentSettings...'); // Log DEBUG com addLog
-            updateCurrentSettings({
-                galeEnabled: config.gale?.active,
-                galeLevel: config.gale?.level,
-                dailyProfit: config.dailyProfit,
-                stopLoss: config.stopLoss,
-                tradeValue: config.value,
-                tradeTime: config.period,
-                autoActive: config.automation
-            });
-            addLog('[saveConfig][DEBUG] updateCurrentSettings concluído.'); // Log DEBUG com addLog
-
-            addLog('Configurações salvas no storage e UI atualizada.'); // Mensagem combinada
-            updateStatus('Configurações salvas com sucesso', 'success');
-            resolve();
-        });
-    });
-}
-
-// Função para preencher campos do HTML
-function fillHTMLFields(config) {
-    addLog('Iniciando preenchimento dos campos HTML...');
-    updateStatus('Preenchendo campos...', 'info');
-
-    // Mapeamento dos campos HTML para as configurações usando a variável UI
-    const fieldMappings = {
-        'galeActive': {
-            element: UI.toggleGale,
-            value: config.gale.active,
-            type: 'checkbox'
-        },
-        'galeLevel': {
-            element: UI.galeSelect,
-            value: config.gale.level,
-            type: 'text'
-        },
-        'dailyProfit': {
-            element: document.getElementById('daily-profit'),
-            value: config.dailyProfit,
-            type: 'number'
-        },
-        'stopLoss': {
-            element: document.getElementById('stop-loss'),
-            value: config.stopLoss,
-            type: 'number'
-        },
-        'automation': {
-            element: UI.toggleAuto,
-            value: config.automation,
-            type: 'checkbox'
-        },
-        'value': {
-            element: document.getElementById('trade-value'),
-            value: config.value,
-            type: 'number'
-        },
-        'period': {
-            element: document.getElementById('trade-time'),
-            value: config.period,
-            type: 'number'
-        }
-    };
-
-    // Preencher cada campo
-    Object.entries(fieldMappings).forEach(([fieldName, field]) => {
-        if (field.element) {
-            if (field.type === 'checkbox') {
-                field.element.checked = field.value;
-            } else {
-                field.element.value = field.value;
-            }
-            addLog(`${fieldName}: ${field.value}`);
-        } else {
-            addLog(`Campo ${fieldName} não encontrado no HTML`, 'error');
-        }
-    });
-
-    addLog('Preenchimento dos campos HTML concluído.');
-    updateStatus('Campos preenchidos com sucesso', 'success');
-}
-
-// Carregar configurações e preencher campos do HTML quando o DOM estiver pronto
-document.addEventListener('DOMContentLoaded', async () => {
-    try {
-        addLog('DOM carregado, iniciando carregamento de configurações...');
-        updateStatus('Iniciando sistema...', 'info');
-        
-        // Primeiro, limpar configurações antigas
-        await clearOldConfig();
-        
-        // Depois, carregar novas configurações
-        const config = await loadConfig();
-        addLog(`Configurações carregadas: ${JSON.stringify(config)}`);
-        
-        fillHTMLFields(config);
-        updateStatus('Sistema inicializado com sucesso!', 'success');
-    } catch (error) {
-        console.error('Erro ao carregar configurações:', error);
-        addLog(`Erro ao carregar configurações: ${error.message}`);
-        updateStatus('Erro ao carregar configurações', 'error');
-    }
-});
-
-console.log('[index.js] Adicionando listener de mensagens...');
-
-window.addEventListener('message', (event) => {
-    console.log(`[index.js] ---> Listener de mensagem disparado! Action=${event.data?.action}`);
-    console.log(`[index.js] Mensagem recebida: Origem=${event.origin}, Action=${event.data?.action}`);
-
-    // !! REMOVIDO TEMPORARIAMENTE: Verificação de origem 
-
-    // Listener APENAS para solicitar salvamento
-    if (event.data.action === 'requestSaveSettings') { 
-        addLog('[index.js][DEBUG] Entrou no bloco requestSaveSettings (sem verificar origem).');
-        const config = event.data.settings;
-        addLog('[index.js][DEBUG] Config recebida para salvar: ' + JSON.stringify(config));
-
-        saveConfig(config)
-            .then(() => {
-                addLog('[index.js][DEBUG] saveConfig chamado via mensagem concluído com sucesso.');
-            })
-            .catch(error => {
-                console.error('[index.js] Erro ao executar saveConfig chamado via mensagem:', error);
-                addLog('[index.js][ERROR] Erro ao executar saveConfig via mensagem: ' + error.message);
-            });
-
-    // REMOVIDO: Bloco else if (event.data.action === 'closePage') {...}
-    // A lógica de fechar a página agora é tratada diretamente pelo NavigationManager
-    }
-}); 

@@ -1,10 +1,15 @@
 // ================== GERENCIADOR DE NAVEGAÇÃO ==================
 class NavigationManager {
     constructor() {
+        console.log('[NavigationManager] Inicializando...');
         this.currentPage = null;
         this.pages = {
-            settings: chrome.runtime.getURL('src/layout/settings.html')
+            settings: chrome.runtime.getURL('src/layout/settings.html'),
+            logs: chrome.runtime.getURL('src/layout/logs.html')
         };
+        
+        // Monitorar o container da página
+        this.pageContainerObserver = null;
         
         // Bind dos métodos
         this.openPage = this.openPage.bind(this);
@@ -18,30 +23,107 @@ class NavigationManager {
         } else {
             this.init();
         }
+        
+        console.log('[NavigationManager] Construtor concluído');
+    }
+
+    // Método para configurar o observador de mutação para monitorar páginas
+    setupPageObserver() {
+        // Cancela qualquer observador existente
+        if (this.pageContainerObserver) {
+            this.pageContainerObserver.disconnect();
+        }
+        
+        // Configurar um observador para monitorar o container da página
+        this.pageContainerObserver = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                if (mutation.type === 'childList') {
+                    // Verificar se algum elemento foi adicionado
+                    mutation.addedNodes.forEach((node) => {
+                        if (node.id === 'page-container') {
+                            console.log('[NavigationManager] Container de página detectado:', node);
+                            this.currentPage = node;
+                        }
+                    });
+                    
+                    // Verificar se algum elemento foi removido
+                    mutation.removedNodes.forEach((node) => {
+                        if (node.id === 'page-container' && this.currentPage === node) {
+                            console.log('[NavigationManager] Container de página removido');
+                            this.currentPage = null;
+                        }
+                    });
+                }
+            });
+        });
+        
+        // Iniciar observação do body para detectar quando containers de página são adicionados/removidos
+        this.pageContainerObserver.observe(document.body, { 
+            childList: true,
+            subtree: true
+        });
+        
+        console.log('[NavigationManager] Observador de páginas configurado');
     }
 
     // Inicialização
     init() {
-        // Adiciona o event listener para o botão de teste
-        const testBtn = document.getElementById('test-btn');
-        if (testBtn) {
-            testBtn.addEventListener('click', () => this.openPage('settings'));
+        console.log('[NavigationManager] Método init iniciado');
+        
+        // Configura o observador de páginas
+        this.setupPageObserver();
+        
+        // Adiciona o event listener para o botão de configurações
+        const settingsBtn = document.getElementById('settings-btn');
+        if (settingsBtn) {
+            settingsBtn.addEventListener('click', () => this.openPage('settings'));
+        }
+        
+        // Adiciona o event listener para o botão de logs
+        const logsBtn = document.getElementById('logs-btn');
+        if (logsBtn) {
+            logsBtn.addEventListener('click', () => this.openPage('logs'));
         }
 
-        // Adiciona listener para mensagens do iframe
-        window.addEventListener('message', async (event) => {
-            if (event.data.action === 'closePage') {
+        // Adiciona listener para mensagens Chrome
+        chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+            if (request.action === 'closePage') {
+                this.closePage();
+                sendResponse({ success: true });
+                return true;
+            }
+            
+            if (request.action === 'openPage') {
+                const { page } = request;
+                if (this.pages[page]) {
+                    this.openPage(page);
+                    sendResponse({ success: true });
+                } else {
+                    sendResponse({ success: false, error: `Página ${page} não encontrada` });
+                }
+                return true;
+            }
+            
+            return false;
+        });
+        
+        // Adiciona listener para mensagens postMessage das subpáginas
+        window.addEventListener('message', (event) => {
+            console.log(`[NavigationManager] Recebido postMessage! Evento completo:`, event);
+            console.log(`[NavigationManager] Dados da mensagem:`, event.data);
+            console.log(`[NavigationManager] Origem da mensagem:`, event.origin);
+            console.log(`[NavigationManager] Action da mensagem: ${event.data?.action}`);
+            
+            // Fecha a página quando receber a ação closePage
+            if (event.data?.action === 'closePage') {
+                console.log('[NavigationManager] Executando closePage via postMessage');
                 this.closePage();
             }
-            if (event.data.action === 'settingsSaved') {
-                // Atualizar a UI principal quando as configurações forem salvas
-                const config = event.data.config;
-                if (config) {
-                    // Atualiza o StateManager
-                    await window.StateManager?.saveConfig(config);
-                    
-                    // Atualiza a UI
-                    this.updateMainUI(config);
+            
+            // Abre uma página quando receber a ação openPage
+            if (event.data?.action === 'openPage' && event.data?.page) {
+                if (this.pages[event.data.page]) {
+                    this.openPage(event.data.page);
                 }
             }
         });
@@ -128,6 +210,8 @@ class NavigationManager {
 
     // Função para abrir uma página em um iframe
     openPage(pageName) {
+        console.log(`[NavigationManager] Abrindo página ${pageName}...`);
+        
         if (!this.pages[pageName]) {
             console.error(`Página ${pageName} não encontrada`);
             return;
@@ -135,7 +219,7 @@ class NavigationManager {
 
         // Injeta os estilos necessários para as subpáginas
         this.injectSubpageStyles();
-
+        
         // Se já existe um iframe, remove ele primeiro
         this.closePage();
 
@@ -143,6 +227,9 @@ class NavigationManager {
         const container = document.createElement('div');
         container.id = 'page-container';
         container.className = 'subpage-container';
+        
+        // Armazena o nome da página para referência
+        container.dataset.pageName = pageName;
 
         // Cria o iframe
         const iframe = document.createElement('iframe');
@@ -152,7 +239,10 @@ class NavigationManager {
         // Adiciona o iframe ao container e o container ao documento da página web
         container.appendChild(iframe);
         document.body.appendChild(container);
+        
+        // Definimos currentPage após adicionar ao DOM
         this.currentPage = container;
+        console.log(`[NavigationManager] Página ${pageName} aberta, referência salva:`, this.currentPage);
 
         // Adiciona listeners globais
         this.addGlobalListeners();
@@ -192,37 +282,95 @@ class NavigationManager {
         }
     }
 
-    // Função para fechar a página atual (ADICIONANDO LOGS)
+    // Função para realmente remover o elemento com segurança
+    forceRemoveElement(element) {
+        console.log('[NavigationManager] Tentando remover o elemento forçadamente');
+        if (!element) return false;
+        
+        try {
+            // Método 1: remover diretamente
+            if (element.parentNode) {
+                element.parentNode.removeChild(element);
+                return true;
+            }
+            
+            // Método 2: esconder o elemento (quando não conseguimos remover)
+            element.style.display = 'none';
+            element.style.visibility = 'hidden';
+            element.style.position = 'absolute';
+            element.style.left = '-9999px';
+            
+            // Método 3: definir uma classe que oculta o elemento
+            element.className = 'hidden-container';
+            
+            return true;
+        } catch (e) {
+            console.error('[NavigationManager] Não foi possível remover ou ocultar o elemento:', e);
+            return false;
+        }
+    }
+    
+    // Função para fechar a página atual
     closePage() {
-        console.log('[NavigationManager] closePage chamada.'); // Log DEBUG
-        console.log('[NavigationManager] Valor de this.currentPage no início:', this.currentPage); // Log DEBUG
-
-        if (this.currentPage) {
-            console.log('[NavigationManager] Removendo classe active de:', this.currentPage); // Log DEBUG
+        console.log('[NavigationManager] Fechando página...');
+        console.log('[NavigationManager] Estado atual - currentPage:', this.currentPage);
+        console.log('[NavigationManager] Elemento page-container existe?', document.getElementById('page-container') !== null);
+        
+        // Se this.currentPage está nulo, mas o container existe no DOM, vamos recuperá-lo
+        if (!this.currentPage && document.getElementById('page-container')) {
+            console.log('[NavigationManager] Recuperando referência perdida para página atual');
+            this.currentPage = document.getElementById('page-container');
+        }
+        
+        if (!this.currentPage) {
+            console.log('[NavigationManager] Nenhuma página aberta para fechar');
+            return;
+        }
+        
+        try {
+            // Remove a classe active para iniciar a animação de saída
             this.currentPage.classList.remove('active');
             
-            console.log('[NavigationManager] Chamando removeGlobalListeners...'); // Log DEBUG
+            // Remove listeners
             this.removeGlobalListeners();
             
-            console.log('[NavigationManager] Agendando remoção do elemento em 300ms...'); // Log DEBUG
+            // Guarda uma referência para o elemento que queremos remover
+            const elementToRemove = this.currentPage;
+            
+            // Remove o elemento após a animação terminar
             setTimeout(() => {
-                console.log('[NavigationManager] Dentro do setTimeout para remover. this.currentPage:', this.currentPage);
-                if (this.currentPage) {
-                    console.log('[NavigationManager] Chamando this.currentPage.remove()...');
+                if (elementToRemove) {
                     try {
-                      this.currentPage.remove();
-                      console.log('[NavigationManager] Elemento removido com sucesso.');
-                      this.currentPage = null;
-                      console.log('[NavigationManager] this.currentPage definido como null.');
-                    } catch (removeError) {
-                        console.error('[NavigationManager] Erro ao remover elemento:', removeError);
+                        if (document && document.body && elementToRemove.parentNode === document.body) {
+                            document.body.removeChild(elementToRemove);
+                            console.log('[NavigationManager] Página removida com sucesso');
+                        } else {
+                            console.log('[NavigationManager] Página não está no document.body, tentando método alternativo');
+                            if (elementToRemove.parentNode) {
+                                elementToRemove.parentNode.removeChild(elementToRemove);
+                                console.log('[NavigationManager] Página removida com método alternativo');
+                            } else {
+                                console.log('[NavigationManager] Página não tem pai, não pode ser removida');
+                                this.forceRemoveElement(elementToRemove);
+                            }
+                        }
+                    } catch (error) {
+                        console.error('[NavigationManager] Erro ao remover página:', error);
+                        this.forceRemoveElement(elementToRemove);
+                    } finally {
+                        // Limpar a referência
+                        this.currentPage = null;
                     }
-                } else {
-                    console.log('[NavigationManager] this.currentPage era null/undefined dentro do setTimeout.');
                 }
-            }, 500); // <<< TEMPO AUMENTADO PARA 500ms
-        } else {
-             console.log('[NavigationManager] this.currentPage era null/undefined, nada a fazer.');
+            }, 500);
+        } catch (error) {
+            console.error('[NavigationManager] Erro ao fechar página:', error);
+            
+            // Força a remoção em caso de erro
+            if (this.currentPage) {
+                this.forceRemoveElement(this.currentPage);
+                this.currentPage = null;
+            }
         }
     }
 
@@ -235,17 +383,35 @@ class NavigationManager {
             case 'settings':
                 this.initSettingsPage(document);
                 break;
-            // Adicione outros casos aqui para outras páginas
+            case 'logs':
+                this.initLogsPage(document);
+                break;
+            default:
+                console.log(`Página ${pageName} não tem handlers específicos`);
         }
     }
 
     // Handlers específicos para a página de configurações
     initSettingsPage(doc) {
-        // Não precisamos inicializar nada aqui pois o settings.js
-        // já cuida de toda a lógica da página de configurações
         console.log('Página de configurações carregada');
+    }
+    
+    // Handlers específicos para a página de logs
+    initLogsPage(doc) {
+        console.log('Página de logs carregada');
     }
 }
 
 // Cria e exporta a instância do gerenciador de navegação
-window.NavigationManager = new NavigationManager(); 
+const navigationManager = new NavigationManager();
+console.log('[NavigationManager] Inicializado com sucesso');
+
+// Expõe uma API para outros scripts
+window.Navigation = {
+    openPage: pageName => navigationManager.openPage(pageName),
+    closePage: () => navigationManager.closePage()
+};
+
+// Também expõe o próprio navigationManager para acesso direto se necessário
+window.navigationManager = navigationManager;
+console.log('[NavigationManager] API exposta globalmente via window.Navigation e window.navigationManager'); 
