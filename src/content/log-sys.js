@@ -10,8 +10,8 @@ const isLogPage = () => {
 };
 
 // Detectar se estamos na página de logs
-const IS_LOG_PAGE = isLogPage();
-console.log(`[log-sys.js] Estamos na página de logs? ${IS_LOG_PAGE}`);
+window.IS_LOG_PAGE = isLogPage();
+console.log(`[log-sys.js] Estamos na página de logs? ${window.IS_LOG_PAGE}`);
 
 // ================== ELEMENTOS DA UI ==================
 const sysUI = {
@@ -33,7 +33,59 @@ const LOG_LEVELS = {
 };
 
 // Configuração do nível mínimo de log (mensagens abaixo desse nível não serão exibidas)
-let CURRENT_LOG_LEVEL = LOG_LEVELS.INFO.value;
+// Alterando para mostrar apenas logs de WARN ou superior
+let CURRENT_LOG_LEVEL = LOG_LEVELS.WARN.value;
+
+// Lista de fontes/origens de logs que devem ser filtradas (logs destas fontes serão ignorados a menos que sejam erros)
+const FILTERED_SOURCES = [
+    'navigationManager', 
+    'NavigationManager', 
+    'navigation.js',
+    'log-sys.js'
+];
+
+// Lista de padrões de mensagens que devem ser ignoradas (mesmo sendo de níveis mais altos)
+const FILTERED_MESSAGE_PATTERNS = [
+    'Container de página detectado',
+    'Container de página removido',
+    'Página removida com sucesso',
+    'Inicializando',
+    'Carregando',
+    'Inicializado',
+    'Sistema iniciado',
+    'API exposta',
+    'Observador de páginas',
+    'Recebido postMessage',
+    'Método init',
+    'Construtor concluído'
+];
+
+// Função para verificar se uma mensagem deve ser filtrada
+const shouldFilterMessage = (message, level, source) => {
+    // Nível de log está abaixo do mínimo configurado
+    if (LOG_LEVELS[level]?.value < CURRENT_LOG_LEVEL) {
+        // Exceto se for um erro (sempre logar erros)
+        if (level !== 'ERROR') {
+            return true;
+        }
+    }
+    
+    // Se a fonte está na lista de filtros e não é um erro ou aviso, filtrar
+    if (FILTERED_SOURCES.some(filteredSource => source.includes(filteredSource)) && 
+        level !== 'ERROR' && level !== 'WARN') {
+        return true;
+    }
+    
+    // Verificar se a mensagem contém algum dos padrões a serem filtrados
+    // Somente filtrar se não for ERRO ou AVISO
+    if (level !== 'ERROR' && level !== 'WARN') {
+        return FILTERED_MESSAGE_PATTERNS.some(pattern => 
+            message.toLowerCase().includes(pattern.toLowerCase())
+        );
+    }
+    
+    return false;
+};
 
 // ================== FUNÇÃO GLOBAL DE LOGGING ==================
 // Definir a função global logToSystem que pode ser acessada por qualquer script
@@ -44,11 +96,20 @@ window.logToSystem = function(message, level = 'INFO', source = 'system') {
     // Verificar se temos uma fonte válida
     const normalizedSource = source || 'system';
     
+    // Verificar se a mensagem deve ser filtrada
+    if (shouldFilterMessage(message, normalizedLevel, normalizedSource)) {
+        // Não registrar logs filtrados no sistema, apenas exibir no console quando for DEBUG
+        if (window.DEBUG_LOGS) {
+            console.log(`[${normalizedLevel}][${normalizedSource}] ${message} [FILTRADO]`);
+        }
+        return true;
+    }
+    
     // Log no console para debugging
     console.log(`[${normalizedLevel}][${normalizedSource}] ${message}`);
     
     // Tentar adicionar diretamente se estamos na página de logs
-    if (IS_LOG_PAGE && typeof sysAddLog === 'function') {
+    if (window.IS_LOG_PAGE && typeof sysAddLog === 'function') {
         try {
             sysAddLog(message, normalizedLevel, normalizedSource).catch(e => 
                 console.error('[logToSystem] Erro ao adicionar log diretamente:', e)
@@ -102,17 +163,20 @@ const sysLoadLogs = async () => {
             
             // Adiciona cada log ao container
             logs.forEach(log => {
-                const logEntry = document.createElement('div');
-                logEntry.className = `log-entry ${(LOG_LEVELS[log.level] || LOG_LEVELS.INFO).className}`;
-                logEntry.textContent = `[${log.timestamp}] ${(LOG_LEVELS[log.level] || LOG_LEVELS.INFO).prefix} [${log.source}] ${log.message}`;
-                
-                // Armazena os dados para recuperação posterior
-                logEntry.setAttribute('data-message', log.message);
-                logEntry.setAttribute('data-level', log.level);
-                logEntry.setAttribute('data-source', log.source);
-                logEntry.setAttribute('data-timestamp', log.timestamp);
-                
-                sysUI.logContainer.appendChild(logEntry);
+                // Verificar se o log deve ser exibido (não filtrado)
+                if (!shouldFilterMessage(log.message, log.level, log.source)) {
+                    const logEntry = document.createElement('div');
+                    logEntry.className = `log-entry ${(LOG_LEVELS[log.level] || LOG_LEVELS.INFO).className}`;
+                    logEntry.textContent = `[${log.timestamp}] ${(LOG_LEVELS[log.level] || LOG_LEVELS.INFO).prefix} [${log.source}] ${log.message}`;
+                    
+                    // Armazena os dados para recuperação posterior
+                    logEntry.setAttribute('data-message', log.message);
+                    logEntry.setAttribute('data-level', log.level);
+                    logEntry.setAttribute('data-source', log.source);
+                    logEntry.setAttribute('data-timestamp', log.timestamp);
+                    
+                    sysUI.logContainer.appendChild(logEntry);
+                }
             });
             
             // Rolar para o final
@@ -132,6 +196,11 @@ const sysAddLog = async (message, level = 'INFO', source = 'SYSTEM') => {
     const logLevel = level ? (LOG_LEVELS[level] || LOG_LEVELS.INFO) : LOG_LEVELS.INFO;
     const logSource = source || 'SYSTEM';
     
+    // Verificar se a mensagem deve ser filtrada
+    if (shouldFilterMessage(message, level, logSource)) {
+        return null; // Não logar mensagens filtradas
+    }
+    
     // Formatar data e hora
     const timestamp = new Date().toLocaleString();
     
@@ -144,11 +213,11 @@ const sysAddLog = async (message, level = 'INFO', source = 'SYSTEM') => {
         date: new Date().toISOString()
     };
     
-    // Adicionar ao console
+    // Adicionar ao console apenas se não for filtrado
     console.log(`${logLevel.prefix} [${logSource}] ${message}`);
     
     // Adicionar ao container de logs se estiver na página de logs
-    if (IS_LOG_PAGE && sysUI.logContainer) {
+    if (window.IS_LOG_PAGE && sysUI.logContainer) {
         const logElement = document.createElement('div');
         logElement.className = `log-entry ${logLevel.className}`;
         logElement.textContent = `[${timestamp}] ${logLevel.prefix} [${logSource}] ${message}`;
@@ -186,7 +255,7 @@ const sysAddLog = async (message, level = 'INFO', source = 'SYSTEM') => {
 
 // Função para copiar logs
 const sysCopyLogs = () => {
-    if (!IS_LOG_PAGE || !sysUI.logContainer) return;
+    if (!window.IS_LOG_PAGE || !sysUI.logContainer) return;
     
     const logs = Array.from(sysUI.logContainer.children)
         .map(entry => entry.textContent)
@@ -220,7 +289,7 @@ const sysCopyLogs = () => {
 
 // Salvar logs como arquivo
 const sysSaveLogsToFile = () => {
-    if (!IS_LOG_PAGE || !sysUI.logContainer) return;
+    if (!window.IS_LOG_PAGE || !sysUI.logContainer) return;
     
     const logs = Array.from(sysUI.logContainer.children)
         .map(entry => entry.textContent)
@@ -309,16 +378,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'logMessage') {
         const { message, level, source } = request;
         
-        // Registrar no console para fins de debug
-        console.log(`[LogSystem] Recebido log: "${message}" (${level}) de ${source}`);
+        // Verificar se a mensagem deve ser filtrada
+        if (shouldFilterMessage(message, level, source)) {
+            // Responder sucesso, mas não salvar o log
+            try {
+                sendResponse({ success: true, filtered: true });
+            } catch (e) {
+                // Ignora erros de porta fechada
+            }
+            return true;
+        }
         
         // Salvar log de forma assíncrona sem preocupação com resposta
         (async () => {
             try {
                 // Se estamos na página de logs, adicionar à UI
-                if (IS_LOG_PAGE && typeof sysAddLog === 'function') {
+                if (window.IS_LOG_PAGE && typeof sysAddLog === 'function') {
                     await sysAddLog(message, level, source);
-                    console.log('[LogSystem] Log adicionado à UI');
                 } else {
                     // Se não estamos na página de logs, salvar no storage diretamente
                     // Obter logs existentes
@@ -342,7 +418,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     
                     // Salvar logs atualizados
                     await chrome.storage.local.set({ systemLogs: logs });
-                    console.log('[LogSystem] Log salvo no storage');
                 }
                 
                 // A resposta pode não ser necessária já que o remetente pode não esperar
@@ -367,7 +442,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     
     // Processa o pedido de adição de log explícito
     if (request.action === 'addLog') {
-        console.log('[LogSystem] Recebido addLog:', request.message);
+        // Verificar se a mensagem deve ser filtrada
+        if (shouldFilterMessage(request.message, request.level, request.source)) {
+            sendResponse({ success: true, filtered: true });
+            return true;
+        }
         
         (async () => {
             try {
@@ -415,7 +494,7 @@ const initLogUI = () => {
 // ================== EVENT LISTENERS ==================
 document.addEventListener('DOMContentLoaded', () => {
     // Verificar se estamos na página de logs
-    if (!IS_LOG_PAGE) {
+    if (!window.IS_LOG_PAGE) {
         console.log('[log-sys.js] Não estamos na página de logs, ignorando inicialização da UI');
         return;
     }

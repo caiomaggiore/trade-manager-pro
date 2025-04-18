@@ -31,21 +31,44 @@ const logFromSettings = (message, level = 'INFO') => {
 // ================== GERENCIAMENTO DE ESTADO ==================
 // Carregar configurações nos campos
 const loadSettingsToUI = (config) => {
-    logFromSettings('[DEBUG] Chamando loadSettingsToUI com config:' + JSON.stringify(config), 'DEBUG');
+    logFromSettings('Carregando configurações para a UI: ' + JSON.stringify(config), 'INFO');
     
     if (!config) {
-        logFromSettings('[DEBUG] Nenhuma configuração encontrada em loadSettingsToUI.', 'DEBUG');
-        // Aplicar padrões
-        config = {
-            gale: { active: true, level: '1x' },
-            dailyProfit: 0,
-            stopLoss: 0,
-            automation: false,
-            value: 10,
-            period: 5
-        };
-        logFromSettings('[DEBUG] Aplicando configurações padrão.', 'DEBUG');
+        logFromSettings('Nenhuma configuração encontrada, carregando padrões do default.json', 'WARN');
+        
+        // Tentar carregar default.json se existir
+        fetch('../config/default.json')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Erro ao carregar default.json: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(defaultConfig => {
+                logFromSettings('Configurações padrão carregadas com sucesso de default.json', 'SUCCESS');
+                applySettingsToUI(defaultConfig);
+            })
+            .catch(error => {
+                logFromSettings('Erro ao carregar default.json: ' + error.message, 'ERROR');
+                // Se não conseguir carregar o arquivo, usar valores padrão hardcoded
+                applySettingsToUI({
+                    gale: { active: true, level: '1x' },
+                    dailyProfit: 0,
+                    stopLoss: 0,
+                    automation: false,
+                    value: 10,
+                    period: 5
+                });
+            });
+        return;
     }
+    
+    applySettingsToUI(config);
+};
+
+// Aplicar configurações aos elementos da UI
+const applySettingsToUI = (config) => {
+    logFromSettings('Aplicando configurações à UI', 'DEBUG');
     
     // Mapeamento para a UI
     settingsUI.toggleGale.checked = config.gale?.active ?? true;
@@ -58,7 +81,8 @@ const loadSettingsToUI = (config) => {
 
     // Atualiza o estado do select de gale
     settingsUI.galeSelect.disabled = !settingsUI.toggleGale.checked;
-    logFromSettings('[DEBUG] UI atualizada.', 'DEBUG');
+    
+    logFromSettings('UI atualizada com as configurações', 'SUCCESS');
 };
 
 // Coletar configurações da UI
@@ -74,36 +98,80 @@ const getSettingsFromUI = () => {
         value: parseInt(settingsUI.tradeValue.value) || 0,
         period: parseInt(settingsUI.tradeTime.value) || 0
     };
-    logFromSettings('[DEBUG] Configurações coletadas da UI: ' + JSON.stringify(config), 'DEBUG');
+    logFromSettings('Configurações coletadas da UI: ' + JSON.stringify(config), 'DEBUG');
     return config;
 };
 
 // ================== HANDLERS ==================
 // Salvar configurações
-const saveSettings = () => {
-    logFromSettings('[DEBUG] Iniciando saveSettings...', 'DEBUG');
+const saveSettings = async () => {
+    logFromSettings('Salvando configurações...', 'INFO');
     const config = getSettingsFromUI();
     
     try {
-        // Solicita que a página principal salve as configurações
-        window.parent.postMessage({ 
-            action: 'requestSaveSettings', 
-            settings: config 
-        }, '*');
-        logFromSettings('[DEBUG] Mensagem requestSaveSettings enviada.', 'DEBUG');
-
-        // Solicita o fechamento da página
-        logFromSettings('[DEBUG] Solicitando fechamento da página...', 'DEBUG');
-        window.parent.postMessage({ action: 'closePage' }, '*');
+        // Usar o StateManager para salvar configurações
+        if (window.StateManager) {
+            const success = await window.StateManager.saveConfig(config);
+            if (success) {
+                logFromSettings('Configurações salvas com sucesso via StateManager', 'SUCCESS');
+                
+                // Notificar a página pai explicitamente sobre a atualização das configurações
+                try {
+                    window.parent.postMessage({ 
+                        action: 'configUpdated', 
+                        settings: config 
+                    }, '*');
+                    logFromSettings('Notificação de atualização enviada para a página principal', 'SUCCESS');
+                } catch (err) {
+                    logFromSettings('Não foi possível notificar a página principal: ' + err.message, 'WARN');
+                }
+            } else {
+                throw new Error('Erro ao salvar configurações via StateManager');
+            }
+        } else {
+            // Fallback para salvar diretamente no storage
+            await chrome.storage.sync.set({ userConfig: config });
+            logFromSettings('Configurações salvas diretamente no storage', 'SUCCESS');
+            
+            // Também notificar a página pai
+            try {
+                window.parent.postMessage({ 
+                    action: 'configUpdated', 
+                    settings: config 
+                }, '*');
+                logFromSettings('Notificação de atualização enviada para a página principal', 'SUCCESS');
+            } catch (err) {
+                logFromSettings('Não foi possível notificar a página principal: ' + err.message, 'WARN');
+            }
+        }
+        
+        // Feedback visual mais sutil (opcional)
+        if (settingsUI.saveBtn) {
+            const originalText = settingsUI.saveBtn.innerHTML;
+            settingsUI.saveBtn.innerHTML = '<i class="fas fa-check"></i> Salvo!';
+            settingsUI.saveBtn.classList.add('success');
+            
+            // Restaurar o texto original após 1.5 segundos
+            setTimeout(() => {
+                settingsUI.saveBtn.innerHTML = originalText;
+                settingsUI.saveBtn.classList.remove('success');
+                
+                // Fechar a página após um breve momento
+                setTimeout(() => closeSettings(), 300);
+            }, 1500);
+        } else {
+            // Se não conseguir dar feedback visual, apenas fechar
+            closeSettings();
+        }
     } catch (error) {
-        console.error('Erro ao solicitar salvamento:', error);
-        logFromSettings('Erro ao solicitar salvamento: ' + error.message, 'ERROR');
+        logFromSettings('Erro ao salvar configurações: ' + error.message, 'ERROR');
+        alert('Erro ao salvar configurações: ' + error.message);
     }
 };
 
 // Fechar página de configurações
 const closeSettings = () => {
-    logFromSettings('[DEBUG] Tentando fechar página de configurações...', 'DEBUG');
+    logFromSettings('Fechando página de configurações...', 'INFO');
     
     try {
         // Método 1: Tentar acessar diretamente o navigationManager
@@ -122,7 +190,7 @@ const closeSettings = () => {
 
 // ================== LISTENERS ==================
 // Adicionar eventos aos elementos da UI
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     logFromSettings('Inicializando página de configurações', 'INFO');
     
     // Desabilitar o select de gale se o toggle estiver desativado
@@ -140,23 +208,24 @@ document.addEventListener('DOMContentLoaded', () => {
         settingsUI.closeBtn.addEventListener('click', closeSettings);
     }
     
-    // Solicitar configurações à página principal
+    // Carregar configurações
     try {
-        window.parent.postMessage({ action: 'requestSettings' }, '*');
-        logFromSettings('Solicitação de configurações enviada', 'INFO');
+        // Verificar se o StateManager está disponível
+        if (window.StateManager) {
+            logFromSettings('Carregando configurações via StateManager...', 'INFO');
+            const config = await window.StateManager.loadConfig();
+            loadSettingsToUI(config);
+        } else {
+            // Fallback para carregar diretamente do storage
+            logFromSettings('StateManager não encontrado, carregando do storage...', 'WARN');
+            chrome.storage.sync.get(['userConfig'], (result) => {
+                loadSettingsToUI(result.userConfig);
+            });
+        }
     } catch (error) {
-        console.error('[settings.js] Erro ao solicitar configurações:', error);
-        logFromSettings('Erro ao solicitar configurações: ' + error.message, 'ERROR');
-    }
-});
-
-// Listener para receber mensagens da página principal
-window.addEventListener('message', (event) => {
-    const { action, settings } = event.data;
-    
-    if (action === 'loadSettings') {
-        logFromSettings('Recebidas configurações para carregar', 'INFO');
-        loadSettingsToUI(settings);
+        logFromSettings('Erro ao carregar configurações: ' + error.message, 'ERROR');
+        // Carregar configurações padrão em caso de erro
+        loadSettingsToUI(null);
     }
 });
 
