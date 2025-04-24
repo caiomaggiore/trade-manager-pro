@@ -16,6 +16,26 @@ body.subpage * {
     box-sizing: border-box;
 }
 
+/* Classes genéricas para subpáginas */
+.subpage-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    width: 100%;
+    padding: 10px 0px;
+}
+
+.subpage-group {
+    width: 100%;
+    padding: 15px;
+    margin: 0;
+    background: #f8f9fa;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    border: 1px solid #e0e0e0;
+}
+
+/* Classes originais mantidas para compatibilidade */
 .settings-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -47,7 +67,7 @@ body.subpage * {
 
 
 /* Ajustes para o conteúdo */
-.settings-group h3 {
+.settings-group h3, .subpage-group h3 {
     margin-top: 0;
     color: #444;
 }

@@ -16,10 +16,11 @@ console.log(`[log-sys.js] Estamos na página de logs? ${window.IS_LOG_PAGE}`);
 // ================== ELEMENTOS DA UI ==================
 const sysUI = {
     copyBtn: document.getElementById('copy-logs'),
-    saveBtn: document.getElementById('save-logs'),
+    saveBtn: document.getElementById('export-logs'),
     clearBtn: document.getElementById('clear-logs'),
     closeBtn: document.getElementById('close-logs'),
     logContainer: document.getElementById('log-container'),
+    levelFilter: document.getElementById('log-level-filter'),
     version: document.getElementById('version')
 };
 
@@ -32,9 +33,8 @@ const LOG_LEVELS = {
     SUCCESS: { value: 4, prefix: '✅ SUCESSO', className: 'log-success' }
 };
 
-// Configuração do nível mínimo de log (mensagens abaixo desse nível não serão exibidas)
-// Alterando para mostrar apenas logs de WARN ou superior
-let CURRENT_LOG_LEVEL = LOG_LEVELS.WARN.value;
+// Filtro de nível atual (null = mostrar todos)
+let CURRENT_FILTER_LEVEL = null;
 
 // Lista de fontes/origens de logs que devem ser filtradas (logs destas fontes serão ignorados a menos que sejam erros)
 const FILTERED_SOURCES = [
@@ -62,12 +62,9 @@ const FILTERED_MESSAGE_PATTERNS = [
 
 // Função para verificar se uma mensagem deve ser filtrada
 const shouldFilterMessage = (message, level, source) => {
-    // Nível de log está abaixo do mínimo configurado
-    if (LOG_LEVELS[level]?.value < CURRENT_LOG_LEVEL) {
-        // Exceto se for um erro (sempre logar erros)
-        if (level !== 'ERROR') {
-            return true;
-        }
+    // Se temos um filtro de nível específico e o nível não corresponde, filtrar
+    if (CURRENT_FILTER_LEVEL && level !== CURRENT_FILTER_LEVEL && CURRENT_FILTER_LEVEL !== 'ALL') {
+        return true;
     }
     
     // Se a fonte está na lista de filtros e não é um erro ou aviso, filtrar
@@ -198,59 +195,75 @@ const sysAddLog = async (message, level = 'INFO', source = 'SYSTEM') => {
     
     // Verificar se a mensagem deve ser filtrada
     if (shouldFilterMessage(message, level, logSource)) {
-        return null; // Não logar mensagens filtradas
-    }
-    
-    // Formatar data e hora
-    const timestamp = new Date().toLocaleString();
-    
-    // Estrutura do log
-    const logEntry = {
-        message,
-        level,
-        source: logSource,
-        timestamp,
-        date: new Date().toISOString()
-    };
-    
-    // Adicionar ao console apenas se não for filtrado
-    console.log(`${logLevel.prefix} [${logSource}] ${message}`);
-    
-    // Adicionar ao container de logs se estiver na página de logs
-    if (window.IS_LOG_PAGE && sysUI.logContainer) {
-        const logElement = document.createElement('div');
-        logElement.className = `log-entry ${logLevel.className}`;
-        logElement.textContent = `[${timestamp}] ${logLevel.prefix} [${logSource}] ${message}`;
-        
-        // Armazenar dados do log para recuperação posterior
-        logElement.setAttribute('data-message', message);
-        logElement.setAttribute('data-level', level);
-        logElement.setAttribute('data-source', logSource);
-        logElement.setAttribute('data-timestamp', timestamp);
-        
-        sysUI.logContainer.appendChild(logElement);
-        sysUI.logContainer.scrollTop = sysUI.logContainer.scrollHeight;
+        return false;
     }
     
     try {
+        // Criar o timestamp
+        const now = new Date();
+        const timestamp = now.toLocaleDateString('pt-BR') + ', ' + now.toLocaleTimeString('pt-BR');
+        
+        // Objeto de log
+        const logEntry = {
+            message,
+            level,
+            source: logSource,
+            timestamp
+        };
+        
         // Salvar no storage
         const result = await chrome.storage.local.get(['systemLogs']);
-        const logs = result.systemLogs || [];
+        let logs = result.systemLogs || [];
         
-        // Adicionar novo log
-        logs.push(logEntry);
-        
-        // Limitar a 1000 logs para não sobrecarregar o storage
-        if (logs.length > 1000) {
-            logs.splice(0, logs.length - 1000);
+        // Limitar o número de logs armazenados
+        const MAX_LOGS = 1000; // Limitar a 1000 logs
+        if (logs.length >= MAX_LOGS) {
+            logs = logs.slice(-MAX_LOGS + 1); // Manter os logs mais recentes
         }
         
+        logs.push(logEntry);
         await chrome.storage.local.set({ systemLogs: logs });
+        
+        // Se estamos na página de logs, adicionar o log à UI
+        if (window.IS_LOG_PAGE && sysUI.logContainer) {
+            // Verificar se o elemento existe
+            if (!sysUI.logContainer) {
+                console.error('Container de logs não encontrado');
+                return false;
+            }
+            
+            // Verificar filtro de nível, se disponível
+            if (sysUI.levelFilter) {
+                const selectedLevel = sysUI.levelFilter.value;
+                if (selectedLevel !== 'ALL' && level !== selectedLevel) {
+                    // Não mostrar este log se estiver filtrado
+                    return true;
+                }
+            }
+            
+            // Criar elemento de log
+            const logElement = document.createElement('div');
+            logElement.className = `log-entry ${logLevel.className}`;
+            logElement.textContent = `[${timestamp}] ${logLevel.prefix} [${logSource}] ${message}`;
+            
+            // Armazena os dados para recuperação posterior
+            logElement.setAttribute('data-message', message);
+            logElement.setAttribute('data-level', level);
+            logElement.setAttribute('data-source', logSource);
+            logElement.setAttribute('data-timestamp', timestamp);
+            
+            // Adicionar ao container
+            sysUI.logContainer.appendChild(logElement);
+            
+            // Rolar para o final
+            sysUI.logContainer.scrollTop = sysUI.logContainer.scrollHeight;
+        }
+        
+        return true;
     } catch (error) {
-        console.error('Erro ao salvar log:', error);
+        console.error('Erro ao adicionar log:', error);
+        return false;
     }
-    
-    return logEntry;
 };
 
 // Função para copiar logs
@@ -469,10 +482,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 const initLogUI = () => {
     // Atualizar referências aos elementos da UI
     sysUI.copyBtn = document.getElementById('copy-logs');
-    sysUI.saveBtn = document.getElementById('save-logs');
+    sysUI.saveBtn = document.getElementById('export-logs');
     sysUI.clearBtn = document.getElementById('clear-logs');
     sysUI.closeBtn = document.getElementById('close-logs');
     sysUI.logContainer = document.getElementById('log-container');
+    sysUI.levelFilter = document.getElementById('log-level-filter');
     sysUI.version = document.getElementById('version');
     
     // Exibir versão se disponível
@@ -493,31 +507,59 @@ const initLogUI = () => {
 
 // ================== EVENT LISTENERS ==================
 document.addEventListener('DOMContentLoaded', () => {
-    // Verificar se estamos na página de logs
-    if (!window.IS_LOG_PAGE) {
-        console.log('[log-sys.js] Não estamos na página de logs, ignorando inicialização da UI');
-        return;
+    if (window.IS_LOG_PAGE) {
+        console.log('[LogSystem] Inicializando página de logs');
+        
+        // Atualizar referências de UI que podem não estar disponíveis no carregamento do script
+        sysUI.copyBtn = document.getElementById('copy-logs');
+        sysUI.saveBtn = document.getElementById('export-logs');
+        sysUI.clearBtn = document.getElementById('clear-logs');
+        sysUI.closeBtn = document.getElementById('close-logs');
+        sysUI.logContainer = document.getElementById('log-container');
+        sysUI.levelFilter = document.getElementById('log-level-filter');
+        sysUI.version = document.getElementById('version');
+        
+        // Verificar elementos obrigatórios
+        if (!sysUI.logContainer) {
+            console.error('Container de logs não encontrado');
+            return;
+        }
+        
+        // Carregar logs
+        sysLoadLogs();
+        
+        // Configurar eventos dos botões
+        if (sysUI.copyBtn) sysUI.copyBtn.addEventListener('click', sysCopyLogs);
+        if (sysUI.saveBtn) sysUI.saveBtn.addEventListener('click', sysSaveLogsToFile);
+        if (sysUI.clearBtn) sysUI.clearBtn.addEventListener('click', sysClearLogs);
+        if (sysUI.closeBtn) sysUI.closeBtn.addEventListener('click', closeLogs);
+        
+        // Configurar evento do filtro de nível
+        if (sysUI.levelFilter) {
+            sysUI.levelFilter.addEventListener('change', () => {
+                const selectedLevel = sysUI.levelFilter.value;
+                
+                // Atualizar o filtro para categoria exata
+                CURRENT_FILTER_LEVEL = selectedLevel;
+                console.log(`[LogSystem] Filtro de logs alterado para: ${selectedLevel}`);
+                
+                // Recarregar logs com o novo filtro
+                sysLoadLogs();
+            });
+        }
+        
+        // Exibir versão
+        if (sysUI.version && chrome.runtime) {
+            try {
+                const manifestData = chrome.runtime.getManifest();
+                sysUI.version.textContent = manifestData.version || 'N/A';
+            } catch (error) {
+                console.error('Erro ao obter versão:', error);
+                sysUI.version.textContent = 'N/A';
+            }
+        }
+        
+        // Registrar log de inicialização
+        logToSystem('Página de logs inicializada', 'INFO', 'log-sys.js');
     }
-    
-    console.log('[log-sys.js] Inicializando UI da página de logs');
-    
-    // Inicializar elementos da UI
-    initLogUI();
-    
-    // Carregar logs existentes
-    sysLoadLogs()
-        .then(() => {
-            // Adicionar um log de inicialização bem-sucedida
-            sysAddLog('Logs carregados com sucesso', 'SUCCESS', 'log-sys.js');
-        })
-        .catch(error => {
-            console.error('[log-sys.js] Erro ao carregar logs:', error);
-            sysAddLog(`Erro ao carregar logs: ${error.message}`, 'ERROR', 'log-sys.js');
-        });
-    
-    // Adicionar listeners de eventos
-    if (sysUI.copyBtn) sysUI.copyBtn.addEventListener('click', sysCopyLogs);
-    if (sysUI.saveBtn) sysUI.saveBtn.addEventListener('click', sysSaveLogsToFile);
-    if (sysUI.clearBtn) sysUI.clearBtn.addEventListener('click', sysClearLogs);
-    if (sysUI.closeBtn) sysUI.closeBtn.addEventListener('click', closeLogs);
 }); 
