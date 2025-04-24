@@ -120,6 +120,7 @@ function showAnalysisModal(result) {
     const reasonElement = document.getElementById('result-reason');
     const periodElement = document.getElementById('result-period');
     const valueElement = document.getElementById('result-value');
+    const testModeWarningElement = document.getElementById('test-mode-warning');
     const countdownElement = document.getElementById('countdown');
     const closeButton = document.getElementById('close-modal');
     const infoIcon = document.getElementById('info-icon');
@@ -131,6 +132,15 @@ function showAnalysisModal(result) {
     reasonElement.textContent = result.reason;
     periodElement.textContent = result.period || 'Não especificado';
     valueElement.textContent = result.entry || 'Não especificado';
+    
+    // Mostrar aviso de modo de teste se aplicável
+    if (testModeWarningElement) {
+        if (result.isTestMode) {
+            testModeWarningElement.style.display = 'block';
+        } else {
+            testModeWarningElement.style.display = 'none';
+        }
+    }
 
     // Mostra o modal
     modal.style.display = 'block';

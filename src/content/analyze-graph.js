@@ -33,9 +33,9 @@ const sendStatus = (message, type = 'info', duration = 3000) => {
 // =============================================
 
 /**
- * Gera prompt dinâmico para análise
+ * Gera prompt detalhado para análise normal
  */
-const generateAnalysisPrompt = (availablePeriods, userTradeTime) => {
+const generateDetailedPrompt = (availablePeriods, userTradeTime) => {
     let periodInstruction = '';
     
     if(userTradeTime === 0) {
@@ -61,6 +61,44 @@ Responda STRICT JSON:
   "trust": "Número de 0-100 indicando confiança",
   "expiration": "Tempo em minutos (1 - 15), se action for = WAIT, então expiration = 1"
 }`;
+};
+
+/**
+ * Gera prompt simplificado para modo de teste
+ */
+const generateSimplePrompt = (availablePeriods, userTradeTime) => {
+    let periodInstruction = '';
+    
+    if(userTradeTime === 0) {
+        periodInstruction = `Período recomendado: 5 minutos.`;
+    } else {
+        periodInstruction = `Período: ${userTradeTime} minutos.`;
+    }
+
+    return `Analise este gráfico de trading de forma simplificada e objetiva. Dê preferência para sinais de entrada (BUY/SELL) em vez de WAIT.
+1. Observe a tendência atual e as últimas 3-5 velas
+2. Identifique pontos de suporte e resistência
+3. ${periodInstruction}
+4. Concentre-se em oportunidades imediatas, priorizando sinais de compra ou venda
+
+Responda STRICT JSON:
+{
+  "action": "BUY/SELL/WAIT",
+  "reason": "Explicação simples.",
+  "trust": "Número de 0-100 indicando confiança",
+  "expiration": "Tempo em minutos (1 - 15)"
+}`;
+};
+
+/**
+ * Seleciona o prompt adequado com base nas configurações
+ */
+const generateAnalysisPrompt = (availablePeriods, userTradeTime, isTestMode) => {
+    if (isTestMode) {
+        return generateSimplePrompt(availablePeriods, userTradeTime);
+    } else {
+        return generateDetailedPrompt(availablePeriods, userTradeTime);
+    }
 };
 
 /**
@@ -164,6 +202,27 @@ const processAnalysis = async (imageData, settings) => {
 };
 
 // =============================================
+// Obter configurações do sistema
+// =============================================
+async function getSystemConfig() {
+    try {
+        if (window.StateManager) {
+            return await window.StateManager.getConfig();
+        } else {
+            // Fallback para storage direto
+            return new Promise((resolve) => {
+                chrome.storage.sync.get(['userConfig'], (result) => {
+                    resolve(result.userConfig || {});
+                });
+            });
+        }
+    } catch (error) {
+        console.error('Erro ao obter configurações:', error);
+        return {};
+    }
+}
+
+// =============================================
 // Listener Principal
 // =============================================
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -189,11 +248,20 @@ window.TradeManager.AnalyzeGraph = {
             console.log('AnalyzeGraph: processImage chamado');
             sendLog('Processando imagem para análise...');
             
+            // Obter configurações do sistema
+            const config = await getSystemConfig();
+            const userTradeTime = config.period || 0;
+            const isTestMode = config.testMode || false;
+            
+            if (isTestMode) {
+                sendLog('Modo teste de análise ativado - usando prompt simplificado');
+            }
+            
             // Montar payload para análise
             const payload = {
                 contents: [{
                     parts: [
-                        { text: generateAnalysisPrompt([1, 5, 15, 30, 60], 0) },
+                        { text: generateAnalysisPrompt([1, 5, 15, 30, 60], userTradeTime, isTestMode) },
                         { 
                             inline_data: {
                                 mime_type: "image/png",
@@ -221,6 +289,9 @@ window.TradeManager.AnalyzeGraph = {
             
             // Processar resposta
             const result = validateAndProcessResponse(text);
+            
+            // Adicionar flag de modo teste ao resultado
+            result.isTestMode = isTestMode;
             
             sendLog(`Análise concluída: ${result.action} (${result.trust}% de confiança)`);
             
