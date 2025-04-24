@@ -145,8 +145,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     // Handler para captura de imagem
     if (message.action === 'initiateCapture' && !isProcessing) {
+        isProcessing = true; // Marcar como processando para evitar chamadas paralelas
+        
+        // Definir um timeout para garantir que alguma resposta seja enviada
+        const timeout = setTimeout(() => {
+            isProcessing = false;
+            sendResponse({ error: "Timeout ao capturar imagem" });
+        }, 30000); // 30 segundos de timeout
+        
         handleCaptureRequest(message)
             .then(dataUrl => {
+                clearTimeout(timeout); // Limpar o timeout
+                isProcessing = false;
+                
                 // Só abre a janela se for uma captura normal (não análise)
                 if (message.actionType !== 'analyze') {
                     chrome.windows.create({
@@ -158,14 +169,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
                 sendResponse({ dataUrl });
             })
-            .catch(error => sendResponse({ error: error.message }));
+            .catch(error => {
+                clearTimeout(timeout); // Limpar o timeout
+                isProcessing = false;
+                sendResponse({ error: error.message });
+            });
         return true;
     }
 
   // Handler para início de análise
   if (message.action === 'START_ANALYSIS') {
+    // Definir um timeout para garantir que alguma resposta seja enviada
+    const timeout = setTimeout(() => {
+        sendResponse({ success: false, error: "Timeout na análise" });
+    }, 30000); // 30 segundos de timeout
+    
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (!tabs[0]?.id) {
+        clearTimeout(timeout);
         sendResponse({ success: false, error: "Nenhuma guia ativa encontrada" });
         return;
       }
@@ -176,10 +197,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             target: { tabId: tabs[0].id },
             files: ['scripts/content.js']
           }, () => {
-            executeAnalysis(tabs[0].id, sendResponse);
+            executeAnalysis(tabs[0].id, (result) => {
+                clearTimeout(timeout);
+                sendResponse(result);
+            });
           });
         } else {
-          executeAnalysis(tabs[0].id, sendResponse);
+          executeAnalysis(tabs[0].id, (result) => {
+            clearTimeout(timeout);
+            sendResponse(result);
+          });
         }
       });
     });
@@ -190,8 +217,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'EXECUTE_TRADE_ACTION') {
     console.log(`Recebendo comando para executar ${message.tradeAction}`);
     
+    // Definir um timeout para garantir que alguma resposta seja enviada
+    const timeout = setTimeout(() => {
+        sendResponse({ success: false, error: "Timeout na execução da operação" });
+    }, 15000); // 15 segundos de timeout
+    
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (!tabs[0]?.id) {
+        clearTimeout(timeout);
         console.error('Nenhuma guia ativa encontrada');
         sendResponse({ success: false, error: "Nenhuma guia ativa encontrada" });
         return;
@@ -227,6 +260,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           action: 'EXECUTE_TRADE_ACTION',
           tradeAction: message.tradeAction
         }, (response) => {
+          clearTimeout(timeout); // Limpar o timeout
+          
           const sendError = chrome.runtime.lastError;
           if (sendError) {
             console.error('Erro ao enviar mensagem para content script:', sendError);
@@ -266,40 +301,236 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Novo handler para obtenção de períodos
   if (message.action === 'GET_TRADE_PARAMS') {
-    chrome.storage.sync.get(['tradeValue', 'tradeTime', 'galeEnabled'], (settings) => {
-      chrome.tabs.query({active: true, currentWindow: true}, ([tab]) => {
-        chrome.tabs.sendMessage(tab.id, {
-          action: 'FETCH_AVAILABLE_PERIODS'
-        }, (response) => {
-          const params = getTradeParameters(
-            settings,
-            message.analysis,
-            response?.periods || []
-          );
-          sendResponse(params);
+    // Definir um timeout para garantir que alguma resposta seja enviada
+    const timeout = setTimeout(() => {
+      sendResponse({ 
+        success: false, 
+        error: "Timeout ao obter parâmetros de trade" 
+      });
+    }, 10000);
+    
+    try {
+      chrome.storage.sync.get(['tradeValue', 'tradeTime', 'galeEnabled'], (settings) => {
+        if (chrome.runtime.lastError) {
+          clearTimeout(timeout);
+          sendResponse({ 
+            success: false, 
+            error: `Erro ao obter configurações: ${chrome.runtime.lastError.message}` 
+          });
+          return;
+        }
+        
+        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+          if (!tabs || !tabs[0] || !tabs[0].id) {
+            clearTimeout(timeout);
+            sendResponse({ 
+              success: false, 
+              error: "Nenhuma guia ativa encontrada" 
+            });
+            return;
+          }
+          
+          try {
+            chrome.tabs.sendMessage(tabs[0].id, {
+              action: 'FETCH_AVAILABLE_PERIODS'
+            }, (response) => {
+              clearTimeout(timeout);
+              
+              if (chrome.runtime.lastError) {
+                sendResponse({ 
+                  success: false, 
+                  error: `Erro na comunicação: ${chrome.runtime.lastError.message}`
+                });
+                return;
+              }
+              
+              try {
+                const params = getTradeParameters(
+                  settings,
+                  message.analysis || {},
+                  response?.periods || []
+                );
+                sendResponse({ 
+                  success: true, 
+                  params: params 
+                });
+              } catch (parseError) {
+                sendResponse({ 
+                  success: false, 
+                  error: `Erro ao processar parâmetros: ${parseError.message}`
+                });
+              }
+            });
+          } catch (sendError) {
+            clearTimeout(timeout);
+            sendResponse({ 
+              success: false, 
+              error: `Erro ao enviar mensagem: ${sendError.message}`
+            });
+          }
         });
       });
-    });
+    } catch (error) {
+      clearTimeout(timeout);
+      sendResponse({ 
+        success: false, 
+        error: `Erro inesperado: ${error.message}`
+      });
+    }
+    
     return true;
   }
 
   if (message.action === 'FETCH_AVAILABLE_PERIODS') {
-    chrome.tabs.sendMessage(sender.tab.id, message, sendResponse);
+    // Definir um timeout para garantir que alguma resposta seja enviada
+    const timeout = setTimeout(() => {
+      sendResponse({ 
+        success: false, 
+        error: "Timeout ao buscar períodos disponíveis" 
+      });
+    }, 10000);
+    
+    try {
+      if (!sender || !sender.tab || !sender.tab.id) {
+        clearTimeout(timeout);
+        sendResponse({ 
+          success: false, 
+          error: "Informações da guia de origem não disponíveis" 
+        });
+        return true;
+      }
+      
+      chrome.tabs.sendMessage(sender.tab.id, message, (response) => {
+        clearTimeout(timeout);
+        
+        if (chrome.runtime.lastError) {
+          sendResponse({ 
+            success: false, 
+            error: `Erro na comunicação: ${chrome.runtime.lastError.message}` 
+          });
+          return;
+        }
+        
+        sendResponse(response || { success: false, error: "Sem resposta da guia" });
+      });
+    } catch (error) {
+      clearTimeout(timeout);
+      sendResponse({ 
+        success: false, 
+        error: `Erro inesperado: ${error.message}` 
+      });
+      return true;
+    }
+    
     return true;
   }
 
   // Handler para logs
-  if (message.action === 'ADD_LOG') {
-    chrome.runtime.sendMessage({
-      action: 'ADD_LOG',
-      log: message.log
-    });
+  if (message.action === 'ADD_LOG' || message.action === 'logMessage') {
+    try {
+      // Obter informações do log
+      const logMessage = message.log || message.message || "Log sem mensagem";
+      const logLevel = message.level || "INFO";
+      const logSource = message.source || "system";
+      
+      // Registrar diretamente no console do background (para depuração)
+      console.log(`[BACKGROUND LOG] [${logLevel}][${logSource}] ${logMessage}`);
+      
+      // Armazenar no storage local diretamente
+      chrome.storage.local.get(['systemLogs'], function(result) {
+        if (chrome.runtime.lastError) {
+          const errorMsg = chrome.runtime.lastError.message || 'Erro desconhecido no acesso ao storage';
+          console.error(`[BACKGROUND] Erro ao acessar logs armazenados: ${errorMsg}`);
+          return;
+        }
+        
+        const logs = result.systemLogs || [];
+        
+        // Adicionar novo log
+        logs.push({
+          message: logMessage,
+          level: logLevel,
+          source: logSource,
+          date: new Date().toISOString(),
+          timestamp: new Date().getTime()
+        });
+        
+        // Limitar a quantidade de logs armazenados (manter os 500 mais recentes)
+        if (logs.length > 500) {
+          logs.splice(0, logs.length - 500);
+        }
+        
+        // Salvar logs atualizados
+        chrome.storage.local.set({ systemLogs: logs }, function() {
+          if (chrome.runtime.lastError) {
+            const errorMsg = chrome.runtime.lastError.message || 'Erro desconhecido ao salvar logs';
+            console.error(`[BACKGROUND] Erro ao salvar logs: ${errorMsg}`);
+          }
+        });
+      });
+      
+      // Responder imediatamente para evitar erros de promessa não resolvida
+      sendResponse({ success: true });
+    } catch (error) {
+      const errorMsg = error.message || error.toString() || 'Erro desconhecido';
+      console.error(`[BACKGROUND] Erro ao processar log: ${errorMsg}`);
+      // Em caso de erro, ainda responder para não deixar a promessa pendente
+      sendResponse({ success: false, error: errorMsg });
+    }
+    
+    // Não manter o canal aberto para resposta assíncrona
+    return false;
   }
 
   if (message.action === 'TEST_CONNECTION') {
-    chrome.tabs.sendMessage(sender.tab.id, {
-      action: 'TEST_CONNECTION'
-    }, sendResponse);
+    // Definir um timeout para garantir que alguma resposta seja enviada
+    const timeout = setTimeout(() => {
+      sendResponse({ 
+        success: false, 
+        error: "Timeout ao testar conexão" 
+      });
+    }, 10000);
+    
+    try {
+      if (!sender || !sender.tab || !sender.tab.id) {
+        clearTimeout(timeout);
+        sendResponse({ 
+          success: false, 
+          error: "Informações da guia de origem não disponíveis" 
+        });
+        return true;
+      }
+      
+      chrome.tabs.sendMessage(sender.tab.id, {
+        action: 'TEST_CONNECTION'
+      }, (response) => {
+        clearTimeout(timeout);
+        
+        if (chrome.runtime.lastError) {
+          sendResponse({ 
+            success: false, 
+            connected: false,
+            error: `Erro na comunicação: ${chrome.runtime.lastError.message}` 
+          });
+          return;
+        }
+        
+        sendResponse(response || { 
+          success: false, 
+          connected: false,
+          error: "Sem resposta da guia" 
+        });
+      });
+    } catch (error) {
+      clearTimeout(timeout);
+      sendResponse({ 
+        success: false, 
+        connected: false,
+        error: `Erro inesperado: ${error.message}` 
+      });
+      return true;
+    }
+    
     return true;
   }
 }); 

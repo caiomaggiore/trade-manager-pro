@@ -27,8 +27,8 @@ const addLog = (message, level = 'INFO') => {
 
 // Função para atualizar o status no UI e registrar um log
 const updateStatus = (message, level = 'INFO') => {
-    // Registrar o log
-    addLog(message, level);
+    // Registrar o log no sistema centralizado
+    addLog(`Status atualizado: ${message}`, level);
     
     // Atualizar o elemento de status na UI se disponível
     const statusElement = document.getElementById('status-processo');
@@ -55,6 +55,9 @@ const updateStatus = (message, level = 'INFO') => {
         // Adicionar nova classe e texto
         statusElement.classList.add(statusClass, 'visible');
         statusElement.textContent = message;
+    } else {
+        // Log adicional se o elemento de status não existir
+        addLog('Elemento de status não encontrado na UI', 'WARN');
     }
 };
 
@@ -286,6 +289,25 @@ function showAnalysisModal(result) {
             
             if (!isExtensionContextValid()) {
                 logAndUpdateStatus('Contexto da extensão inválido. Recarregue a página.', 'ERROR', 'trade-execution', true);
+                
+                // Se o contexto não for válido, armazenar a operação para execução posterior
+                try {
+                    const pendingOperations = JSON.parse(localStorage.getItem('pendingOperations') || '[]');
+                    pendingOperations.push({
+                        action: action,
+                        timestamp: new Date().toISOString(),
+                        result: result ? {
+                            trust: result.trust,
+                            period: result.period,
+                            entry: result.entry
+                        } : {}
+                    });
+                    localStorage.setItem('pendingOperations', JSON.stringify(pendingOperations));
+                    logAndUpdateStatus('Operação armazenada localmente para execução posterior', 'WARN', 'trade-execution', true);
+                } catch (storageError) {
+                    console.error('Erro ao armazenar operação localmente:', storageError);
+                }
+                
                 return;
             }
             
@@ -294,32 +316,64 @@ function showAnalysisModal(result) {
             // Obter configurações atuais da janela ou usar valores padrão
             const tradeSettings = window.currentSettings || {};
             
-            chrome.runtime.sendMessage({ 
-                action: 'EXECUTE_TRADE_ACTION', 
-                tradeAction: action
-            })
-            .then(response => {
-                if (response && response.success) {
-                    logAndUpdateStatus(`Operação ${action} executada com sucesso`, 'SUCCESS', 'trade-execution', true);
-                    
-                    // Adicionar registro detalhado da operação
-                    const timestamp = new Date().toLocaleString('pt-BR');
-                    // Usar tradeSettings em vez de settings
-                    const tradeValue = tradeSettings.tradeValue || 'N/A';
-                    logAndUpdateStatus(`OPERAÇÃO [${timestamp}] - ${action} - Confiança: ${result.trust}% - Valor: ${tradeValue}`, 'SUCCESS', 'trade-execution', false);
-                } else {
-                    const errorMsg = response ? response.error : 'Sem resposta do background';
-                    logAndUpdateStatus(`Falha na execução: ${errorMsg}`, 'ERROR', 'trade-execution', true);
-                    
-                    // Se o erro for de contexto inválido, sugerir recarga
-                    if (errorMsg.includes('Extension context invalidated') || !isExtensionContextValid()) {
-                        logAndUpdateStatus(`Erro de contexto da extensão. Recarregue a página.`, 'ERROR', 'trade-execution', true, 10000);
+            // Usar o padrão de callback para evitar problemas de comunicação
+            try {
+                chrome.runtime.sendMessage({ 
+                    action: 'EXECUTE_TRADE_ACTION', 
+                    tradeAction: action
+                }, (response) => {
+                    // Verificar erros na mensagem
+                    if (chrome.runtime.lastError) {
+                        const errorMsg = chrome.runtime.lastError.message;
+                        logAndUpdateStatus(`Falha na comunicação: ${errorMsg}`, 'ERROR', 'trade-execution', true);
+                        
+                        // Se o erro for de contexto inválido, sugerir recarga
+                        if (errorMsg.includes('Extension context invalidated') || !isExtensionContextValid()) {
+                            logAndUpdateStatus(`Erro de contexto da extensão. Recarregue a página.`, 'ERROR', 'trade-execution', true, 10000);
+                        }
+                        return;
                     }
+                    
+                    // Processar resposta
+                    if (response && response.success) {
+                        logAndUpdateStatus(`Operação ${action} executada com sucesso`, 'SUCCESS', 'trade-execution', true);
+                        
+                        // Adicionar registro detalhado da operação
+                        const timestamp = new Date().toLocaleString('pt-BR');
+                        const tradeValue = tradeSettings.tradeValue || 'N/A';
+                        const trustValue = result ? result.trust : 'N/A';
+                        logAndUpdateStatus(`OPERAÇÃO [${timestamp}] - ${action} - Confiança: ${trustValue}% - Valor: ${tradeValue}`, 'SUCCESS', 'trade-execution', false);
+                    } else {
+                        const errorMsg = response ? response.error : 'Sem resposta do background';
+                        logAndUpdateStatus(`Falha na execução: ${errorMsg}`, 'ERROR', 'trade-execution', true);
+                    }
+                });
+            } catch (sendError) {
+                logAndUpdateStatus(`Erro ao enviar comando: ${sendError.message}`, 'ERROR', 'trade-execution', true);
+                
+                // Verificar novamente o contexto
+                if (!isExtensionContextValid()) {
+                    logAndUpdateStatus('Contexto da extensão perdido durante a operação. Recarregue a página.', 'ERROR', 'trade-execution', true);
                 }
-            })
-            .catch(error => {
-                logAndUpdateStatus(`Erro inesperado: ${error.message}`, 'ERROR', 'trade-execution', true);
-            });
+                
+                // Tentar armazenar localmente para execução posterior
+                try {
+                    const pendingOperations = JSON.parse(localStorage.getItem('pendingOperations') || '[]');
+                    pendingOperations.push({
+                        action: action,
+                        timestamp: new Date().toISOString(),
+                        result: result ? {
+                            trust: result.trust,
+                            period: result.period,
+                            entry: result.entry
+                        } : {}
+                    });
+                    localStorage.setItem('pendingOperations', JSON.stringify(pendingOperations));
+                    logAndUpdateStatus('Operação armazenada localmente para execução posterior', 'WARN', 'trade-execution', true);
+                } catch (storageError) {
+                    console.error('Erro ao armazenar operação localmente:', storageError);
+                }
+            }
         } catch (error) {
             logAndUpdateStatus(`Erro ao enviar comando de operação: ${error.message}`, 'ERROR', 'trade-execution', true);
         }
@@ -371,14 +425,41 @@ function showAnalysisModal(result) {
 }
 
 // ================== INICIALIZAÇÃO ==================
-// Função para inicializar a aplicação quando o DOM for carregado
-document.addEventListener('DOMContentLoaded', function() {
-    // Inicializar o sistema de logs
+document.addEventListener('DOMContentLoaded', async () => {
+    // Inicializar sistema de logs
     initLogging();
     
-    addLog('DOM carregado, inicializando aplicação', 'INFO');
+    // Adicionar log de inicialização
+    addLog('Interface principal inicializada', 'INFO');
     
-    // ... existing code ...
+    // Tentar obter a versão do Manifest e mostrar no rodapé
+    try {
+        const manifest = chrome.runtime.getManifest();
+        if (indexUI.version) {
+            indexUI.version.textContent = manifest.version || '1.0.0';
+            addLog(`Versão do Trade Manager Pro: ${manifest.version}`, 'INFO');
+        }
+    } catch (error) {
+        addLog('Erro ao obter versão do sistema', 'ERROR');
+        if (indexUI.version) {
+            indexUI.version.textContent = '1.0.0';
+        }
+    }
+    
+    // Testar conexão com a API Gemini
+    testGeminiConnection();
+    
+    // Carregar configurações
+    loadConfig();
+    
+    // Atualizar status inicial
+    updateStatus('Sistema operando normalmente', 'INFO');
+    
+    // Adicionar event listeners
+    addEventListeners();
+    
+    // Inicializar listener para StateManager
+    initStateManagerListener();
 });
 
 // ================== NOVAS FUNÇÕES PARA AUTOMAÇÃO ==================
@@ -387,6 +468,9 @@ const updateAutomationStatus = (isActive) => {
     indexUI.automationStatus.value = isActive ? true : false;
     indexUI.automationStatus.textContent = `Automação: ${isActive ? 'Ativa' : 'Inativa'}`;
     indexUI.automationStatus.className = `automation-status ${isActive ? 'active' : 'inactive'}`;
+    
+    // Registrar no log a mudança de status da automação
+    addLog(`Status da automação alterado para: ${isActive ? 'Ativa' : 'Inativa'}`, isActive ? 'SUCCESS' : 'INFO');
 };
 
 // Função para atualizar os elementos de UI com as configurações atuais
@@ -398,11 +482,14 @@ const updateCurrentSettings = (settings) => {
     }
 
     try {
+        addLog(`Atualizando UI com novas configurações: ${JSON.stringify(settings)}`, 'DEBUG');
+        
         // Atualizar valores de lucro diário e stop loss
         if (indexUI.dailyProfit && typeof settings.dailyProfit !== 'undefined') {
             indexUI.dailyProfit.value = settings.dailyProfit;
             if (indexUI.currentProfit) {
                 indexUI.currentProfit.textContent = `R$ ${settings.dailyProfit}`;
+                addLog(`currentProfit atualizado para: R$ ${settings.dailyProfit}`, 'DEBUG');
             }
         }
         
@@ -410,6 +497,7 @@ const updateCurrentSettings = (settings) => {
             indexUI.stopLoss.value = settings.stopLoss;
             if (indexUI.currentStop) {
                 indexUI.currentStop.textContent = `R$ ${settings.stopLoss}`;
+                addLog(`currentStop atualizado para: R$ ${settings.stopLoss}`, 'DEBUG');
             }
         }
         
@@ -418,6 +506,7 @@ const updateCurrentSettings = (settings) => {
             indexUI.entryValue.value = settings.tradeValue;
             if (indexUI.currentValue) {
                 indexUI.currentValue.textContent = `R$ ${settings.tradeValue}`;
+                addLog(`currentValue atualizado para: R$ ${settings.tradeValue}`, 'DEBUG');
             }
         }
         
@@ -425,31 +514,71 @@ const updateCurrentSettings = (settings) => {
             indexUI.timePeriod.value = settings.tradeTime;
             if (indexUI.currentTime) {
                 indexUI.currentTime.textContent = `${settings.tradeTime} min`;
+                addLog(`currentTime atualizado para: ${settings.tradeTime} min`, 'DEBUG');
             }
         }
         
         // Atualizar configurações de Gale
         if (indexUI.toggleGale && typeof settings.galeEnabled !== 'undefined') {
             indexUI.toggleGale.checked = settings.galeEnabled;
+            addLog(`toggleGale atualizado para: ${settings.galeEnabled}`, 'DEBUG');
         }
         
         if (indexUI.galeSelect && typeof settings.galeLevel !== 'undefined') {
             indexUI.galeSelect.value = settings.galeLevel;
             if (indexUI.currentGale) {
-                indexUI.currentGale.textContent = settings.galeLevel;
+                // Atualizar texto e classe do indicador de Gale
+                if (settings.galeEnabled) {
+                    indexUI.currentGale.textContent = `Gale: ${settings.galeLevel}`;
+                    indexUI.currentGale.className = 'gale-status active';
+                } else {
+                    indexUI.currentGale.textContent = 'Gale: Desativado';
+                    indexUI.currentGale.className = 'gale-status inactive';
+                }
+                addLog(`currentGale atualizado para: ${settings.galeEnabled ? settings.galeLevel : 'Desativado'}`, 'DEBUG');
             }
         }
         
         // Atualizar status de automação
         if (indexUI.toggleAuto && typeof settings.autoActive !== 'undefined') {
             indexUI.toggleAuto.checked = settings.autoActive;
+            addLog(`toggleAuto atualizado para: ${settings.autoActive}`, 'DEBUG');
             updateAutomationStatus(settings.autoActive);
         }
         
         // Salvar as configurações globalmente para acesso fácil
         window.currentSettings = settings;
         
-        addLog('Configurações atualizadas na UI com sucesso', 'DEBUG');
+        // Força uma atualização da UI para garantir que as mudanças sejam visíveis
+        setTimeout(() => {
+            // Verifica elementos que podem não ter sido atualizados
+            if (indexUI.currentProfit && typeof settings.dailyProfit !== 'undefined') {
+                indexUI.currentProfit.textContent = `R$ ${settings.dailyProfit}`;
+            }
+            if (indexUI.currentStop && typeof settings.stopLoss !== 'undefined') {
+                indexUI.currentStop.textContent = `R$ ${settings.stopLoss}`;
+            }
+            if (indexUI.currentValue && typeof settings.tradeValue !== 'undefined') {
+                indexUI.currentValue.textContent = `R$ ${settings.tradeValue}`;
+            }
+            if (indexUI.currentTime && typeof settings.tradeTime !== 'undefined') {
+                indexUI.currentTime.textContent = `${settings.tradeTime} min`;
+            }
+            if (indexUI.currentGale && typeof settings.galeLevel !== 'undefined') {
+                // Atualizar texto e classe do indicador de Gale
+                if (settings.galeEnabled) {
+                    indexUI.currentGale.textContent = `Gale: ${settings.galeLevel}`;
+                    indexUI.currentGale.className = 'gale-status active';
+                } else {
+                    indexUI.currentGale.textContent = 'Gale: Desativado';
+                    indexUI.currentGale.className = 'gale-status inactive';
+                }
+            }
+            
+            addLog('Verificação adicional de atualização da UI realizada', 'DEBUG');
+        }, 100);
+        
+        addLog('Configurações atualizadas na UI com sucesso', 'SUCCESS');
     } catch (error) {
         addLog(`Erro ao atualizar configurações na UI: ${error.message}`, 'ERROR');
     }
@@ -572,6 +701,8 @@ const updateCountdown = () => {
     const countdown = document.querySelector('#countdown');
     if (countdown) {
         countdown.textContent = `${tradeTime} minutos`;
+        // Adicionar log para a atualização do contador
+        addLog(`Contador atualizado para ${tradeTime} minutos`, 'INFO');
     }
 };
 
@@ -585,6 +716,8 @@ const startCountdown = () => {
     isAutomationRunning = true;
     updateAutomationStatus(true);
     updateCountdown();
+    
+    addLog('Contador de automação iniciado', 'INFO');
 
     const interval = setInterval(() => {
         tradeTime--;
@@ -595,6 +728,7 @@ const startCountdown = () => {
             isAutomationRunning = false;
             updateAutomationStatus(false);
             updateStatus('Automação concluída', 'success');
+            addLog('Automação concluída: contador chegou a zero', 'SUCCESS');
         }
     }, 1000);
 };
@@ -604,10 +738,12 @@ const cancelAutoClose = () => {
     if (automationTimeout) {
         clearTimeout(automationTimeout);
         automationTimeout = null;
+        addLog('Temporizador de automação cancelado', 'INFO');
     }
     isAutomationRunning = false;
     updateAutomationStatus(false);
-    updateStatus('Automação cancelada', 'info');
+    updateStatus('Operação cancelada pelo usuário', 'info');
+    addLog('Operação cancelada manualmente pelo usuário', 'INFO');
 };
 
 // Função para capturar e analisar
@@ -698,8 +834,35 @@ document.addEventListener('DOMContentLoaded', () => {
     // Inicializar o listener do StateManager para atualizações de configurações
     initStateManagerListener();
     
+    // Adicionar listener direto para mensagens da página de configurações (mecanismo alternativo)
+    window.addEventListener('message', (event) => {
+        // Verificar se é uma mensagem de atualização de configurações
+        if (event.data && event.data.action === 'configUpdated' && event.data.settings) {
+            addLog('Recebida mensagem direta de atualização de configurações', 'INFO');
+            
+            const config = event.data.settings;
+            // Atualizar campos da página principal
+            updateCurrentSettings({
+                galeEnabled: config.gale.active,
+                galeLevel: config.gale.level,
+                dailyProfit: config.dailyProfit,
+                stopLoss: config.stopLoss,
+                tradeValue: config.value,
+                tradeTime: config.period,
+                autoActive: config.automation
+            });
+            
+            updateStatus('Configurações atualizadas via mensagem direta', 'success', 2000);
+            addLog('Configurações atualizadas com sucesso via postMessage', 'SUCCESS');
+        }
+    });
+    addLog('Listener de mensagens diretas configurado com sucesso', 'INFO');
+    
     updateStatus('Sistema iniciado com sucesso!', 'success');
     addLog('Interface principal carregada e pronta', 'SUCCESS');
+    
+    // Verificar conexão com a extensão e processar operações pendentes
+    checkExtensionConnection();
     
     // Tentar testar a conexão com a API Gemini
     testGeminiConnection()
@@ -1338,6 +1501,9 @@ const updateStatusUI = (message, type = 'info', duration = 3000) => {
         // Log interno para debug
         console.log(`Atualizando UI de status: ${message} (${type})`);
         
+        // Registrar no sistema de logs centralizado
+        addLog(`Status UI atualizado: ${message}`, type.toUpperCase());
+        
         // Buscar o elemento de status
         const statusElement = document.getElementById('status-processo');
         if (statusElement) {
@@ -1358,8 +1524,140 @@ const updateStatusUI = (message, type = 'info', duration = 3000) => {
             }
         } else {
             console.log('Elemento de status não encontrado na UI');
+            addLog('Elemento de status não encontrado na UI', 'WARN');
         }
     } catch (error) {
         console.error(`Erro ao atualizar UI de status: ${error.message}`);
+        addLog(`Erro ao atualizar UI de status: ${error.message}`, 'ERROR');
+    }
+};
+
+//Adicionar um listener para mensagens do chrome.runtime
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    // Verificar se é uma mensagem de atualização de configurações
+    if (message && message.action === 'configUpdated' && message.settings) {
+        addLog('Recebida mensagem via chrome.runtime para atualização de configurações', 'INFO');
+        
+        const config = message.settings;
+        // Atualizar campos da página principal
+        updateCurrentSettings({
+            galeEnabled: config.gale.active,
+            galeLevel: config.gale.level,
+            dailyProfit: config.dailyProfit,
+            stopLoss: config.stopLoss,
+            tradeValue: config.value,
+            tradeTime: config.period,
+            autoActive: config.automation
+        });
+        
+        updateStatus('Configurações atualizadas via runtime', 'success', 2000);
+        addLog('Configurações atualizadas com sucesso via chrome.runtime', 'SUCCESS');
+        
+        // Responder à mensagem se necessário
+        if (sendResponse) {
+            sendResponse({ success: true });
+        }
+    }
+    
+    // Retornar true para indicar que a resposta pode ser assíncrona
+    return true;
+});
+
+// Função para verificar e processar operações pendentes
+const checkPendingOperations = () => {
+    try {
+        // Verificar se o contexto da extensão é válido
+        const isExtensionContextValid = () => {
+            try {
+                return chrome.runtime && chrome.runtime.id;
+            } catch (e) {
+                return false;
+            }
+        };
+
+        if (!isExtensionContextValid()) {
+            console.log('Contexto da extensão inválido, não é possível processar operações pendentes');
+            return;
+        }
+
+        // Recuperar operações pendentes
+        const pendingOperations = JSON.parse(localStorage.getItem('pendingOperations') || '[]');
+        if (pendingOperations.length === 0) {
+            return;
+        }
+
+        console.log(`Encontradas ${pendingOperations.length} operações pendentes para processamento`);
+        logAndUpdateStatus(`Processando ${pendingOperations.length} operações pendentes`, 'INFO', 'trade-execution', true);
+
+        // Limpar operações pendentes imediatamente para evitar processamento duplicado
+        localStorage.removeItem('pendingOperations');
+
+        // Processar no máximo 5 operações para evitar sobrecarga
+        const operationsToProcess = pendingOperations.slice(0, 5);
+        
+        // Executar cada operação pendente com intervalo
+        operationsToProcess.forEach((op, index) => {
+            setTimeout(() => {
+                try {
+                    logAndUpdateStatus(`Executando operação pendente: ${op.action}`, 'INFO', 'trade-execution', true);
+                    
+                    // Enviar para o background
+                    chrome.runtime.sendMessage({ 
+                        action: 'EXECUTE_TRADE_ACTION', 
+                        tradeAction: op.action
+                    }, (response) => {
+                        if (chrome.runtime.lastError) {
+                            logAndUpdateStatus(`Falha ao executar operação pendente: ${chrome.runtime.lastError.message}`, 'ERROR', 'trade-execution', true);
+                            return;
+                        }
+                        
+                        if (response && response.success) {
+                            logAndUpdateStatus(`Operação pendente ${op.action} executada com sucesso`, 'SUCCESS', 'trade-execution', true);
+                        } else {
+                            const errorMsg = response ? response.error : 'Sem resposta do background';
+                            logAndUpdateStatus(`Falha na execução pendente: ${errorMsg}`, 'ERROR', 'trade-execution', true);
+                        }
+                    });
+                } catch (error) {
+                    logAndUpdateStatus(`Erro ao executar operação pendente: ${error.message}`, 'ERROR', 'trade-execution', true);
+                }
+            }, index * 2000); // Executar a cada 2 segundos
+        });
+        
+        // Se houver mais operações, armazenar para processamento posterior
+        if (pendingOperations.length > 5) {
+            const remainingOperations = pendingOperations.slice(5);
+            localStorage.setItem('pendingOperations', JSON.stringify(remainingOperations));
+            logAndUpdateStatus(`${remainingOperations.length} operações pendentes restantes serão processadas posteriormente`, 'INFO', 'trade-execution', true);
+        }
+    } catch (error) {
+        console.error('Erro ao processar operações pendentes:', error);
+    }
+};
+
+// Adicionar função para verificar a conexão com a extensão e recuperar logs e operações pendentes
+const checkExtensionConnection = () => {
+    // Verificar se o contexto da extensão é válido
+    const isExtensionContextValid = () => {
+        try {
+            return chrome.runtime && chrome.runtime.id;
+        } catch (e) {
+            return false;
+        }
+    };
+
+    if (isExtensionContextValid()) {
+        addLog('Conexão com a extensão estabelecida', 'SUCCESS');
+        
+        // Verificar operações pendentes
+        checkPendingOperations();
+        
+        // Verificar logs pendentes
+        if (window.LogSystem && typeof window.LogSystem.syncPendingLogs === 'function') {
+            window.LogSystem.syncPendingLogs();
+        }
+    } else {
+        addLog('Contexto da extensão inválido, tentando novamente em 5 segundos...', 'WARN');
+        setTimeout(checkExtensionConnection, 5000);
     }
 };

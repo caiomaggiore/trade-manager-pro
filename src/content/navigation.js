@@ -131,10 +131,29 @@ class NavigationManager {
 
     // Atualiza a UI principal com as novas configurações
     updateMainUI(config) {
+        console.log('[NavigationManager] Atualizando UI principal com config:', JSON.stringify(config));
+        
         // Atualiza o display de Gale
         const currentGale = document.getElementById('current-gale');
         if (currentGale) {
-            currentGale.textContent = `Gale: ${config.gale.active ? config.gale.level : 'Desativado'}`;
+            // Verifica se temos config.gale.active direto ou config.galeEnabled
+            const galeActive = typeof config.gale?.active !== 'undefined' ? 
+                config.gale.active : 
+                (typeof config.galeEnabled !== 'undefined' ? config.galeEnabled : false);
+                
+            // Verifica se temos config.gale.level direto ou config.galeLevel
+            const galeLevel = typeof config.gale?.level !== 'undefined' ? 
+                config.gale.level : 
+                (typeof config.galeLevel !== 'undefined' ? config.galeLevel : 1);
+                
+            if (galeActive) {
+                currentGale.textContent = `Gale: ${galeLevel}`;
+                currentGale.className = 'gale-status active';
+            } else {
+                currentGale.textContent = 'Gale: Desativado';
+                currentGale.className = 'gale-status inactive';
+            }
+            console.log(`[NavigationManager] Status do Gale atualizado: ${galeActive ? 'Ativo' : 'Desativado'}, Nível: ${galeLevel}`);
         }
 
         // Atualiza o display de Lucro Diário

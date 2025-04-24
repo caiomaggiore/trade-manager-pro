@@ -1,6 +1,48 @@
 // =============================================
 // Configurações Globais
 // =============================================
+// Definir a função para log primeiro para evitar problemas de referência circular
+function logFromAnalyzer(message, level = 'INFO') {
+    // Não elevar mais o nível para manter a consistência com o nível original
+    
+    // Verificar se a função global de log está disponível
+    if (typeof window.logToSystem === 'function') {
+        try {
+            window.logToSystem(message, level, 'analyze-graph.js');
+            return;
+        } catch (err) {
+            // Fallback para console se logToSystem falhar
+            console.log(`%c[${level}][analyze-graph.js] ${message}`, 'background: #3498db; color: white; padding: 3px; border-radius: 3px;');
+        }
+    } else {
+        // Fallback: método original quando logToSystem não está disponível
+        console.log(`%c[${level}][analyze-graph.js] ${message}`, 'background: #3498db; color: white; padding: 3px; border-radius: 3px;');
+    }
+    
+    // Enviar para o sistema centralizado via mensagem
+    try {
+        // Verificar se o contexto da extensão ainda é válido
+        if (chrome && chrome.runtime && chrome.runtime.id) {
+            chrome.runtime.sendMessage({
+                action: 'logMessage',
+                message: message,
+                level: level,
+                source: 'analyze-graph.js'
+            }, response => {
+                // Silenciar erros do callback
+                if (chrome.runtime.lastError) {
+                    // Apenas logar no console e continuar
+                    console.log(`Erro ao enviar log (ignorando): ${chrome.runtime.lastError.message}`);
+                }
+            });
+        }
+    } catch (error) {
+        // Apenas logar e continuar - não queremos que falhas de log interrompam a análise
+        console.log('Não foi possível enviar log para o background. Continuando execução...');
+    }
+}
+
+// Agora podemos usar a função de log
 logFromAnalyzer('AnalyzeGraph: Iniciando carregamento...', 'INFO');
 
 // Removendo as constantes duplicadas e usando as do index.js
@@ -15,17 +57,27 @@ logFromAnalyzer('AnalyzeGraph: Iniciando carregamento...', 'INFO');
  * @param {string} source - Origem do log (padrão: 'analyze-graph.js')
  */
 function graphAddLog(message, level = 'INFO', source = 'analyze-graph.js') {
+    // Não elevar mais o nível para manter a consistência com o nível original
+    
+    // Não forçar mais a fonte a incluir "analysis" para permitir logs naturais
+    
     // Verificar se temos a função global do sistema de logs
     if (typeof window.logToSystem === 'function') {
-        window.logToSystem(message, level, source);
-        return;
+        try {
+            window.logToSystem(message, level, source);
+            return;
+        } catch (error) {
+            // Se logToSystem falhar, use o fallback
+            console.log(`%c[${level}][${source}] ${message}`, 'background: #3498db; color: white; padding: 3px; border-radius: 3px;');
+        }
     }
     
     // Método alternativo (fallback) caso a função global não esteja disponível
     try {
         logFromAnalyzer(`[${level}][${source}] ${message}`, level);
     } catch (error) {
-        logFromAnalyzer(`Erro ao registrar log: ${error.message}`, 'ERROR');
+        // Último recurso - apenas logar no console e continuar
+        console.log(`%c[${level}][${source}] ${message}`, 'background: #3498db; color: white; padding: 3px; border-radius: 3px;');
     }
 }
 
@@ -40,15 +92,52 @@ function graphUpdateStatus(message, type = 'info', duration = 3000) {
     graphAddLog(message, type.toUpperCase(), 'STATUS');
     
     try {
-        // Enviar para o background para atualizar a UI
-        chrome.runtime.sendMessage({ 
-            action: 'UPDATE_STATUS',
-            message,
-            type,
-            duration
-        });
+        // Verificar se o contexto da extensão ainda é válido
+        if (chrome && chrome.runtime && chrome.runtime.id) {
+            // Enviar para o background para atualizar a UI
+            chrome.runtime.sendMessage({ 
+                action: 'UPDATE_STATUS',
+                message,
+                type,
+                duration
+            }, response => {
+                // Silenciar erros do callback
+                if (chrome.runtime.lastError) {
+                    console.log(`Erro ao atualizar status (ignorando): ${chrome.runtime.lastError.message}`);
+                    
+                    // Tentativa de atualizar diretamente o DOM como fallback
+                    try {
+                        const statusElement = document.getElementById('status-processo');
+                        if (statusElement) {
+                            statusElement.textContent = message;
+                            statusElement.className = `status-${type}`;
+                        }
+                    } catch (domError) {
+                        // Silenciar erros de manipulação do DOM
+                    }
+                }
+            });
+        } else {
+            // Tentar atualizar diretamente o DOM como fallback
+            const statusElement = document.getElementById('status-processo');
+            if (statusElement) {
+                statusElement.textContent = message;
+                statusElement.className = `status-${type}`;
+            }
+        }
     } catch (error) {
-        logFromAnalyzer(`Erro ao atualizar status: ${error.message}`, 'ERROR');
+        console.log(`Não foi possível atualizar status. Continuando execução...`);
+        
+        // Tentar atualizar diretamente o DOM como último recurso
+        try {
+            const statusElement = document.getElementById('status-processo');
+            if (statusElement) {
+                statusElement.textContent = message;
+                statusElement.className = `status-${type}`;
+            }
+        } catch (domError) {
+            // Silenciar erros de manipulação do DOM
+        }
     }
 }
 
@@ -169,6 +258,11 @@ const processAnalysis = async (imageData, settings) => {
     try {
         graphAddLog('Iniciando análise...', 'INFO');
         
+        // Verificar se o imageData é válido
+        if (!imageData || typeof imageData !== 'string' || !imageData.startsWith('data:image')) {
+            throw new Error('Dados de imagem inválidos ou ausentes');
+        }
+        
         // Montar payload para análise
         const payload = {
             contents: [{
@@ -184,13 +278,26 @@ const processAnalysis = async (imageData, settings) => {
             }]
         };
 
+        // Log direto para o console e para o sistema de logs
+        console.log("%c[ANÁLISE] Iniciando processamento de análise de gráfico", "background: #e74c3c; color: white; padding: 5px; font-weight: bold;");
+        
+        // Obter URL da API de forma segura
+        let apiUrl;
+        try {
+            // Tentar obter a URL diretamente do contexto atual
+            if (window.API_URL) {
+                apiUrl = window.API_URL;
+            } else {
+                // Usar URL fixa como fallback
+                apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=AIzaSyDJC5a7hDIrV0P1o6P9qBXKxO3j0nTRmxc';
+            }
+        } catch (error) {
+            // Usar URL fixa como fallback se algo der errado
+            apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=AIzaSyDJC5a7hDIrV0P1o6P9qBXKxO3j0nTRmxc';
+        }
+        
         // Enviar para API
-        const response = await fetch(chrome.runtime.getURL('scripts/index.js').then(url => {
-            const script = document.createElement('script');
-            script.src = url;
-            document.head.appendChild(script);
-            return window.API_URL;
-        }), {
+        const response = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -201,7 +308,20 @@ const processAnalysis = async (imageData, settings) => {
         }
 
         const data = await response.json();
+        
+        if (!data || !data.candidates || !data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts) {
+            throw new Error('Resposta da API incompleta ou mal formatada');
+        }
+        
         const text = data.candidates[0].content.parts[0].text;
+        
+        if (!text) {
+            throw new Error('Texto de resposta vazio ou ausente');
+        }
+        
+        // Log direto da resposta recebida
+        console.log("%c[ANÁLISE] Resposta recebida da API", "background: #2ecc71; color: white; padding: 5px; font-weight: bold;");
+        console.log(text.substring(0, 200) + "...");
         
         // Extrair JSON da resposta
         const jsonMatch = text.match(/{[\s\S]*?}/);
@@ -209,7 +329,26 @@ const processAnalysis = async (imageData, settings) => {
             throw new Error('Resposta inválida da API');
         }
 
-        const result = JSON.parse(jsonMatch[0]);
+        // Tentar analisar o JSON de várias maneiras para aumentar a robustez
+        let result;
+        try {
+            // Primeiro, tentar analisar o JSON diretamente
+            result = JSON.parse(jsonMatch[0]);
+        } catch (jsonError) {
+            console.log('Erro ao analisar JSON diretamente, tentando sanitizar', jsonError);
+            
+            // Tentar sanitizar e analisar novamente
+            try {
+                const sanitized = jsonMatch[0]
+                    .replace(/(\w+):/g, '"$1":')
+                    .replace(/'/g, '"')
+                    .replace(/(\d+),(\s*})/g, '$1$2');
+                    
+                result = JSON.parse(sanitized);
+            } catch (sanitizeError) {
+                throw new Error('Impossível analisar a resposta da API');
+            }
+        }
         
         graphAddLog(`Análise concluída: ${result.action} (${result.trust}% de confiança)`, 'success');
         
@@ -219,11 +358,17 @@ const processAnalysis = async (imageData, settings) => {
         };
 
     } catch (error) {
-        logFromAnalyzer('Erro na análise:', 'ERROR');
-        logFromAnalyzer(`Erro na análise: ${error.message}`, 'ERROR');
+        console.error('Erro na análise:', error);
+        
+        try {
+            graphAddLog(`Erro na análise: ${error.message}`, 'ERROR');
+        } catch (logError) {
+            console.error('Também falhou ao registrar o erro:', logError);
+        }
+        
         return {
             success: false,
-            error: error.message
+            error: error.message || 'Erro desconhecido na análise'
         };
     }
 };
@@ -253,18 +398,50 @@ async function getSystemConfig() {
 // Listener Principal
 // =============================================
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'PROCESS_ANALYSIS') {
-        processAnalysis(request.imageData, request.settings)
-            .then(sendResponse)
-            .catch(error => {
-                logFromAnalyzer('Erro no processamento:', 'ERROR');
+    // Verificar se a mensagem é para processamento de análise
+    if (request && request.action === 'PROCESS_ANALYSIS') {
+        console.log('[Análise] Solicitação de análise recebida');
+        
+        // Executar em um bloco try-catch para garantir que sendResponse seja sempre chamado
+        try {
+            // Usar um timeout para garantir que alguma resposta seja enviada
+            const timeout = setTimeout(() => {
+                console.log('[Análise] Timeout atingido, enviando resposta de erro');
                 sendResponse({
                     success: false,
-                    error: error.message
+                    error: 'Timeout ao processar análise'
                 });
+            }, 30000); // 30 segundos
+            
+            // Processar a análise
+            processAnalysis(request.imageData, request.settings)
+                .then(result => {
+                    clearTimeout(timeout);
+                    console.log('[Análise] Enviando resposta de análise concluída');
+                    sendResponse(result);
+                })
+                .catch(error => {
+                    clearTimeout(timeout);
+                    console.error('[Análise] Erro no processamento:', error);
+                    sendResponse({
+                        success: false,
+                        error: error.message || 'Erro desconhecido no processamento'
+                    });
+                });
+        } catch (error) {
+            console.error('[Análise] Erro crítico no processamento:', error);
+            sendResponse({
+                success: false,
+                error: 'Erro crítico ao iniciar processamento'
             });
+        }
+        
+        // Importante: retornar true para indicar que a resposta será assíncrona
         return true;
     }
+    
+    // Para outras mensagens, não vamos manipular
+    return false;
 });
 
 // Expor o objeto AnalyzeGraph globalmente
@@ -272,8 +449,8 @@ window.TradeManager = window.TradeManager || {};
 window.TradeManager.AnalyzeGraph = {
     processImage: async (imageData) => {
         try {
-            logFromAnalyzer('AnalyzeGraph: processImage chamado', 'INFO');
-            graphAddLog('Processando imagem para análise...', 'INFO');
+            logFromAnalyzer('AnalyzeGraph: processImage chamado', 'SUCCESS');
+            graphAddLog('Processando imagem para análise...', 'SUCCESS');
             
             // Obter configurações do sistema
             const config = await getSystemConfig();
@@ -281,7 +458,7 @@ window.TradeManager.AnalyzeGraph = {
             const isTestMode = config.testMode || false;
             
             if (isTestMode) {
-                graphAddLog('Modo teste de análise ativado - usando prompt simplificado', 'INFO');
+                graphAddLog('Modo teste de análise ativado - usando prompt simplificado', 'SUCCESS');
             }
             
             // Montar payload para análise
@@ -299,7 +476,7 @@ window.TradeManager.AnalyzeGraph = {
                 }]
             };
 
-            logFromAnalyzer('AnalyzeGraph: Enviando para API...', 'INFO');
+            logFromAnalyzer('AnalyzeGraph: Enviando para API...', 'SUCCESS');
             // Enviar para API usando a URL do index.js
             const response = await fetch(window.API_URL, {
                 method: 'POST',
@@ -311,6 +488,8 @@ window.TradeManager.AnalyzeGraph = {
                 throw new Error(`Erro HTTP: ${response.status}`);
             }
 
+            logFromAnalyzer('Recebida resposta da API, processando resultado...', 'SUCCESS');
+            
             const data = await response.json();
             const text = data.candidates[0].content.parts[0].text;
             
@@ -320,7 +499,8 @@ window.TradeManager.AnalyzeGraph = {
             // Adicionar flag de modo teste ao resultado
             result.isTestMode = isTestMode;
             
-            graphAddLog(`Análise concluída: ${result.action} (${result.trust}% de confiança)`, 'success');
+            graphAddLog(`Análise concluída: ${result.action} (${result.trust}% de confiança)`, 'SUCCESS');
+            logFromAnalyzer(`Resultado da análise: ${result.action} - Confiança: ${result.trust}% - Explicação: ${result.reason.substring(0, 50)}...`, 'SUCCESS');
             
             return {
                 success: true,
@@ -339,27 +519,3 @@ window.TradeManager.AnalyzeGraph = {
 };
 
 logFromAnalyzer('AnalyzeGraph: Carregamento concluído', 'INFO');
-
-// Função para logging unificada com o sistema central
-function logFromAnalyzer(message, level = 'INFO') {
-    // Verificar se a função global de log está disponível
-    if (typeof window.logToSystem === 'function') {
-        window.logToSystem(message, level, 'analyze-graph.js');
-        return;
-    }
-    
-    // Fallback: método original quando logToSystem não está disponível
-    console.log(`[${level}][analyze-graph.js] ${message}`);
-    
-    // Enviar para o sistema centralizado via mensagem
-    try {
-        chrome.runtime.sendMessage({
-            action: 'logMessage',
-            message: message,
-            level: level,
-            source: 'analyze-graph.js'
-        });
-    } catch (error) {
-        console.error('[analyze-graph.js] Erro ao enviar log:', error);
-    }
-}

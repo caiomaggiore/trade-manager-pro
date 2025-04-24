@@ -952,3 +952,41 @@ input:checked + .slider:before {
     background: #e74c3c;
     color: white;
 }
+
+/* ================== GALE STATUS INDICATOR ================== */
+.gale-status {
+  font-size: 1em;
+  padding: 6px 10px;
+  border-radius: 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f8f9fa;
+  border: 1px solid #e0e0e0;
+}
+
+.gale-status::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: block;
+}
+
+.gale-status.active {
+  border-color: #2ecc71;
+  color: #2ecc71;
+}
+
+.gale-status.active::before {
+  background: #2ecc71;
+}
+
+.gale-status.inactive {
+  border-color: #95a5a6;
+  color: #95a5a6;
+}
+
+.gale-status.inactive::before {
+  background: #95a5a6;
+}

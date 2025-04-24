@@ -126,15 +126,7 @@ const saveSettings = async () => {
                 logFromSettings('Configurações salvas com sucesso via StateManager', 'SUCCESS');
                 
                 // Notificar a página pai explicitamente sobre a atualização das configurações
-                try {
-                    window.parent.postMessage({ 
-                        action: 'configUpdated', 
-                        settings: config 
-                    }, '*');
-                    logFromSettings('Notificação de atualização enviada para a página principal', 'SUCCESS');
-                } catch (err) {
-                    logFromSettings('Não foi possível notificar a página principal: ' + err.message, 'WARN');
-                }
+                notifyMainPage(config);
             } else {
                 throw new Error('Erro ao salvar configurações via StateManager');
             }
@@ -144,15 +136,7 @@ const saveSettings = async () => {
             logFromSettings('Configurações salvas diretamente no storage', 'SUCCESS');
             
             // Também notificar a página pai
-            try {
-                window.parent.postMessage({ 
-                    action: 'configUpdated', 
-                    settings: config 
-                }, '*');
-                logFromSettings('Notificação de atualização enviada para a página principal', 'SUCCESS');
-            } catch (err) {
-                logFromSettings('Não foi possível notificar a página principal: ' + err.message, 'WARN');
-            }
+            notifyMainPage(config);
         }
         
         // Feedback visual mais sutil (opcional)
@@ -181,9 +165,10 @@ const saveSettings = async () => {
 
 // Fechar página de configurações
 const closeSettings = () => {
-    logFromSettings('Fechando página de configurações...', 'INFO');
-    
     try {
+        // IMPORTANTE: Não registrar logs ao fechar a página sem salvar
+        // Os logs de configurações devem ser registrados apenas quando o botão Salvar for clicado
+        
         // Método 1: Tentar acessar diretamente o navigationManager
         if (window.parent && window.parent.navigationManager) {
             window.parent.navigationManager.closePage();
@@ -194,7 +179,7 @@ const closeSettings = () => {
         window.parent.postMessage({ action: 'closePage' }, '*');
     } catch (error) {
         console.error('[settings.js] Erro ao tentar fechar página:', error);
-        logFromSettings('Erro ao tentar fechar página: ' + error.message, 'ERROR');
+        // Não registrar erros de fechamento no sistema de logs
     }
 };
 
@@ -238,6 +223,58 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadSettingsToUI(null);
     }
 });
+
+// Função para notificar a página principal sobre as mudanças de configuração
+const notifyMainPage = (config) => {
+    logFromSettings('Tentando notificar a página principal sobre as alterações de configuração...', 'INFO');
+    
+    let notified = false;
+    
+    // Método 1: Usar postMessage
+    try {
+        window.parent.postMessage({ 
+            action: 'configUpdated', 
+            settings: config,
+            timestamp: Date.now()
+        }, '*');
+        logFromSettings('Notificação enviada via postMessage', 'SUCCESS');
+        notified = true;
+    } catch (err) {
+        logFromSettings(`Falha ao notificar via postMessage: ${err.message}`, 'WARN');
+    }
+    
+    // Método 2: Tentar acessar diretamente o StateManager da página pai, se disponível
+    try {
+        if (window.parent && window.parent.StateManager) {
+            window.parent.StateManager.saveConfig(config);
+            logFromSettings('Notificação enviada diretamente ao StateManager da página pai', 'SUCCESS');
+            notified = true;
+        }
+    } catch (err) {
+        logFromSettings(`Falha ao notificar via StateManager pai: ${err.message}`, 'WARN');
+    }
+    
+    // Método 3: Enviar via mensagem do Chrome runtime para outras partes da extensão
+    try {
+        chrome.runtime.sendMessage({
+            action: 'configUpdated',
+            settings: config,
+            timestamp: Date.now()
+        });
+        logFromSettings('Notificação enviada via chrome.runtime.sendMessage', 'SUCCESS');
+        notified = true;
+    } catch (err) {
+        logFromSettings(`Falha ao notificar via chrome.runtime: ${err.message}`, 'DEBUG');
+    }
+    
+    if (notified) {
+        logFromSettings('Notificação de atualização enviada com sucesso para a página principal', 'SUCCESS');
+    } else {
+        logFromSettings('Não foi possível notificar a página principal por nenhum método disponível', 'ERROR');
+    }
+    
+    return notified;
+};
 
 // Exportar funções para uso em outros scripts
 window.settingsModule = {

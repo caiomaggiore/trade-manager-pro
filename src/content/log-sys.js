@@ -20,8 +20,7 @@ const sysUI = {
     clearBtn: document.getElementById('clear-logs'),
     closeBtn: document.getElementById('close-logs'),
     logContainer: document.getElementById('log-container'),
-    levelFilter: document.getElementById('log-level-filter'),
-    version: document.getElementById('version')
+    levelFilter: document.getElementById('log-level-filter')
 };
 
 // ================== NÍVEIS DE LOG ==================
@@ -57,95 +56,84 @@ const FILTERED_MESSAGE_PATTERNS = [
     'Observador de páginas',
     'Recebido postMessage',
     'Método init',
-    'Construtor concluído'
+    'Construtor concluído',
+    'Fechando página de logs',
+    'Fechando página de configurações',
+    'UI atualizada com as configurações'
 ];
 
 // Função para verificar se uma mensagem deve ser filtrada
 const shouldFilterMessage = (message, level, source) => {
-    // Se temos um filtro de nível específico e o nível não corresponde, filtrar
-    if (CURRENT_FILTER_LEVEL && level !== CURRENT_FILTER_LEVEL && CURRENT_FILTER_LEVEL !== 'ALL') {
-            return true;
-    }
-    
-    // Se a fonte está na lista de filtros e não é um erro ou aviso, filtrar
-    if (FILTERED_SOURCES.some(filteredSource => source.includes(filteredSource)) && 
-        level !== 'ERROR' && level !== 'WARN') {
-        return true;
-    }
-    
-    // Verificar se a mensagem contém algum dos padrões a serem filtrados
-    // Somente filtrar se não for ERRO ou AVISO
-    if (level !== 'ERROR' && level !== 'WARN') {
-        return FILTERED_MESSAGE_PATTERNS.some(pattern => 
-            message.toLowerCase().includes(pattern.toLowerCase())
-        );
-    }
-    
+    // Nunca filtrar mensagens - queremos ver todos os logs sem exceção
     return false;
 };
 
 // ================== FUNÇÃO GLOBAL DE LOGGING ==================
-// Definir a função global logToSystem que pode ser acessada por qualquer script
-window.logToSystem = function(message, level = 'INFO', source = 'system') {
-    // Verificar e normalizar o nível de log
-    const normalizedLevel = (level && typeof level === 'string') ? level.toUpperCase() : 'INFO';
-    
-    // Verificar se temos uma fonte válida
-    const normalizedSource = source || 'system';
-    
-    // Verificar se a mensagem deve ser filtrada
-    if (shouldFilterMessage(message, normalizedLevel, normalizedSource)) {
-        // Não registrar logs filtrados no sistema, apenas exibir no console quando for DEBUG
-        if (window.DEBUG_LOGS) {
-            console.log(`[${normalizedLevel}][${normalizedSource}] ${message} [FILTRADO]`);
-        }
-        return true;
-    }
-    
-    // Log no console para debugging
-    console.log(`[${normalizedLevel}][${normalizedSource}] ${message}`);
-    
-    // Tentar adicionar diretamente se estamos na página de logs
-    if (window.IS_LOG_PAGE && typeof sysAddLog === 'function') {
-        try {
-            sysAddLog(message, normalizedLevel, normalizedSource).catch(e => 
-                console.error('[logToSystem] Erro ao adicionar log diretamente:', e)
-            );
-            return true;
-        } catch (error) {
-            console.error('[logToSystem] Erro ao adicionar log diretamente:', error);
-        }
-    }
-    
-    // Enviar para o sistema de logs via mensagens do Chrome
-    try {
-        // Enviar mensagem sem esperar resposta (sem callback)
-        chrome.runtime.sendMessage({
-            action: 'logMessage',
-            message,
-            level: normalizedLevel,
-            source: normalizedSource
-        });
-        
-        // Para debug, mas não mostrar erros
-        if (window.DEBUG_LOGS) {
-            console.log('[logToSystem] Mensagem enviada');
-        }
-    } catch (error) {
-        console.error('[logToSystem] Erro ao enviar log:', error);
-    }
-    
-    return true;
-};
 
-// Helper para verificar se o contexto da extensão é válido
-const isExtensionContextValid = () => {
+/**
+ * Função global para enviar logs para o sistema
+ * @param {string} message Mensagem para registrar
+ * @param {string} level Nível do log: INFO, DEBUG, ERROR, WARNING, SUCCESS
+ * @param {string} source Origem do log: SYSTEM, ANALYTICS, UI, API, etc
+ */
+function logToSystem(message, level = 'INFO', source = 'SYSTEM') {
+    // Normalizar nível e fonte
+    const logLevel = level.toUpperCase();
+    const logSource = source.toUpperCase();
+    
+    // Log no console sempre para depuração
+    console.log(`[${logLevel}][${logSource}] ${message}`);
+    
     try {
-        return typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id;
+        // Se estamos na página de logs, adicionar diretamente
+        if (window.location.href.includes('logs.html')) {
+            try {
+                addLogEntry(message, logLevel, logSource);
+            } catch (error) {
+                console.error('Erro ao adicionar log na página:', error);
+            }
+            return;
+        }
+
+        // Verificar contexto da extensão e enviar para o background
+        if (isExtensionContextValid()) {
+            try {
+                chrome.runtime.sendMessage({
+                    action: 'addLog',
+                    logMessage: message,
+                    logLevel: logLevel,
+                    logSource: logSource
+                }, response => {
+                    if (chrome.runtime.lastError) {
+                        const errorMsg = chrome.runtime.lastError.message || 'Erro desconhecido';
+                        // Ignorar o erro específico de message port closed
+                        if (errorMsg.includes('message port closed') || 
+                            errorMsg.includes('port closed') || 
+                            errorMsg.includes('Receiving end does not exist')) {
+                            // Silenciar este erro específico, é esperado em alguns cenários
+                            return;
+                        }
+                        console.error(`Erro ao enviar log: ${errorMsg}`);
+                    }
+                });
+            } catch (error) {
+                const errorMsg = error.message || error.toString() || 'Erro desconhecido';
+                console.error(`Erro ao enviar log para o background: ${errorMsg}`);
+            }
+        } else {
+            console.warn('Contexto de extensão inválido, log não enviado para background:', message);
+        }
     } catch (e) {
-        return false;
+        console.error('Erro geral ao processar log:', e);
     }
-};
+}
+
+// Função para verificar se o contexto da extensão é válido
+function isExtensionContextValid() {
+    return typeof chrome !== 'undefined' && 
+           chrome.runtime && 
+           chrome.runtime.id;
+}
 
 // ================== SISTEMA DE LOGS ==================
 const LogSystem = {
@@ -186,9 +174,6 @@ const LogSystem = {
             
             // Atualizar a UI agora que temos os logs
             this.updateUI();
-            
-            // Tentar sincronizar logs pendentes
-            this.syncPendingLogs();
         }).catch(error => {
             console.error('[LogSystem] Erro ao inicializar sistema de logs:', error);
             this.initialized = true; // Inicializar mesmo com erro
@@ -215,7 +200,9 @@ const LogSystem = {
             return new Promise((resolve, reject) => {
                 chrome.storage.local.get(['systemLogs'], (result) => {
                     if (chrome.runtime.lastError) {
-                        reject(chrome.runtime.lastError);
+                        const errorMsg = chrome.runtime.lastError.message || 'Erro desconhecido';
+                        console.error(`[LogSystem] Erro ao carregar logs do storage: ${errorMsg}`);
+                        reject(new Error(errorMsg));
                         return;
                     }
                     
@@ -258,40 +245,9 @@ const LogSystem = {
         }
     },
     
-    // Sincronizar logs armazenados no localStorage
-    syncPendingLogs() {
-        try {
-            // Verificar se há logs pendentes no localStorage
-            const pendingLogs = JSON.parse(localStorage.getItem('pendingLogs') || '[]');
-            
-            if (pendingLogs.length > 0) {
-                console.log(`LogSystem: Encontrados ${pendingLogs.length} logs pendentes para sincronização`);
-                
-                // Adicionar no máximo 50 logs pendentes por vez para não sobrecarregar
-                const logsToSync = pendingLogs.slice(0, 50);
-                const remainingLogs = pendingLogs.slice(50);
-                
-                // Adicionar cada log
-                logsToSync.forEach(log => {
-                    this.addLog(log.message, log.level, log.source);
-                });
-                
-                // Atualizar localStorage se ainda houver logs pendentes
-                if (remainingLogs.length > 0) {
-                    localStorage.setItem('pendingLogs', JSON.stringify(remainingLogs));
-                    console.log(`LogSystem: ${logsToSync.length} logs sincronizados, ${remainingLogs.length} pendentes`);
-                } else {
-                    localStorage.removeItem('pendingLogs');
-                    console.log('LogSystem: Todos os logs pendentes foram sincronizados');
-                }
-            }
-        } catch (error) {
-            console.error('LogSystem: Erro ao sincronizar logs pendentes:', error);
-        }
-    },
-    
     shouldFilterMessage(message) {
-        return this.filteredPhrases.some(phrase => message.toLowerCase().includes(phrase.toLowerCase()));
+        // Nunca filtrar mensagens - queremos ver todos os logs
+        return false;
     },
     
     formatTimestamp(date = new Date()) {
@@ -326,29 +282,12 @@ const LogSystem = {
     },
     
     addLog(message, level = 'INFO', source = 'system') {
-        // Não processar se a mensagem deve ser filtrada
-        if (this.shouldFilterMessage(message)) {
-            console.log(`[${level}][${source}] ${message} (filtrado)`);
-            return;
-        }
+        // Nunca filtrar mensagens, removido o filtro shouldFilterMessage
         
         // Criar timestamp atual
         const now = new Date();
         
-        // Verificar se a mensagem é uma duplicação recente (últimos 3 segundos)
-        const isDuplicate = this.logs.some(log => {
-            return (
-                log.raw === message && 
-                log.source === source && 
-                log.level === level.toUpperCase() &&
-                (now - log.timestamp) < 3000 // 3 segundos
-            );
-        });
-        
-        if (isDuplicate) {
-            console.log(`[${level}][${source}] ${message} (duplicado, ignorado)`);
-            return;
-        }
+        // Removido o filtro de mensagens duplicadas para garantir que todas as mensagens sejam registradas
         
         // Formatar a mensagem com o timestamp atual
         const formattedLog = this.formatLog(message, level, source, now);
@@ -382,15 +321,25 @@ const LogSystem = {
                 chrome.runtime.sendMessage({
                     action: 'ADD_LOG',
                     log: formattedLog,
-                    level: level
+                    level: level,
+                    source: source
                 }, response => {
-                    // Silenciar erros do callback
+                    // Tratar erros do callback adequadamente
                     if (chrome.runtime.lastError) {
-                        console.log(`[LogSystem] Aviso: ${chrome.runtime.lastError.message}`);
+                        const errorMsg = chrome.runtime.lastError.message || 'Erro desconhecido';
+                        // Ignorar o erro específico de message port closed
+                        if (errorMsg.includes('message port closed') || 
+                            errorMsg.includes('port closed') || 
+                            errorMsg.includes('Receiving end does not exist')) {
+                            // Silenciar este erro específico, é esperado em alguns cenários
+                            return;
+                        }
+                        console.log(`[LogSystem] Aviso ao enviar log: ${errorMsg}`);
                     }
                 });
             } catch (error) {
-                console.log(`[LogSystem] Não foi possível enviar log para o background: ${error.message}`);
+                const errorMsg = error.message || error.toString() || 'Erro desconhecido';
+                console.log(`[LogSystem] Não foi possível enviar log para o background: ${errorMsg}`);
             }
         }
         
@@ -415,7 +364,8 @@ const LogSystem = {
             // Obter logs existentes do storage
             chrome.storage.local.get(['systemLogs'], (result) => {
                 if (chrome.runtime.lastError) {
-                    console.error('[LogSystem] Erro ao acessar storage:', chrome.runtime.lastError);
+                    const errorMsg = chrome.runtime.lastError.message || 'Erro desconhecido';
+                    console.error(`[LogSystem] Erro ao acessar storage: ${errorMsg}`);
                     return;
                 }
                 
@@ -441,7 +391,8 @@ const LogSystem = {
                 // Salvar logs atualizados
                 chrome.storage.local.set({ systemLogs: storedLogs }, () => {
                     if (chrome.runtime.lastError) {
-                        console.error('[LogSystem] Erro ao salvar logs:', chrome.runtime.lastError);
+                        const errorMsg = chrome.runtime.lastError.message || 'Erro desconhecido';
+                        console.error(`[LogSystem] Erro ao salvar logs: ${errorMsg}`);
                     }
                 });
             });
@@ -488,14 +439,16 @@ const LogSystem = {
             if (isExtensionContextValid() && chrome.storage && chrome.storage.local) {
                 chrome.storage.local.remove(['systemLogs'], () => {
                     if (chrome.runtime.lastError) {
-                        console.error('[LogSystem] Erro ao limpar logs do storage:', chrome.runtime.lastError);
+                        const errorMsg = chrome.runtime.lastError.message || 'Erro desconhecido';
+                        console.error(`[LogSystem] Erro ao limpar logs do storage: ${errorMsg}`);
                     } else {
                         console.log('[LogSystem] Logs limpos do storage com sucesso');
                     }
                 });
-        }
-    } catch (error) {
-            console.error('[LogSystem] Erro ao limpar logs do storage:', error);
+            }
+        } catch (error) {
+            const errorMsg = error.message || error.toString() || 'Erro desconhecido';
+            console.error(`[LogSystem] Erro ao limpar logs do storage: ${errorMsg}`);
         }
         
         this.updateUI();
@@ -581,11 +534,6 @@ const sysAddLog = async (message, level = 'INFO', source = 'SYSTEM') => {
     const logLevel = level ? (LOG_LEVELS[level] || LOG_LEVELS.INFO) : LOG_LEVELS.INFO;
     const logSource = source || 'SYSTEM';
     
-    // Verificar se a mensagem deve ser filtrada
-    if (shouldFilterMessage(message, level, logSource)) {
-        return false;
-    }
-    
     try {
         // Criar o timestamp
         const now = new Date();
@@ -613,35 +561,27 @@ const sysAddLog = async (message, level = 'INFO', source = 'SYSTEM') => {
         };
         
         // Salvar no storage
-        const result = await chrome.storage.local.get(['systemLogs']);
-        let logs = result.systemLogs || [];
-        
-        // Limitar o número de logs armazenados
-        const MAX_LOGS = 1000; // Limitar a 1000 logs
-        if (logs.length >= MAX_LOGS) {
-            logs = logs.slice(-MAX_LOGS + 1); // Manter os logs mais recentes
+        if (isExtensionContextValid()) {
+            try {
+                chrome.storage.local.get(['systemLogs'], (result) => {
+                    let logs = result.systemLogs || [];
+                    
+                    // Limitar o número de logs armazenados
+                    const MAX_LOGS = 500; // Limitar a 500 logs
+                    if (logs.length >= MAX_LOGS) {
+                        logs = logs.slice(-MAX_LOGS + 1); // Manter os logs mais recentes
+                    }
+                    
+                    logs.push(logEntry);
+                    chrome.storage.local.set({ systemLogs: logs });
+                });
+            } catch (storageError) {
+                console.error('[log-sys] Erro ao salvar log no storage:', storageError);
+            }
         }
-        
-        logs.push(logEntry);
-        await chrome.storage.local.set({ systemLogs: logs });
         
         // Se estamos na página de logs, adicionar o log à UI
         if (window.IS_LOG_PAGE && sysUI.logContainer) {
-            // Verificar se o elemento existe
-            if (!sysUI.logContainer) {
-                console.error('Container de logs não encontrado');
-                return false;
-            }
-            
-            // Verificar filtro de nível, se disponível
-            if (sysUI.levelFilter) {
-                const selectedLevel = sysUI.levelFilter.value;
-                if (selectedLevel !== 'ALL' && level !== selectedLevel) {
-                    // Não mostrar este log se estiver filtrado
-                    return true;
-                }
-            }
-            
             // Criar elemento de log
             const logElement = document.createElement('div');
             logElement.className = `log-entry ${logLevel.className}`;
@@ -750,11 +690,6 @@ const closeLogs = () => {
     console.log('[LogSystem] Tentando fechar a página de logs...');
     
     try {
-        // Adicionar um log usando o novo sistema
-        if (window.LogSystem) {
-            window.LogSystem.addLog('Fechando página de logs', 'INFO', 'LogSystem');
-        }
-        
         // Método 1: Tentar acessar diretamente o navigationManager
         if (window.parent && window.parent.navigationManager) {
             console.log('[LogSystem] Chamando navigationManager.closePage()');
@@ -798,16 +733,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'logMessage') {
         const { message, level, source } = request;
         
-        // Verificar se a mensagem deve ser filtrada
-        if (shouldFilterMessage(message, level, source)) {
-            // Responder sucesso, mas não salvar o log
-            try {
-                sendResponse({ success: true, filtered: true });
-            } catch (e) {
-                // Ignora erros de porta fechada
-            }
-            return true;
-        }
+        // Nunca filtrar mensagens - queremos ver todos os logs
+        // if (shouldFilterMessage(message, level, source)) {
+        //     // Responder sucesso, mas não salvar o log
+        //     try {
+        //         sendResponse({ success: true, filtered: true });
+        //     } catch (e) {
+        //         // Ignora erros de porta fechada
+        //     }
+        //     return true;
+        // }
         
         // Salvar log de forma assíncrona sem preocupação com resposta
         (async () => {
@@ -844,14 +779,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 try {
                     sendResponse({ success: true });
                 } catch (e) {
-                    // Ignora erros de porta fechada
+                    // Ignora erros de porta fechada - é normal que ocorram quando o remetente não está mais esperando resposta
+                    // Apenas registra para debug se não for um erro de porta fechada
+                    if (!e.message?.includes("message port closed") && 
+                        !e.message?.includes("port closed") && 
+                        !e.message?.includes("Receiving end does not exist")) {
+                        console.debug(`[LogSystem] Erro ao enviar resposta de erro: ${e.message}`);
+                    }
                 }
             } catch (error) {
-                console.error('[LogSystem] Erro ao processar log:', error);
+                const errorMsg = error.message || error.toString() || 'Erro desconhecido';
+                console.error(`[LogSystem] Erro ao processar log: ${errorMsg}`);
                 try {
-                    sendResponse({ success: false, error: error.message });
+                    sendResponse({ success: false, error: errorMsg });
                 } catch (e) {
-                    // Ignora erros de porta fechada
+                    // Ignora erros de porta fechada - é normal que ocorram quando o remetente não está mais esperando resposta
+                    // Apenas registra para debug se não for um erro de porta fechada
+                    if (!e.message?.includes("message port closed") && 
+                        !e.message?.includes("port closed") && 
+                        !e.message?.includes("Receiving end does not exist")) {
+                        console.debug(`[LogSystem] Erro ao enviar resposta de erro: ${e.message}`);
+                    }
                 }
             }
         })();
@@ -862,19 +810,40 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     
     // Processa o pedido de adição de log explícito
     if (request.action === 'addLog') {
-        // Verificar se a mensagem deve ser filtrada
-        if (shouldFilterMessage(request.message, request.level, request.source)) {
-            sendResponse({ success: true, filtered: true });
-            return true;
-        }
+        // Nunca filtrar mensagens - queremos ver todos os logs
+        // if (shouldFilterMessage(request.message, request.level, request.source)) {
+        //    sendResponse({ success: true, filtered: true });
+        //    return true;
+        // }
         
         (async () => {
             try {
                 const logEntry = await sysAddLog(request.message, request.level, request.source);
-                sendResponse({ success: true, logEntry });
+                
+                try {
+                    sendResponse({ success: true, logEntry });
+                } catch (e) {
+                    // Ignora erros de porta fechada - é normal que ocorram quando o remetente não está mais esperando resposta
+                    if (!e.message?.includes("message port closed") && 
+                        !e.message?.includes("port closed") && 
+                        !e.message?.includes("Receiving end does not exist")) {
+                        console.debug(`[LogSystem] Erro ao enviar resposta para addLog: ${e.message}`);
+                    }
+                }
             } catch (error) {
-                console.error('[LogSystem] Erro ao adicionar log:', error);
-                sendResponse({ success: false, error: error.message });
+                const errorMsg = error.message || error.toString() || 'Erro desconhecido';
+                console.error(`[LogSystem] Erro ao adicionar log: ${errorMsg}`);
+                
+                try {
+                    sendResponse({ success: false, error: errorMsg });
+                } catch (e) {
+                    // Ignora erros de porta fechada - é normal que ocorram quando o remetente não está mais esperando resposta
+                    if (!e.message?.includes("message port closed") && 
+                        !e.message?.includes("port closed") && 
+                        !e.message?.includes("Receiving end does not exist")) {
+                        console.debug(`[LogSystem] Erro ao enviar resposta de erro para addLog: ${e.message}`);
+                    }
+                }
             }
         })();
         
@@ -894,17 +863,6 @@ const initLogUI = () => {
     sysUI.closeBtn = document.getElementById('close-logs');
     sysUI.logContainer = document.getElementById('log-container');
     sysUI.levelFilter = document.getElementById('log-level-filter');
-    sysUI.version = document.getElementById('version');
-    
-    // Exibir versão se disponível
-    if (sysUI.version) {
-        try {
-            const manifest = chrome.runtime.getManifest();
-            sysUI.version.textContent = manifest.version;
-        } catch (error) {
-            console.error('Erro ao obter versão:', error);
-        }
-    }
     
     console.log('[log-sys.js] UI da página de logs inicializada');
     
@@ -924,7 +882,6 @@ document.addEventListener('DOMContentLoaded', () => {
         sysUI.closeBtn = document.getElementById('close-logs');
         sysUI.logContainer = document.getElementById('log-container');
         sysUI.levelFilter = document.getElementById('log-level-filter');
-        sysUI.version = document.getElementById('version');
         
         // Verificar elementos obrigatórios
         if (!sysUI.logContainer) {
@@ -959,17 +916,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
         
-        // Exibir versão
-        if (sysUI.version && chrome.runtime) {
-            try {
-                const manifestData = chrome.runtime.getManifest();
-                sysUI.version.textContent = manifestData.version || 'N/A';
-            } catch (error) {
-                console.error('Erro ao obter versão:', error);
-                sysUI.version.textContent = 'N/A';
-            }
-        }
-        
         // Registrar log de inicialização usando o novo sistema
         if (window.LogSystem) {
             window.LogSystem.addLog('Página de logs inicializada', 'INFO', 'log-sys.js');
@@ -994,4 +940,86 @@ window.addLog = (message, level, source) => {
     } else {
         console.log(`[${level}][${source}] ${message} (LogSystem não inicializado)`);
     }
-}; 
+};
+
+/**
+ * Adiciona uma nova entrada de log na interface
+ * @param {string} message Mensagem do log
+ * @param {string} level Nível do log
+ * @param {string} source Origem do log
+ */
+function addLogEntry(message, level, source) {
+    if (!message) return;
+
+    try {
+        // Verificar se temos os elementos necessários
+        const logContainer = document.getElementById('log-container');
+        if (!logContainer) {
+            console.error('Container de logs não encontrado');
+            return;
+        }
+
+        // Criar a entrada de log
+        const logEntry = document.createElement('div');
+        logEntry.className = `log-entry log-${level.toLowerCase()}`;
+        logEntry.setAttribute('data-source', source);
+        logEntry.setAttribute('data-level', level);
+
+        // Timestamp
+        const timestamp = new Date().toLocaleTimeString();
+        
+        // Montar a entrada de log com todos os dados
+        logEntry.innerHTML = `
+            <span class="log-time">${timestamp}</span>
+            <span class="log-level ${level.toLowerCase()}">${level}</span>
+            <span class="log-source">${source}</span>
+            <span class="log-message">${message}</span>
+        `;
+        
+        // Adicionar a entrada ao container
+        logContainer.appendChild(logEntry);
+        logContainer.scrollTop = logContainer.scrollHeight;
+        
+        // Atualizar os contadores
+        updateLogCounters();
+    } catch (error) {
+        console.error('Erro ao adicionar entrada de log:', error);
+    }
+}
+
+/**
+ * Atualiza a exibição dos logs com base nos filtros
+ */
+function updateLogFilters() {
+    const selectedSource = document.getElementById('filter-source').value;
+    const selectedLevel = document.getElementById('filter-level').value;
+    const searchText = document.getElementById('filter-text').value.toLowerCase();
+    
+    document.querySelectorAll('.log-entry').forEach(entry => {
+        const entrySource = entry.getAttribute('data-source');
+        const entryLevel = entry.getAttribute('data-level');
+        const entryText = entry.querySelector('.log-message').textContent.toLowerCase();
+        
+        let shouldShow = true;
+        
+        // Filtrar por fonte se não for "Todos"
+        if (selectedSource !== 'ALL' && entrySource !== selectedSource) {
+            shouldShow = false;
+        }
+        
+        // Filtrar por nível se não for "Todos"
+        if (selectedLevel !== 'ALL' && entryLevel !== selectedLevel) {
+            shouldShow = false;
+        }
+        
+        // Filtrar por texto
+        if (searchText && !entryText.includes(searchText)) {
+            shouldShow = false;
+        }
+        
+        entry.style.display = shouldShow ? 'flex' : 'none';
+    });
+    
+    // Atualizar os contadores
+    updateLogCounters();
+} 
