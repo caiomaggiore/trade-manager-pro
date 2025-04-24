@@ -1,32 +1,56 @@
 // =============================================
 // Configurações Globais
 // =============================================
-console.log('AnalyzeGraph: Iniciando carregamento...');
+logFromAnalyzer('AnalyzeGraph: Iniciando carregamento...', 'INFO');
 
 // Removendo as constantes duplicadas e usando as do index.js
 
 // =============================================
 // Funções de Log
 // =============================================
-const sendLog = (message) => {
+/**
+ * Função centralizada para adicionar logs
+ * @param {string} message - Mensagem a ser registrada
+ * @param {string} level - Nível do log: 'INFO', 'WARN', 'ERROR', 'SUCCESS' ou 'DEBUG'
+ * @param {string} source - Origem do log (padrão: 'analyze-graph.js')
+ */
+function graphAddLog(message, level = 'INFO', source = 'analyze-graph.js') {
+    // Verificar se temos a função global do sistema de logs
+    if (typeof window.logToSystem === 'function') {
+        window.logToSystem(message, level, source);
+        return;
+    }
+    
+    // Método alternativo (fallback) caso a função global não esteja disponível
     try {
+        logFromAnalyzer(`[${level}][${source}] ${message}`, level);
+    } catch (error) {
+        logFromAnalyzer(`Erro ao registrar log: ${error.message}`, 'ERROR');
+    }
+}
+
+/**
+ * Atualiza o status na interface
+ * @param {string} message - Mensagem de status
+ * @param {string} type - Tipo de status: 'info', 'success', 'warning', 'error'
+ * @param {number} duration - Duração em ms (0 para não desaparecer)
+ */
+function graphUpdateStatus(message, type = 'info', duration = 3000) {
+    // Log a mensagem de status
+    graphAddLog(message, type.toUpperCase(), 'STATUS');
+    
+    try {
+        // Enviar para o background para atualizar a UI
         chrome.runtime.sendMessage({ 
-            action: 'ADD_LOG', 
-            log: `[ANALISE] ${message}` 
+            action: 'UPDATE_STATUS',
+            message,
+            type,
+            duration
         });
     } catch (error) {
-        console.error('Erro ao enviar log:', error);
+        logFromAnalyzer(`Erro ao atualizar status: ${error.message}`, 'ERROR');
     }
-};
-
-const sendStatus = (message, type = 'info', duration = 3000) => {
-    chrome.runtime.sendMessage({ 
-        action: 'UPDATE_STATUS',
-        message,
-        type,
-        duration
-    });
-};
+}
 
 // =============================================
 // Funções de Análise
@@ -80,12 +104,15 @@ const generateSimplePrompt = (availablePeriods, userTradeTime) => {
 2. Identifique pontos de suporte e resistência
 3. ${periodInstruction}
 4. Concentre-se em oportunidades imediatas, priorizando sinais de compra ou venda
+5. Seja direto e preciso na sua análise
 
 Responda STRICT JSON:
 {
   "action": "BUY/SELL/WAIT",
-  "reason": "Explicação simples.",
+  "reason": "Explicação simples e direta da sua decisão.",
   "trust": "Número de 0-100 indicando confiança",
+  "period": 5,
+  "entry": "Valor aproximado de entrada",
   "expiration": "Tempo em minutos (1 - 15)"
 }`;
 };
@@ -140,7 +167,7 @@ const validateAndProcessResponse = (rawText) => {
  */
 const processAnalysis = async (imageData, settings) => {
     try {
-        sendLog('Iniciando análise...');
+        graphAddLog('Iniciando análise...', 'INFO');
         
         // Montar payload para análise
         const payload = {
@@ -184,7 +211,7 @@ const processAnalysis = async (imageData, settings) => {
 
         const result = JSON.parse(jsonMatch[0]);
         
-        sendLog(`Análise concluída: ${result.action} (${result.trust}% de confiança)`, 'success');
+        graphAddLog(`Análise concluída: ${result.action} (${result.trust}% de confiança)`, 'success');
         
         return {
             success: true,
@@ -192,8 +219,8 @@ const processAnalysis = async (imageData, settings) => {
         };
 
     } catch (error) {
-        console.error('Erro na análise:', error);
-        sendLog(`Erro na análise: ${error.message}`);
+        logFromAnalyzer('Erro na análise:', 'ERROR');
+        logFromAnalyzer(`Erro na análise: ${error.message}`, 'ERROR');
         return {
             success: false,
             error: error.message
@@ -217,7 +244,7 @@ async function getSystemConfig() {
             });
         }
     } catch (error) {
-        console.error('Erro ao obter configurações:', error);
+        logFromAnalyzer('Erro ao obter configurações:', 'ERROR');
         return {};
     }
 }
@@ -230,7 +257,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         processAnalysis(request.imageData, request.settings)
             .then(sendResponse)
             .catch(error => {
-                console.error('Erro no processamento:', error);
+                logFromAnalyzer('Erro no processamento:', 'ERROR');
                 sendResponse({
                     success: false,
                     error: error.message
@@ -245,8 +272,8 @@ window.TradeManager = window.TradeManager || {};
 window.TradeManager.AnalyzeGraph = {
     processImage: async (imageData) => {
         try {
-            console.log('AnalyzeGraph: processImage chamado');
-            sendLog('Processando imagem para análise...');
+            logFromAnalyzer('AnalyzeGraph: processImage chamado', 'INFO');
+            graphAddLog('Processando imagem para análise...', 'INFO');
             
             // Obter configurações do sistema
             const config = await getSystemConfig();
@@ -254,7 +281,7 @@ window.TradeManager.AnalyzeGraph = {
             const isTestMode = config.testMode || false;
             
             if (isTestMode) {
-                sendLog('Modo teste de análise ativado - usando prompt simplificado');
+                graphAddLog('Modo teste de análise ativado - usando prompt simplificado', 'INFO');
             }
             
             // Montar payload para análise
@@ -272,7 +299,7 @@ window.TradeManager.AnalyzeGraph = {
                 }]
             };
 
-            console.log('AnalyzeGraph: Enviando para API...');
+            logFromAnalyzer('AnalyzeGraph: Enviando para API...', 'INFO');
             // Enviar para API usando a URL do index.js
             const response = await fetch(window.API_URL, {
                 method: 'POST',
@@ -293,7 +320,7 @@ window.TradeManager.AnalyzeGraph = {
             // Adicionar flag de modo teste ao resultado
             result.isTestMode = isTestMode;
             
-            sendLog(`Análise concluída: ${result.action} (${result.trust}% de confiança)`);
+            graphAddLog(`Análise concluída: ${result.action} (${result.trust}% de confiança)`, 'success');
             
             return {
                 success: true,
@@ -301,8 +328,8 @@ window.TradeManager.AnalyzeGraph = {
             };
 
         } catch (error) {
-            console.error('AnalyzeGraph: Erro na análise:', error);
-            sendLog(`Erro na análise: ${error.message}`);
+            logFromAnalyzer('AnalyzeGraph: Erro na análise:', 'ERROR');
+            logFromAnalyzer(`Erro na análise: ${error.message}`, 'ERROR');
             return {
                 success: false,
                 error: error.message
@@ -311,4 +338,28 @@ window.TradeManager.AnalyzeGraph = {
     }
 };
 
-console.log('AnalyzeGraph: Carregamento concluído');
+logFromAnalyzer('AnalyzeGraph: Carregamento concluído', 'INFO');
+
+// Função para logging unificada com o sistema central
+function logFromAnalyzer(message, level = 'INFO') {
+    // Verificar se a função global de log está disponível
+    if (typeof window.logToSystem === 'function') {
+        window.logToSystem(message, level, 'analyze-graph.js');
+        return;
+    }
+    
+    // Fallback: método original quando logToSystem não está disponível
+    console.log(`[${level}][analyze-graph.js] ${message}`);
+    
+    // Enviar para o sistema centralizado via mensagem
+    try {
+        chrome.runtime.sendMessage({
+            action: 'logMessage',
+            message: message,
+            level: level,
+            source: 'analyze-graph.js'
+        });
+    } catch (error) {
+        console.error('[analyze-graph.js] Erro ao enviar log:', error);
+    }
+}

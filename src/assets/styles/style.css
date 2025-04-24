@@ -374,11 +374,13 @@ select:disabled {
 
 /* ================== STATUS PROCESSO ================== */
 .status-processo {
-    padding: 3px 15px;
+    padding: 8px 15px;
     margin: 5px 10px;
     font-size: 0.9em;
     border-radius: 6px;
     opacity: 0;
+    display: flex;
+    justify-content: center;
     align-items: center;
     gap: 8px;
     transform: translateY(-10px);
@@ -387,6 +389,8 @@ select:disabled {
     background: #f8f9fa;
     border: 1px solid #e0e0e0;
     color: #333;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .status-processo.visible {
@@ -411,6 +415,12 @@ select:disabled {
     color: #c0392b; 
     background: #fdedee; 
     border-color: #f5b7b1;
+}
+
+.status-processo.status-warning {
+    color: #d35400;
+    background: #fef2e7;
+    border-color: #f8c291;
 }
 
 .version-info {
@@ -908,4 +918,37 @@ input:checked + .slider:before {
     margin-top: 8px;
     margin-bottom: 0;
     font-size: 0.9em;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.modal-actions .btn {
+    flex: 1;
+    padding: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.modal-actions .btn:hover {
+    transform: translateY(-2px);
+    opacity: 0.9;
+}
+
+.modal-actions .btn.confirm-btn {
+    background: #2ecc71;
+    color: white;
+}
+
+.modal-actions .btn.secondary {
+    background: #e74c3c;
+    color: white;
 }

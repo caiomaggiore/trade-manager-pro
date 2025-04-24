@@ -64,7 +64,7 @@ const FILTERED_MESSAGE_PATTERNS = [
 const shouldFilterMessage = (message, level, source) => {
     // Se temos um filtro de nível específico e o nível não corresponde, filtrar
     if (CURRENT_FILTER_LEVEL && level !== CURRENT_FILTER_LEVEL && CURRENT_FILTER_LEVEL !== 'ALL') {
-        return true;
+            return true;
     }
     
     // Se a fonte está na lista de filtros e não é um erro ou aviso, filtrar
@@ -138,51 +138,439 @@ window.logToSystem = function(message, level = 'INFO', source = 'system') {
     return true;
 };
 
-// ================== SISTEMA DE LOGS ==================
-// Carregar logs do storage
-const sysLoadLogs = async () => {
+// Helper para verificar se o contexto da extensão é válido
+const isExtensionContextValid = () => {
     try {
-        const result = await chrome.storage.local.get(['systemLogs']);
-        const logs = result.systemLogs || [];
+        return typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id;
+    } catch (e) {
+        return false;
+    }
+};
+
+// ================== SISTEMA DE LOGS ==================
+const LogSystem = {
+    logs: [],
+    maxLogs: 500,
+    container: null,
+    initialized: false,
+    
+    // Mensagens que serão filtradas (não aparecem no log)
+    filteredPhrases: [
+        'Fechando página de configurações',
+        'Elemento status-processo não encontrado',
+        'configurações...',
+        'Página de logs inicializada'
+    ],
+    
+    init() {
+        console.log('[LogSystem] Inicializando sistema de logs...');
+        this.container = document.querySelector('.log-container');
         
-        if (logs.length === 0) {
-            console.log('[LogSystem] Nenhum log encontrado no storage');
-            if (sysUI.logContainer) {
-                sysUI.logContainer.innerHTML = '<div class="log-entry log-info">Nenhum log encontrado. Aguardando eventos...</div>';
+        // Para evitar inicializações duplicadas
+        if (this.initialized) {
+            console.log('[LogSystem] Sistema já inicializado, ignorando...');
+            return this;
+        }
+        
+        // Primeiro, carregar logs do storage
+        this.loadLogsFromStorage().then(() => {
+            // Marcar como inicializado somente após carregar os logs
+            this.initialized = true;
+            
+            // Adicionar log de inicialização somente uma vez
+            if (this.logs.length === 0) {
+                this.addLog('Sistema de logs inicializado', 'INFO', 'LogSystem');
+            } else {
+                console.log(`[LogSystem] ${this.logs.length} logs carregados do storage`);
             }
+            
+            // Atualizar a UI agora que temos os logs
+            this.updateUI();
+            
+            // Tentar sincronizar logs pendentes
+            this.syncPendingLogs();
+        }).catch(error => {
+            console.error('[LogSystem] Erro ao inicializar sistema de logs:', error);
+            this.initialized = true; // Inicializar mesmo com erro
+            this.addLog(`Erro ao carregar logs: ${error.message}`, 'ERROR', 'LogSystem');
+        });
+        
+        return this;
+    },
+    
+    // Carregar logs do storage
+    async loadLogsFromStorage() {
+        if (!isExtensionContextValid()) {
+            console.warn('[LogSystem] Contexto de extensão inválido, não é possível carregar logs do storage');
             return;
         }
         
-        console.log(`[LogSystem] ${logs.length} logs carregados do storage`);
-        
-        if (sysUI.logContainer) {
-            sysUI.logContainer.innerHTML = ''; // Limpa o container
+        try {
+            // Verificar se temos acesso ao storage
+            if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
+                throw new Error('API de storage não disponível');
+            }
             
-            // Adiciona cada log ao container
-            logs.forEach(log => {
-                // Verificar se o log deve ser exibido (não filtrado)
-                if (!shouldFilterMessage(log.message, log.level, log.source)) {
-                    const logEntry = document.createElement('div');
-                    logEntry.className = `log-entry ${(LOG_LEVELS[log.level] || LOG_LEVELS.INFO).className}`;
-                    logEntry.textContent = `[${log.timestamp}] ${(LOG_LEVELS[log.level] || LOG_LEVELS.INFO).prefix} [${log.source}] ${log.message}`;
+            // Carregar logs
+            return new Promise((resolve, reject) => {
+                chrome.storage.local.get(['systemLogs'], (result) => {
+                    if (chrome.runtime.lastError) {
+                        reject(chrome.runtime.lastError);
+                        return;
+                    }
                     
-                    // Armazena os dados para recuperação posterior
-                    logEntry.setAttribute('data-message', log.message);
-                    logEntry.setAttribute('data-level', log.level);
-                    logEntry.setAttribute('data-source', log.source);
-                    logEntry.setAttribute('data-timestamp', log.timestamp);
+                    const storedLogs = result.systemLogs || [];
                     
-                    sysUI.logContainer.appendChild(logEntry);
+                    if (storedLogs.length > 0) {
+                        console.log(`[LogSystem] Carregando ${storedLogs.length} logs do storage`);
+                        
+                        // Converter os logs armazenados para o formato interno
+                        this.logs = storedLogs.map(log => {
+                            // Criar um timestamp baseado na data armazenada ou usar a atual como fallback
+                            const logDate = log.date ? new Date(log.date) : new Date();
+                            
+                            return {
+                                raw: log.message,
+                                formatted: this.formatLog(log.message, log.level, log.source, logDate),
+                                level: log.level,
+                                source: log.source,
+                                timestamp: logDate
+                            };
+                        });
+                        
+                        // Ordenar logs cronologicamente
+                        this.logs.sort((a, b) => a.timestamp - b.timestamp);
+                        
+                        // Limitar ao número máximo de logs
+                        if (this.logs.length > this.maxLogs) {
+                            this.logs = this.logs.slice(-this.maxLogs);
+                        }
+                        
+                        console.log(`[LogSystem] ${this.logs.length} logs carregados e ordenados`);
+                    }
+                    
+                    resolve();
+                });
+            });
+        } catch (error) {
+            console.error('[LogSystem] Erro ao carregar logs:', error);
+            throw error;
+        }
+    },
+    
+    // Sincronizar logs armazenados no localStorage
+    syncPendingLogs() {
+        try {
+            // Verificar se há logs pendentes no localStorage
+            const pendingLogs = JSON.parse(localStorage.getItem('pendingLogs') || '[]');
+            
+            if (pendingLogs.length > 0) {
+                console.log(`LogSystem: Encontrados ${pendingLogs.length} logs pendentes para sincronização`);
+                
+                // Adicionar no máximo 50 logs pendentes por vez para não sobrecarregar
+                const logsToSync = pendingLogs.slice(0, 50);
+                const remainingLogs = pendingLogs.slice(50);
+                
+                // Adicionar cada log
+                logsToSync.forEach(log => {
+                    this.addLog(log.message, log.level, log.source);
+                });
+                
+                // Atualizar localStorage se ainda houver logs pendentes
+                if (remainingLogs.length > 0) {
+                    localStorage.setItem('pendingLogs', JSON.stringify(remainingLogs));
+                    console.log(`LogSystem: ${logsToSync.length} logs sincronizados, ${remainingLogs.length} pendentes`);
+                } else {
+                    localStorage.removeItem('pendingLogs');
+                    console.log('LogSystem: Todos os logs pendentes foram sincronizados');
                 }
+            }
+        } catch (error) {
+            console.error('LogSystem: Erro ao sincronizar logs pendentes:', error);
+        }
+    },
+    
+    shouldFilterMessage(message) {
+        return this.filteredPhrases.some(phrase => message.toLowerCase().includes(phrase.toLowerCase()));
+    },
+    
+    formatTimestamp(date = new Date()) {
+        const day = date.getDate().toString().padStart(2, '0');
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        const year = date.getFullYear();
+        const hours = date.getHours().toString().padStart(2, '0');
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        const seconds = date.getSeconds().toString().padStart(2, '0');
+        return `[${day}/${month}/${year}, ${hours}:${minutes}:${seconds}]`;
+    },
+    
+    formatLogLevel(level) {
+        switch(level.toUpperCase()) {
+            case 'INFO': return 'ℹ️ INFO';
+            case 'WARN': return '⚠️ AVISO';
+            case 'ERROR': return '❌ ERRO';
+            case 'SUCCESS': return '✅ SUCESSO';
+            case 'DEBUG': return '🔍 DEBUG';
+            default: return 'ℹ️ INFO';
+        }
+    },
+    
+    formatLog(message, level, source, timestamp = null) {
+        // Usar o timestamp fornecido ou gerar um novo
+        const formattedTimestamp = timestamp 
+            ? (typeof timestamp === 'string' ? timestamp : this.formatTimestamp(new Date(timestamp)))
+            : this.formatTimestamp();
+            
+        const formattedLevel = this.formatLogLevel(level);
+        return `${formattedTimestamp} ${formattedLevel} [${source}] ${message}`;
+    },
+    
+    addLog(message, level = 'INFO', source = 'system') {
+        // Não processar se a mensagem deve ser filtrada
+        if (this.shouldFilterMessage(message)) {
+            console.log(`[${level}][${source}] ${message} (filtrado)`);
+            return;
+        }
+        
+        // Criar timestamp atual
+        const now = new Date();
+        
+        // Verificar se a mensagem é uma duplicação recente (últimos 3 segundos)
+        const isDuplicate = this.logs.some(log => {
+            return (
+                log.raw === message && 
+                log.source === source && 
+                log.level === level.toUpperCase() &&
+                (now - log.timestamp) < 3000 // 3 segundos
+            );
+        });
+        
+        if (isDuplicate) {
+            console.log(`[${level}][${source}] ${message} (duplicado, ignorado)`);
+            return;
+        }
+        
+        // Formatar a mensagem com o timestamp atual
+        const formattedLog = this.formatLog(message, level, source, now);
+        
+        // Criar objeto de log
+        const logEntry = {
+            raw: message,
+            formatted: formattedLog,
+            level: level.toUpperCase(),
+            source,
+            timestamp: now
+        };
+        
+        // Adicionar ao array de logs
+        this.logs.push(logEntry);
+        
+        // Limitar o número de logs armazenados
+        if (this.logs.length > this.maxLogs) {
+            this.logs.shift();
+        }
+        
+        // Adicionar ao console para debugging
+        console.log(formattedLog);
+        
+        // Salvar no storage para persistência se possível
+        this.saveLogToStorage(message, level, source);
+        
+        // Enviar para o sistema de logs da extensão se possível
+        if (isExtensionContextValid()) {
+            try {
+                chrome.runtime.sendMessage({
+                    action: 'ADD_LOG',
+                    log: formattedLog,
+                    level: level
+                }, response => {
+                    // Silenciar erros do callback
+                    if (chrome.runtime.lastError) {
+                        console.log(`[LogSystem] Aviso: ${chrome.runtime.lastError.message}`);
+                    }
+                });
+            } catch (error) {
+                console.log(`[LogSystem] Não foi possível enviar log para o background: ${error.message}`);
+            }
+        }
+        
+        // Atualizar a UI se o container existir
+        this.updateUI();
+        
+        return formattedLog;
+    },
+    
+    // Salvar log no storage para persistência
+    saveLogToStorage(message, level, source) {
+        if (!isExtensionContextValid()) {
+            return false;
+        }
+        
+        try {
+            // Verificar se temos acesso ao storage
+            if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
+                return false;
+            }
+            
+            // Obter logs existentes do storage
+            chrome.storage.local.get(['systemLogs'], (result) => {
+                if (chrome.runtime.lastError) {
+                    console.error('[LogSystem] Erro ao acessar storage:', chrome.runtime.lastError);
+                    return;
+                }
+                
+                let storedLogs = result.systemLogs || [];
+                
+                // Criar timestamp atual
+                const now = new Date();
+                
+                // Adicionar novo log
+                storedLogs.push({
+                    message,
+                    level,
+                    source,
+                    date: now.toISOString(), // Formato ISO para fácil conversão
+                    timestamp: now.getTime() // Timestamp em milissegundos para ordenação
+                });
+                
+                // Limitar a quantidade de logs armazenados (manter os 1000 mais recentes)
+                if (storedLogs.length > 1000) {
+                    storedLogs = storedLogs.slice(-1000);
+                }
+                
+                // Salvar logs atualizados
+                chrome.storage.local.set({ systemLogs: storedLogs }, () => {
+                    if (chrome.runtime.lastError) {
+                        console.error('[LogSystem] Erro ao salvar logs:', chrome.runtime.lastError);
+                    }
+                });
             });
             
-            // Rolar para o final
-            sysUI.logContainer.scrollTop = sysUI.logContainer.scrollHeight;
+            return true;
+        } catch (error) {
+            console.error('[LogSystem] Erro ao salvar log no storage:', error);
+            return false;
+        }
+    },
+    
+    updateUI() {
+        if (!this.container) return;
+        
+        // Limpar o container
+        this.container.innerHTML = '';
+        
+        // Adicionar cada log ao container
+        this.logs.forEach(log => {
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${log.level.toLowerCase()}`;
+            logEntry.textContent = log.formatted;
+            this.container.appendChild(logEntry);
+        });
+        
+        // Rolar para o último log
+        this.container.scrollTop = this.container.scrollHeight;
+    },
+    
+    clearLogs() {
+        this.logs = [];
+        
+        // Adicionar log de limpeza
+        this.logs.push({
+            raw: 'Todos os logs foram limpos',
+            formatted: this.formatLog('Todos os logs foram limpos', 'INFO', 'LogSystem'),
+            level: 'INFO',
+            source: 'LogSystem',
+            timestamp: new Date()
+        });
+        
+        // Limpar no storage também
+        try {
+            if (isExtensionContextValid() && chrome.storage && chrome.storage.local) {
+                chrome.storage.local.remove(['systemLogs'], () => {
+                    if (chrome.runtime.lastError) {
+                        console.error('[LogSystem] Erro ao limpar logs do storage:', chrome.runtime.lastError);
+                    } else {
+                        console.log('[LogSystem] Logs limpos do storage com sucesso');
+                    }
+                });
         }
     } catch (error) {
-        console.error('Erro ao carregar logs:', error);
-        if (sysUI.logContainer) {
-            sysUI.logContainer.innerHTML = `<div class="log-entry log-error">Erro ao carregar logs: ${error.message}</div>`;
+            console.error('[LogSystem] Erro ao limpar logs do storage:', error);
+        }
+        
+        this.updateUI();
+    },
+    
+    filterByLevel(level) {
+        if (!this.container) return;
+        
+        // Se o nível for 'ALL', mostrar todos os logs
+        if (level === 'ALL') {
+            this.container.querySelectorAll('.log-entry').forEach(entry => {
+                entry.style.display = 'block';
+            });
+            return;
+        }
+        
+        // Caso contrário, filtrar por nível
+        this.container.querySelectorAll('.log-entry').forEach(entry => {
+            if (entry.classList.contains(`log-${level.toLowerCase()}`)) {
+                entry.style.display = 'block';
+            } else {
+                entry.style.display = 'none';
+            }
+        });
+    },
+    
+    getLogs() {
+        return this.logs;
+    },
+    
+    getFormattedLogs() {
+        return this.logs.map(log => log.formatted).join('\n');
+    },
+    
+    downloadLogs() {
+        const content = this.getFormattedLogs();
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `trade-manager-logs-${new Date().toISOString().slice(0, 10)}.txt`;
+        a.click();
+        
+        URL.revokeObjectURL(url);
+    },
+    
+    copyLogs() {
+        const content = this.getFormattedLogs();
+        
+        // Criar um elemento de textarea temporário
+        const textarea = document.createElement('textarea');
+        textarea.value = content;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        
+        try {
+            // Selecionar e copiar o texto
+            textarea.select();
+            const success = document.execCommand('copy');
+            
+            if (success) {
+                alert('Logs copiados para a área de transferência!');
+                return true;
+            } else {
+                throw new Error('Comando de copiar falhou');
+            }
+        } catch (err) {
+            console.error('Erro ao copiar logs:', err);
+            alert('Erro ao copiar logs: ' + err.message);
+            return false;
+        } finally {
+            // Remover o elemento temporário
+            document.body.removeChild(textarea);
         }
     }
 };
@@ -201,14 +589,27 @@ const sysAddLog = async (message, level = 'INFO', source = 'SYSTEM') => {
     try {
         // Criar o timestamp
         const now = new Date();
-        const timestamp = now.toLocaleDateString('pt-BR') + ', ' + now.toLocaleTimeString('pt-BR');
+        
+        // Formatar o timestamp de maneira consistente com LogSystem
+        const formatTimestamp = (date) => {
+            const day = date.getDate().toString().padStart(2, '0');
+            const month = (date.getMonth() + 1).toString().padStart(2, '0');
+            const year = date.getFullYear();
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            const seconds = date.getSeconds().toString().padStart(2, '0');
+            return `[${day}/${month}/${year}, ${hours}:${minutes}:${seconds}]`;
+        };
+        
+        const formattedTimestamp = formatTimestamp(now);
         
         // Objeto de log
         const logEntry = {
             message,
             level,
             source: logSource,
-            timestamp
+            date: now.toISOString(),
+            timestamp: now.getTime()
         };
         
         // Salvar no storage
@@ -244,13 +645,13 @@ const sysAddLog = async (message, level = 'INFO', source = 'SYSTEM') => {
             // Criar elemento de log
             const logElement = document.createElement('div');
             logElement.className = `log-entry ${logLevel.className}`;
-            logElement.textContent = `[${timestamp}] ${logLevel.prefix} [${logSource}] ${message}`;
+            logElement.textContent = `${formattedTimestamp} ${logLevel.prefix} [${logSource}] ${message}`;
             
             // Armazena os dados para recuperação posterior
             logElement.setAttribute('data-message', message);
             logElement.setAttribute('data-level', level);
             logElement.setAttribute('data-source', logSource);
-            logElement.setAttribute('data-timestamp', timestamp);
+            logElement.setAttribute('data-timestamp', now.getTime().toString());
             
             // Adicionar ao container
             sysUI.logContainer.appendChild(logElement);
@@ -346,41 +747,47 @@ const sysClearLogs = async () => {
 
 // Fechar página de logs
 const closeLogs = () => {
-    console.log('[log-sys.js] Botão de fechamento clicado!');
-    console.log('[log-sys.js] Referência do botão:', sysUI.closeBtn);
-    console.log('[log-sys.js] Tentando fechar a página de logs...');
+    console.log('[LogSystem] Tentando fechar a página de logs...');
     
     try {
+        // Adicionar um log usando o novo sistema
+        if (window.LogSystem) {
+            window.LogSystem.addLog('Fechando página de logs', 'INFO', 'LogSystem');
+        }
+        
         // Método 1: Tentar acessar diretamente o navigationManager
         if (window.parent && window.parent.navigationManager) {
-            console.log('[log-sys.js] Chamando diretamente navigationManager.closePage()');
+            console.log('[LogSystem] Chamando navigationManager.closePage()');
             window.parent.navigationManager.closePage();
             return;
         }
         
-        // Método 2: Tentar acessar via window.Navigation
-        if (window.parent && window.parent.Navigation) {
-            console.log('[log-sys.js] Chamando window.parent.Navigation.closePage()');
-            window.parent.Navigation.closePage();
-            return;
+        // Método 2: Tentar fechar usando window.close()
+        console.log('[LogSystem] Tentando window.close()');
+        window.close();
+        
+        // Método 3: Usar postMessage para comunicar com o frame pai
+        console.log('[LogSystem] Enviando mensagem postMessage para fechar');
+        if (window.parent) {
+            window.parent.postMessage({ action: 'closePage' }, '*');
         }
         
-        // Método 3: Usar postMessage como fallback
-        console.log('[log-sys.js] Enviando mensagem closePage para parent...');
-        window.parent.postMessage({ action: 'closePage' }, '*');
-        console.log('[log-sys.js] Mensagem enviada!');
-    } catch (error) {
-        console.error('[log-sys.js] Erro ao tentar fechar página:', error);
-        // Último recurso: tentar fechar com método direto no DOM
-        try {
-            const container = window.frameElement.parentNode;
-            if (container && container.parentNode) {
-                console.log('[log-sys.js] Tentando remover container diretamente');
-                container.parentNode.removeChild(container);
-            }
-        } catch (e) {
-            console.error('[log-sys.js] Não foi possível remover o container:', e);
+        // Método 4: Tentar esconder o elemento iframe (fallback)
+        console.log('[LogSystem] Tentando esconder o elemento iframe');
+        if (window.frameElement) {
+            window.frameElement.style.display = 'none';
         }
+        
+        // Caso extremo: recarregar a página principal
+        console.log('[LogSystem] Última tentativa: voltando para a página principal');
+        if (window.parent) {
+            window.parent.location.href = 'index.html';
+        }
+    } catch (error) {
+        console.error('[LogSystem] Erro ao tentar fechar página:', error);
+        
+        // Último recurso: avisar o usuário
+        alert('Não foi possível fechar a página de logs automaticamente. Por favor, recarregue a página.');
     }
 };
 
@@ -511,8 +918,8 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('[LogSystem] Inicializando página de logs');
         
         // Atualizar referências de UI que podem não estar disponíveis no carregamento do script
-        sysUI.copyBtn = document.getElementById('copy-logs');
-        sysUI.saveBtn = document.getElementById('export-logs');
+        sysUI.copyBtn = document.getElementById('copy-logs') || document.getElementById('copy-log-btn');
+        sysUI.saveBtn = document.getElementById('export-logs') || document.getElementById('save-log-btn');
         sysUI.clearBtn = document.getElementById('clear-logs');
         sysUI.closeBtn = document.getElementById('close-logs');
         sysUI.logContainer = document.getElementById('log-container');
@@ -522,16 +929,18 @@ document.addEventListener('DOMContentLoaded', () => {
         // Verificar elementos obrigatórios
         if (!sysUI.logContainer) {
             console.error('Container de logs não encontrado');
-            return;
+        return;
+    }
+    
+        // Inicializar o novo sistema de logs em vez de carregar o sistema antigo
+        if (window.LogSystem) {
+            window.LogSystem.init();
         }
         
-        // Carregar logs
-        sysLoadLogs();
-        
         // Configurar eventos dos botões
-        if (sysUI.copyBtn) sysUI.copyBtn.addEventListener('click', sysCopyLogs);
-        if (sysUI.saveBtn) sysUI.saveBtn.addEventListener('click', sysSaveLogsToFile);
-        if (sysUI.clearBtn) sysUI.clearBtn.addEventListener('click', sysClearLogs);
+        if (sysUI.copyBtn) sysUI.copyBtn.addEventListener('click', () => window.LogSystem.copyLogs());
+        if (sysUI.saveBtn) sysUI.saveBtn.addEventListener('click', () => window.LogSystem.downloadLogs());
+        if (sysUI.clearBtn) sysUI.clearBtn.addEventListener('click', () => window.LogSystem.clearLogs());
         if (sysUI.closeBtn) sysUI.closeBtn.addEventListener('click', closeLogs);
         
         // Configurar evento do filtro de nível
@@ -543,8 +952,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 CURRENT_FILTER_LEVEL = selectedLevel;
                 console.log(`[LogSystem] Filtro de logs alterado para: ${selectedLevel}`);
                 
-                // Recarregar logs com o novo filtro
-                sysLoadLogs();
+                // Usar o novo método de filtragem
+                if (window.LogSystem) {
+                    window.LogSystem.filterByLevel(selectedLevel);
+                }
             });
         }
         
@@ -559,7 +970,28 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // Registrar log de inicialização
-        logToSystem('Página de logs inicializada', 'INFO', 'log-sys.js');
+        // Registrar log de inicialização usando o novo sistema
+        if (window.LogSystem) {
+            window.LogSystem.addLog('Página de logs inicializada', 'INFO', 'log-sys.js');
+        }
     }
-}); 
+});
+
+// Inicializar o LogSystem quando o DOM estiver carregado
+document.addEventListener('DOMContentLoaded', () => {
+    if (document.querySelector('.log-container')) {
+        LogSystem.init();
+    }
+});
+
+// Expor o LogSystem globalmente
+window.LogSystem = LogSystem;
+
+// Função global para adicionar logs de qualquer lugar
+window.addLog = (message, level, source) => {
+    if (window.LogSystem) {
+        return window.LogSystem.addLog(message, level, source);
+    } else {
+        console.log(`[${level}][${source}] ${message} (LogSystem não inicializado)`);
+    }
+}; 

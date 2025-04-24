@@ -186,6 +186,84 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // Handler para executar ação de compra/venda na plataforma
+  if (message.action === 'EXECUTE_TRADE_ACTION') {
+    console.log(`Recebendo comando para executar ${message.tradeAction}`);
+    
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (!tabs[0]?.id) {
+        console.error('Nenhuma guia ativa encontrada');
+        sendResponse({ success: false, error: "Nenhuma guia ativa encontrada" });
+        return;
+      }
+      
+      // Registrar informações sobre a guia ativa para debug
+      console.log('Guia ativa:', tabs[0].url, 'ID:', tabs[0].id);
+      
+      // Tentar injetar o script diretamente, sem verificar se já está injetado
+      const executeScript = () => {
+        chrome.scripting.executeScript({
+          target: { tabId: tabs[0].id },
+          files: ['src/content/content.js']
+        }, (injectionResults) => {
+          const injectError = chrome.runtime.lastError;
+          if (injectError) {
+            console.error('Erro ao injetar script:', injectError);
+            // Mesmo com erro, tentamos enviar a mensagem como último recurso
+            setTimeout(() => sendTradeMessage(), 100);
+          } else {
+            console.log('Script injetado com sucesso');
+            // Espera 300ms para garantir que o script seja carregado completamente
+            setTimeout(() => sendTradeMessage(), 300);
+          }
+        });
+      };
+      
+      // Função para enviar a mensagem de execução de trade
+      const sendTradeMessage = () => {
+        console.log('Enviando mensagem de execução para a guia:', tabs[0].id);
+        
+        chrome.tabs.sendMessage(tabs[0].id, {
+          action: 'EXECUTE_TRADE_ACTION',
+          tradeAction: message.tradeAction
+        }, (response) => {
+          const sendError = chrome.runtime.lastError;
+          if (sendError) {
+            console.error('Erro ao enviar mensagem para content script:', sendError);
+            sendResponse({ 
+              success: false, 
+              error: `Comunicação com a página falhou: ${sendError.message}` 
+            });
+          } else if (!response) {
+            console.error('Sem resposta do content script');
+            sendResponse({ 
+              success: false, 
+              error: 'Content script não respondeu ao comando' 
+            });
+          } else {
+            console.log('Resposta recebida do content script:', response);
+            sendResponse(response);
+          }
+        });
+      };
+      
+      // Primeiro tentamos enviar mensagem diretamente para ver se o script já está injetado
+      console.log('Verificando se o content script já está injetado...');
+      chrome.tabs.sendMessage(tabs[0].id, { action: 'PING' }, (pingResponse) => {
+        if (chrome.runtime.lastError) {
+          console.log('Content script não detectado, injetando...');
+          executeScript();
+        } else {
+          console.log('Content script já ativo, executando diretamente.');
+          sendTradeMessage();
+        }
+      });
+    });
+    
+    // Importante: manter canal aberto para resposta assíncrona
+    return true;
+  }
+
   // Novo handler para obtenção de períodos
   if (message.action === 'GET_TRADE_PARAMS') {
     chrome.storage.sync.get(['tradeValue', 'tradeTime', 'galeEnabled'], (settings) => {

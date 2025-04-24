@@ -14,6 +14,13 @@ const settingsUI = {
 
 // Função simplificada para enviar logs ao sistema centralizado
 const logFromSettings = (message, level = 'INFO') => {
+    // Verificar se a função global de log está disponível
+    if (typeof window.logToSystem === 'function') {
+        window.logToSystem(message, level, 'settings.js');
+        return;
+    }
+    
+    // Fallback: método original quando logToSystem não está disponível
     console.log(`[${level}][settings.js] ${message}`); // Log local para debug
     
     // Enviar para o sistema centralizado via mensagem
