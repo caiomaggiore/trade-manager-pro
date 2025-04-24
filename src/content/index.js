@@ -1,28 +1,108 @@
 // Verificar se o sistema de logs está disponível
-logToSystem('Inicializando index.js', 'INFO', 'index.js');
+let logInitialized = false;
 
-// Tentar criar um teste de log se o sistema estiver disponível
-if (typeof window.logToSystem === 'function') {
-    window.logToSystem('Teste de sistema de logs a partir do index.js', 'DEBUG', 'index.js');
-} else {
-    logToSystem('Sistema de logs não detectado, tentando carregar via script...', 'WARN', 'index.js');
+// Função para adicionar logs usando o sistema centralizado de logs
+const addLog = (message, level = 'INFO') => {
+    // Verificar se a função global de log está disponível
+    if (typeof window.logToSystem === 'function') {
+        window.logToSystem(message, level, 'index.js');
+        return;
+    }
     
-    // Função para tentar carregar o sistema de logs
-    const loadLogSystem = () => {
+    // Fallback: método original quando logToSystem não está disponível
+    console.log(`[${level}][index.js] ${message}`); // Log local para debug
+    
+    // Enviar para o sistema centralizado via mensagem
+    try {
+        chrome.runtime.sendMessage({
+            action: 'logMessage',
+            message: message,
+            level: level,
+            source: 'index.js'
+        });
+    } catch (error) {
+        console.error('[index.js] Erro ao enviar log:', error);
+    }
+};
+
+// Função para atualizar o status no UI e registrar um log
+const updateStatus = (message, level = 'INFO') => {
+    // Registrar o log
+    addLog(message, level);
+    
+    // Atualizar o elemento de status na UI se disponível
+    const statusElement = document.getElementById('status-processo');
+    if (statusElement) {
+        // Mapear nível para classe CSS
+        let statusClass = '';
+        switch (level.toUpperCase()) {
+            case 'ERROR':
+                statusClass = 'status-error';
+                break;
+            case 'WARN':
+                statusClass = 'status-warning';
+                break;
+            case 'SUCCESS':
+                statusClass = 'status-success';
+                break;
+            default:
+                statusClass = 'status-info';
+        }
+        
+        // Limpar classes anteriores, mas manter a classe base 'status-processo'
+        statusElement.className = 'status-processo';
+        
+        // Adicionar nova classe e texto
+        statusElement.classList.add(statusClass, 'visible');
+        statusElement.textContent = message;
+    }
+};
+
+// Iniciar sistema de logs ao carregar
+const initLogging = () => {
+    if (logInitialized) return;
+    
+    try {
+        // Verificar se o sistema de logs já existe
+        if (typeof window.logToSystem === 'function') {
+            addLog('Sistema de logs já disponível', 'DEBUG');
+            logInitialized = true;
+            return;
+        }
+        
+        // Verificar se o LogSystem existe (pode estar carregado mas não inicializado)
+        if (typeof window.LogSystem === 'object') {
+            window.LogSystem.init();
+            addLog('Sistema de logs inicializado', 'INFO');
+            logInitialized = true;
+            return;
+        }
+        
+        // Se o sistema não está disponível, tentar carregar via script
+        addLog('Sistema de logs não detectado, tentando carregar via script...', 'WARN');
+        
         const script = document.createElement('script');
         script.src = '../content/log-sys.js';
         script.onload = () => {
-            logToSystem('Sistema de logs carregado dinamicamente', 'INFO', 'index.js');
+            addLog('Sistema de logs carregado dinamicamente', 'INFO');
+            
+            // Inicializar o sistema após o carregamento
+            if (typeof window.LogSystem === 'object') {
+                window.LogSystem.init();
+                logInitialized = true;
+                addLog('Sistema de logs inicializado após carregamento dinâmico', 'SUCCESS');
+            } else {
+                addLog('LogSystem não disponível mesmo após carregamento', 'ERROR');
+            }
         };
         script.onerror = (err) => {
-            logToSystem('Erro ao carregar sistema de logs: ' + err, 'ERROR', 'index.js');
+            addLog('Erro ao carregar sistema de logs: ' + err, 'ERROR');
         };
         document.head.appendChild(script);
-    };
-    
-    // Tentar carregar o sistema de logs
-    loadLogSystem();
-}
+    } catch (error) {
+        console.error('Erro ao inicializar sistema de logs:', error);
+    }
+};
 
 // ================== VERIFICAÇÃO DE ELEMENTOS ==================
 const indexUI = {
@@ -68,7 +148,7 @@ window.API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini
 const runAnalysis = async () => {
     try {
         updateStatus('Iniciando análise...', 'info');
-        indexAddLog('Iniciando análise do gráfico...');
+        addLog('Iniciando análise do gráfico...');
         
         // Verificar se o AnalyzeGraph está disponível
         if (!window.TradeManager?.AnalyzeGraph) {
@@ -87,7 +167,7 @@ const runAnalysis = async () => {
             throw new Error(response.error);
         }
 
-        indexAddLog('Captura de tela concluída, processando imagem...');
+        addLog('Captura de tela concluída, processando imagem...');
 
         // Processa a imagem e analisa
         const result = await window.TradeManager.AnalyzeGraph.processImage(response.dataUrl);
@@ -98,22 +178,43 @@ const runAnalysis = async () => {
 
         // Atualiza a interface com os resultados
         updateStatus(`Análise concluída: ${result.results.action}`, 'success');
-        indexAddLog(`Análise: ${result.results.action} - Confiança: ${result.results.trust}%`);
+        addLog(`Análise: ${result.results.action} - Confiança: ${result.results.trust}%`);
         
         // Mostra o modal com os resultados
         showAnalysisModal(result.results);
         
         return result;
     } catch (error) {
-        logToSystem(`Erro na análise: ${error.message}`, 'ERROR', 'index.js');
+        addLog(`Erro na análise: ${error.message}`, 'ERROR');
         updateStatus('Erro ao realizar análise', 'error');
-        indexAddLog(`Erro na análise: ${error.message}`);
         throw error;
+    }
+};
+
+// Função para analisar na aba
+const analyzeInTab = async () => {
+    try {
+        const tab = await getActiveTab();
+        const response = await chrome.tabs.sendMessage(tab.id, { action: 'ANALYZE_GRAPH' });
+        if (response && response.success) {
+            updateStatus('Análise concluída com sucesso', 'success');
+        } else {
+            updateStatus('Erro ao analisar o gráfico', 'error');
+        }
+    } catch (error) {
+        addLog(`Erro ao executar análise na aba: ${error.message}`, 'ERROR');
+        updateStatus('Erro ao executar análise', 'error');
     }
 };
 
 // Função para mostrar o modal de resultados
 function showAnalysisModal(result) {
+    // Variável global para armazenar o resultado atual da análise
+    window.currentAnalysisResult = result;
+    
+    // Log da análise recebida
+    addLog(`Análise concluída: ${result.action} (Confiança: ${result.trust}%)`, 'INFO', 'analysis');
+    
     const modal = document.getElementById('analysis-modal');
     const actionElement = document.getElementById('result-action');
     const confidenceElement = document.getElementById('result-confidence');
@@ -124,6 +225,8 @@ function showAnalysisModal(result) {
     const countdownElement = document.getElementById('countdown');
     const closeButton = document.getElementById('close-modal');
     const infoIcon = document.getElementById('info-icon');
+    const executeButton = document.getElementById('execute-action');
+    const cancelButton = document.getElementById('cancel-action');
 
     // Atualiza o conteúdo do modal
     actionElement.textContent = result.action;
@@ -137,6 +240,7 @@ function showAnalysisModal(result) {
     if (testModeWarningElement) {
         if (result.isTestMode) {
             testModeWarningElement.style.display = 'block';
+            addLog(`Modo de teste ativado para esta análise`, 'WARN', 'analysis');
         } else {
             testModeWarningElement.style.display = 'none';
         }
@@ -144,26 +248,106 @@ function showAnalysisModal(result) {
 
     // Mostra o modal
     modal.style.display = 'block';
+    addLog(`Modal de análise aberto: ${result.action}`, 'INFO', 'ui');
 
     // Configura o countdown
     let countdown = 15;
     let countdownInterval = null;
+    let autoExecutionEnabled = true; // Flag para controlar a execução automática
 
     const updateCountdown = () => {
         countdownElement.textContent = `Janela fecha em ${countdown}s`;
         if (countdown <= 0) {
             clearInterval(countdownInterval);
             modal.style.display = 'none';
+            
+            // Executa a operação automaticamente se a execução automática estiver habilitada
+            if (autoExecutionEnabled) {
+                addLog(`Executando operação automaticamente após fechamento do modal`, 'INFO', 'trade-execution');
+                executeOperation(result.action);
+            }
         }
         countdown--;
     };
 
     countdownInterval = setInterval(updateCountdown, 1000);
 
+    // Função para executar a operação com base na ação recomendada
+    const executeOperation = (action) => {
+        try {
+            // Verificar se a extensão ainda está válida
+            const isExtensionContextValid = () => {
+                try {
+                    return chrome.runtime && chrome.runtime.id;
+                } catch (e) {
+                    return false;
+                }
+            };
+            
+            if (!isExtensionContextValid()) {
+                logAndUpdateStatus('Contexto da extensão inválido. Recarregue a página.', 'ERROR', 'trade-execution', true);
+                return;
+            }
+            
+            logAndUpdateStatus(`Executando operação ${action}...`, 'INFO', 'trade-execution', true);
+            
+            // Obter configurações atuais da janela ou usar valores padrão
+            const tradeSettings = window.currentSettings || {};
+            
+            chrome.runtime.sendMessage({ 
+                action: 'EXECUTE_TRADE_ACTION', 
+                tradeAction: action
+            })
+            .then(response => {
+                if (response && response.success) {
+                    logAndUpdateStatus(`Operação ${action} executada com sucesso`, 'SUCCESS', 'trade-execution', true);
+                    
+                    // Adicionar registro detalhado da operação
+                    const timestamp = new Date().toLocaleString('pt-BR');
+                    // Usar tradeSettings em vez de settings
+                    const tradeValue = tradeSettings.tradeValue || 'N/A';
+                    logAndUpdateStatus(`OPERAÇÃO [${timestamp}] - ${action} - Confiança: ${result.trust}% - Valor: ${tradeValue}`, 'SUCCESS', 'trade-execution', false);
+                } else {
+                    const errorMsg = response ? response.error : 'Sem resposta do background';
+                    logAndUpdateStatus(`Falha na execução: ${errorMsg}`, 'ERROR', 'trade-execution', true);
+                    
+                    // Se o erro for de contexto inválido, sugerir recarga
+                    if (errorMsg.includes('Extension context invalidated') || !isExtensionContextValid()) {
+                        logAndUpdateStatus(`Erro de contexto da extensão. Recarregue a página.`, 'ERROR', 'trade-execution', true, 10000);
+                    }
+                }
+            })
+            .catch(error => {
+                logAndUpdateStatus(`Erro inesperado: ${error.message}`, 'ERROR', 'trade-execution', true);
+            });
+        } catch (error) {
+            logAndUpdateStatus(`Erro ao enviar comando de operação: ${error.message}`, 'ERROR', 'trade-execution', true);
+        }
+    };
+
+    // Evento para executar a operação manualmente
+    executeButton.onclick = () => {
+        clearInterval(countdownInterval);
+        modal.style.display = 'none';
+        autoExecutionEnabled = false; // Desativa a execução automática
+        executeOperation(result.action); // Executa a operação com a ação atual
+        logAndUpdateStatus('Operação executada manualmente pelo usuário', 'INFO', 'trade-execution', true);
+    };
+    
+    // Evento para cancelar a operação
+    cancelButton.onclick = () => {
+        clearInterval(countdownInterval);
+        modal.style.display = 'none';
+        autoExecutionEnabled = false; // Desativa a execução automática
+        logAndUpdateStatus('Operação cancelada pelo usuário', 'INFO', 'trade-execution', true);
+    };
+
     // Evento para fechar o modal
     closeButton.onclick = () => {
         clearInterval(countdownInterval);
         modal.style.display = 'none';
+        autoExecutionEnabled = false; // Desativa a execução automática
+        logAndUpdateStatus('Modal fechado pelo usuário (operação cancelada)', 'INFO', 'ui', true);
     };
 
     // Evento para cancelar o fechamento automático
@@ -171,6 +355,8 @@ function showAnalysisModal(result) {
         clearInterval(countdownInterval);
         countdownElement.textContent = 'Cancelado';
         countdownElement.classList.add('cancelled');
+        autoExecutionEnabled = false; // Desativa a execução automática
+        logAndUpdateStatus('Fechamento automático cancelado. Aguardando ação manual.', 'INFO', 'ui', true);
     };
 
     // Fecha o modal ao clicar fora
@@ -178,300 +364,21 @@ function showAnalysisModal(result) {
         if (event.target === modal) {
             clearInterval(countdownInterval);
             modal.style.display = 'none';
+            autoExecutionEnabled = false; // Desativa a execução automática
+            logAndUpdateStatus('Modal fechado ao clicar fora (operação cancelada)', 'INFO', 'ui', true);
         }
     };
 }
 
-// ================== FUNÇÕES DE LOG ==================
-// Função de log para index.js
-const indexAddLog = (message, level = 'INFO', source = 'index.js') => {
-    // Normalizar nível de log para maiúsculas
-    const normalizedLevel = (level && typeof level === 'string') ? level.toUpperCase() : 'INFO';
+// ================== INICIALIZAÇÃO ==================
+// Função para inicializar a aplicação quando o DOM for carregado
+document.addEventListener('DOMContentLoaded', function() {
+    // Inicializar o sistema de logs
+    initLogging();
     
-    // Usar preferentemente o sistema global de logs
-    if (typeof window.logToSystem === 'function') {
-        window.logToSystem(message, normalizedLevel, source);
-        return;
-    }
+    addLog('DOM carregado, inicializando aplicação', 'INFO');
     
-    // Fallback para o sistema direto sysAddLog, se disponível
-    if (typeof sysAddLog === 'function') {
-        sysAddLog(message, normalizedLevel, source).catch(error => {
-            logToSystem(`Erro ao usar sysAddLog: ${error}`, 'ERROR', source);
-        });
-        return;
-    }
-    
-    // Último recurso: enviar via mensagem Chrome
-    try {
-        chrome.runtime.sendMessage({
-            action: 'logMessage',
-            message: message,
-            level: normalizedLevel,
-            source: source
-        });
-    } catch (error) {
-        logToSystem(`Erro ao enviar log: ${error}`, 'ERROR', source);
-    }
-};
-
-// =======================================================================================
-// ================== FUNCOES - STATUS DE INTERFACE ==================
-// =======================================================================================
-
-// Função para atualizar o status do processo
-// Variável para controlar o número de tentativas de atualização de status
-let statusUpdateAttempts = 0;
-const MAX_STATUS_UPDATE_ATTEMPTS = 3;
-
-const updateStatus = (message, type = 'info', duration = 3000) => {
-    // Verificar se o elemento existe
-    const statusElement = document.querySelector('#status-processo');
-    if (!statusElement) {
-        // Incrementar contador de tentativas
-        statusUpdateAttempts++;
-        
-        // Se excedeu o número máximo de tentativas, apenas registrar o erro e parar
-        if (statusUpdateAttempts >= MAX_STATUS_UPDATE_ATTEMPTS) {
-            logToSystem(`Elemento status-processo não encontrado após ${MAX_STATUS_UPDATE_ATTEMPTS} tentativas. Mensagem: ${message}`, 'ERROR', 'index.js');
-            // Resetar contador para futuras chamadas
-            statusUpdateAttempts = 0;
-            return;
-        }
-        
-        logToSystem(`Elemento status-processo não encontrado, tentativa ${statusUpdateAttempts}/${MAX_STATUS_UPDATE_ATTEMPTS}...`, 'WARN', 'index.js');
-        // Tentar novamente após 1 segundo, mas com limite de tentativas
-        setTimeout(() => updateStatus(message, type, duration), 3000);
-        return;
-    }
-    
-    // Se chegou aqui, encontrou o elemento, então resetar contador
-    statusUpdateAttempts = 0;
-    
-    // Adicionar a classe visible para garantir que o elemento seja visível
-    statusElement.classList.add('visible');
-    
-    // Atualizar o conteúdo e a classe
-    statusElement.textContent = message;
-    statusElement.className = `status-processo ${type} visible`;
-    
-    // Registrar o status como log
-    indexAddLog(`Status atualizado: ${message}`, type.toUpperCase());
-    
-    // Se duration for 0, manter a mensagem permanentemente
-    if (duration > 0) {
-        setTimeout(() => {
-            if (statusElement) {
-                statusElement.textContent = 'Status: Sistema operando normalmente';
-                statusElement.className = 'status-processo info visible';
-                
-                // Adicionar log quando o sistema volta ao estado "operando normalmente"
-                indexAddLog('Status: Sistema operando normalmente', 'INFO');
-            }
-        }, duration);
-    }
-};
-
-// Exemplo de uso - ao iniciar sistema!
-updateStatus('Sistema iniciado com sucesso!', 'success');
-// use 'success' para mensagem verde.
-// use 'info' para mensagem azul.
-// use 'error' para mensagem vermelho.
-
-// =======================================================================================
-// ================== FUNCOES INTERFACE UI.X ==================
-// =======================================================================================
-
-// Carregar versão do manifest
-const manifest = chrome.runtime.getManifest();
-if (indexUI.version) {
-    indexUI.version.textContent = manifest.version;
-}
-
-// Controle do painel de configurações
-const toggleSettings = (show) => {
-    if (show) {
-        indexUI.settingsPanel.classList.add('active');
-        indexUI.backBtn.classList.remove('hidden');
-        indexUI.settingsBtn.classList.add('hidden');
-    } else {
-        indexUI.settingsPanel.classList.remove('active');
-        indexUI.backBtn.classList.add('hidden');
-        indexUI.settingsBtn.classList.remove('hidden');
-    }
-};
-
-// Função para atualizar a exibição do Gale
-const updateGaleDisplay = (enabled, level) => {
-    if (indexUI.currentGale) {
-        indexUI.currentGale.textContent = enabled ? `Gale: ${level}` : "Gale: Desativado";
-    }
-    if (indexUI.galeSelect) {
-        indexUI.galeSelect.disabled = !enabled;
-    }
-};  
-
-// Atualizar configurações atuais na página principal
-// ================== GERENCIAMENTO DE ESTADO ==================
-const updateCurrentSettings = (settings) => {
-    if (indexUI.currentGale) {
-        const galeEnabled = settings.galeEnabled ?? true;
-        updateGaleDisplay(galeEnabled, settings.galeLevel || '1x');
-    }
-    if (indexUI.currentProfit) {
-        indexUI.currentProfit.textContent = `Lucro Diário: R$ ${settings.dailyProfit || '0'}`;
-    }
-    if (indexUI.currentStop) {
-        indexUI.currentStop.textContent = `Stop Loss: R$ ${settings.stopLoss || '0'}`;
-    }
-    if (indexUI.currentValue) {
-        indexUI.currentValue.textContent = `Valor de entrada: R$ ${settings.tradeValue || '0'}`;
-    }
-    if (indexUI.currentTime) {
-        indexUI.currentTime.textContent = `Periodo: ${settings.tradeTime || '0'}`;
-    }
-    if (indexUI.automationStatus) {
-        isAutomationRunning = settings.autoActive ? true: false;
-        indexUI.automationStatus.value = settings.autoActive ? true : false;
-        indexUI.automationStatus.textContent = `Automação: ${settings.autoActive ? 'Ativa' : 'Inativa'}`;
-        indexUI.automationStatus.className = `automation-status ${settings.autoActive ? 'active' : 'inactive'}`;
-    }
-};
-
-// Carregar configurações salvas
-chrome.storage.sync.get(
-    ['galeEnabled', 'galeLevel', 'dailyProfit', 'stopLoss', 'autoActive'], 
-    (settings) => {
-        if (indexUI.toggleGale) indexUI.toggleGale.checked = settings.galeEnabled ?? true;
-        if (indexUI.galeSelect) indexUI.galeSelect.value = settings.galeLevel || '1x';
-        if (document.getElementById('daily-profit')) {
-            document.getElementById('daily-profit').value = settings.dailyProfit || '';
-        }
-        if (document.getElementById('stop-loss')) {
-            document.getElementById('stop-loss').value = settings.stopLoss || '';
-        }
-        if (document.getElementById('trade-value')) {
-            document.getElementById('trade-value').value = settings.tradeValue || '';
-        }
-        if (document.getElementById('trade-time')) {
-            document.getElementById('trade-time').value = settings.tradeTime || '';
-        }
-        if (indexUI.toggleAuto) indexUI.toggleAuto.checked = settings.autoActive || false;
-        updateCurrentSettings(settings);
-    }
-);
-
-// =======================================================================================
-// ================== FUNÇÕES DE LOG ==================
-// =======================================================================================
-
-// Recebe o log que vem pelo background de qualquer lugar.
-chrome.runtime.onMessage.addListener((request) => {
-    if (request.action === 'ADD_LOG') {
-        indexAddLog(request.log);
-    }
-    // Novo handler para status
-    if (request.action === 'UPDATE_STATUS') {
-        updateStatus(
-            request.message,
-            request.type || 'info',
-            request.duration || 5000
-        );
-    }
-});
-
-// Recebe mensagens de outras janelas (como da página de configurações)
-window.addEventListener('message', (event) => {
-    const { action, settings } = event.data;
-
-    // Recebeu notificação explícita de que as configurações foram atualizadas
-    if (action === 'configUpdated' && settings) {
-        indexAddLog('Recebida notificação de que as configurações foram atualizadas', 'INFO');
-        
-        // Atualizar a UI com as novas configurações imediatamente
-        updateCurrentSettings({
-            galeEnabled: settings.gale.active,
-            galeLevel: settings.gale.level,
-            dailyProfit: settings.dailyProfit,
-            stopLoss: settings.stopLoss,
-            tradeValue: settings.value,
-            tradeTime: settings.period,
-            autoActive: settings.automation
-        });
-        
-        // Forçar uma atualização completa puxando as configurações do storage
-        loadConfig()
-            .then(() => {
-                indexAddLog('Configurações recarregadas com sucesso após notificação', 'SUCCESS');
-                updateStatus('Configurações atualizadas', 'success', 2000);
-            })
-            .catch(error => {
-                indexAddLog(`Erro ao recarregar configurações: ${error.message}`, 'ERROR');
-            });
-    }
-
-    // Atualizar configurações quando solicitado pela página de configurações
-    if (action === 'requestSaveSettings' && settings) {
-        indexAddLog('Recebida solicitação para salvar configurações', 'INFO');
-        
-        // Usar StateManager se disponível
-        if (window.StateManager) {
-            window.StateManager.saveConfig(settings)
-                .then(success => {
-                    if (success) {
-                        indexAddLog('Configurações salvas com sucesso via StateManager', 'SUCCESS');
-                        // Atualizar a UI com as novas configurações
-                        updateCurrentSettings({
-                            galeEnabled: settings.gale.active,
-                            galeLevel: settings.gale.level,
-                            dailyProfit: settings.dailyProfit,
-                            stopLoss: settings.stopLoss,
-                            tradeValue: settings.value,
-                            tradeTime: settings.period,
-                            autoActive: settings.automation
-                        });
-                    } else {
-                        indexAddLog('Falha ao salvar configurações via StateManager', 'ERROR');
-                    }
-                })
-                .catch(error => {
-                    indexAddLog(`Erro ao salvar configurações: ${error.message}`, 'ERROR');
-                });
-        } else {
-            // Fallback para o método antigo
-            chrome.storage.sync.set({ userConfig: settings }, () => {
-                indexAddLog('Configurações salvas com sucesso via método legacy', 'SUCCESS');
-                // Atualizar a UI com as novas configurações
-                updateCurrentSettings({
-                    galeEnabled: settings.gale.active,
-                    galeLevel: settings.gale.level,
-                    dailyProfit: settings.dailyProfit,
-                    stopLoss: settings.stopLoss,
-                    tradeValue: settings.value,
-                    tradeTime: settings.period,
-                    autoActive: settings.automation
-                });
-            });
-        }
-    }
-
-    // Se a página de configurações solicitar as configurações atuais
-    if (action === 'requestSettings') {
-        indexAddLog('Recebida solicitação para enviar configurações', 'INFO');
-        
-        // Obter configurações atuais
-        const currentConfig = window.StateManager 
-            ? window.StateManager.getConfig() 
-            : indexDefaultConfig;
-        
-        // Enviar de volta para a origem da mensagem
-        event.source.postMessage({ 
-            action: 'loadSettings', 
-            settings: currentConfig 
-        }, '*');
-        
-        indexAddLog('Configurações enviadas para a página solicitante', 'SUCCESS');
-    }
+    // ... existing code ...
 });
 
 // ================== NOVAS FUNÇÕES PARA AUTOMAÇÃO ==================
@@ -480,6 +387,72 @@ const updateAutomationStatus = (isActive) => {
     indexUI.automationStatus.value = isActive ? true : false;
     indexUI.automationStatus.textContent = `Automação: ${isActive ? 'Ativa' : 'Inativa'}`;
     indexUI.automationStatus.className = `automation-status ${isActive ? 'active' : 'inactive'}`;
+};
+
+// Função para atualizar os elementos de UI com as configurações atuais
+const updateCurrentSettings = (settings) => {
+    // Verificar se temos as configurações e elementos da UI
+    if (!settings || !indexUI) {
+        addLog('Não foi possível atualizar configurações na UI: dados ou elementos ausentes', 'WARN');
+        return;
+    }
+
+    try {
+        // Atualizar valores de lucro diário e stop loss
+        if (indexUI.dailyProfit && typeof settings.dailyProfit !== 'undefined') {
+            indexUI.dailyProfit.value = settings.dailyProfit;
+            if (indexUI.currentProfit) {
+                indexUI.currentProfit.textContent = `R$ ${settings.dailyProfit}`;
+            }
+        }
+        
+        if (indexUI.stopLoss && typeof settings.stopLoss !== 'undefined') {
+            indexUI.stopLoss.value = settings.stopLoss;
+            if (indexUI.currentStop) {
+                indexUI.currentStop.textContent = `R$ ${settings.stopLoss}`;
+            }
+        }
+        
+        // Atualizar valor de entrada e periodo
+        if (indexUI.entryValue && typeof settings.tradeValue !== 'undefined') {
+            indexUI.entryValue.value = settings.tradeValue;
+            if (indexUI.currentValue) {
+                indexUI.currentValue.textContent = `R$ ${settings.tradeValue}`;
+            }
+        }
+        
+        if (indexUI.timePeriod && typeof settings.tradeTime !== 'undefined') {
+            indexUI.timePeriod.value = settings.tradeTime;
+            if (indexUI.currentTime) {
+                indexUI.currentTime.textContent = `${settings.tradeTime} min`;
+            }
+        }
+        
+        // Atualizar configurações de Gale
+        if (indexUI.toggleGale && typeof settings.galeEnabled !== 'undefined') {
+            indexUI.toggleGale.checked = settings.galeEnabled;
+        }
+        
+        if (indexUI.galeSelect && typeof settings.galeLevel !== 'undefined') {
+            indexUI.galeSelect.value = settings.galeLevel;
+            if (indexUI.currentGale) {
+                indexUI.currentGale.textContent = settings.galeLevel;
+            }
+        }
+        
+        // Atualizar status de automação
+        if (indexUI.toggleAuto && typeof settings.autoActive !== 'undefined') {
+            indexUI.toggleAuto.checked = settings.autoActive;
+            updateAutomationStatus(settings.autoActive);
+        }
+        
+        // Salvar as configurações globalmente para acesso fácil
+        window.currentSettings = settings;
+        
+        addLog('Configurações atualizadas na UI com sucesso', 'DEBUG');
+    } catch (error) {
+        addLog(`Erro ao atualizar configurações na UI: ${error.message}`, 'ERROR');
+    }
 };
 
 // Função para calcular o lucro
@@ -532,7 +505,7 @@ function startTradeMonitoring() {
                 updateStatus('Erro ao analisar o gráfico', 'error');
             }
         } catch (error) {
-            logToSystem(`Erro ao executar análise: ${error.message}`, 'ERROR', 'index.js');
+            addLog(`Erro ao executar análise: ${error.message}`, 'ERROR');
             updateStatus('Erro ao executar análise', 'error');
         }
     };
@@ -542,7 +515,7 @@ function startTradeMonitoring() {
         if (!isAutomationRunning) return;
 
         // Executar a análise
-        runAnalysis();
+        analyzeInTab();
 
         // Agendar a próxima execução
         automationTimeout = setTimeout(initAutomation, tradeTime * 60 * 1000);
@@ -561,7 +534,7 @@ function startTradeMonitoring() {
 async function testGeminiConnection() {
     try {
         updateStatus('Testando conexão com Gemini...', 'info');
-        indexAddLog('Iniciando teste de conexão...');
+        addLog('Iniciando teste de conexão...');
         
         const response = await fetch(API_URL, {
             method: 'POST',
@@ -582,14 +555,14 @@ async function testGeminiConnection() {
         
         if (text.includes('OK')) {
             updateStatus('Conexão estabelecida!', 'success');
-            indexAddLog('Conexão com Gemini estabelecida com sucesso');
+            addLog('Conexão com Gemini estabelecida com sucesso');
             return true;
         } else {
             throw new Error('Resposta inesperada da API');
         }
     } catch (error) {
         updateStatus(`Erro: ${error.message}`, 'error');
-        indexAddLog(`Erro no teste de conexão: ${error.message}`);
+        addLog(`Erro no teste de conexão: ${error.message}`);
         return false;
     }
 }
@@ -649,7 +622,7 @@ async function captureAndAnalyze() {
             updateStatus('Erro ao capturar a tela', 'error');
         }
     } catch (error) {
-        logToSystem(`Erro ao capturar e analisar: ${error.message}`, 'ERROR', 'index.js');
+        addLog(`Erro ao capturar e analisar: ${error.message}`, 'ERROR');
         updateStatus('Erro ao capturar e analisar', 'error');
     }
 }
@@ -673,7 +646,7 @@ const addEventListeners = () => {
     }
     if (elements.captureScreen) {
         elements.captureScreen.addEventListener('click', () => {
-            logToSystem('Botão de captura clicado no index', 'INFO', 'index.js');
+            addLog('Botão de captura clicado no index', 'INFO');
             // Envia mensagem para o content.js
             window.parent.postMessage({
                 action: 'captureScreen',
@@ -691,7 +664,7 @@ const addEventListeners = () => {
             if (window.Navigation) {
                 window.Navigation.openPage('logs');
             } else {
-                logToSystem('Navigation não está disponível', 'ERROR', 'index.js');
+                addLog('Navigation não está disponível', 'ERROR');
             }
         });
     }
@@ -700,7 +673,7 @@ const addEventListeners = () => {
             if (window.Navigation) {
                 window.Navigation.openPage('settings');
             } else {
-                logToSystem('Navigation não está disponível', 'ERROR', 'index.js');
+                addLog('Navigation não está disponível', 'ERROR');
             }
         });
     }
@@ -708,43 +681,46 @@ const addEventListeners = () => {
 
 // Inicializar quando o DOM estiver pronto
 document.addEventListener('DOMContentLoaded', () => {
+    // Inicializar sistema de logs
+    initLogging();
+    
     try {
         const manifestInfo = chrome.runtime.getManifest();
-        indexAddLog(`Sistema Trade Manager Pro v${manifestInfo.version} inicializado`, 'INFO');
-        indexAddLog(`Ambiente: ${manifestInfo.name} / ${navigator.userAgent}`, 'DEBUG');
+        addLog(`Sistema Trade Manager Pro v${manifestInfo.version} inicializado`, 'INFO');
+        addLog(`Ambiente: ${manifestInfo.name} / ${navigator.userAgent}`, 'DEBUG');
     } catch (e) {
-        indexAddLog('Sistema Trade Manager Pro inicializado (versão desconhecida)', 'INFO');
+        addLog('Sistema Trade Manager Pro inicializado (versão desconhecida)', 'INFO');
     }
     
     addEventListeners();
-    indexAddLog('Event listeners configurados com sucesso', 'DEBUG');
+    addLog('Event listeners configurados com sucesso', 'DEBUG');
     
     // Inicializar o listener do StateManager para atualizações de configurações
     initStateManagerListener();
     
     updateStatus('Sistema iniciado com sucesso!', 'success');
-    indexAddLog('Interface principal carregada e pronta', 'SUCCESS');
+    addLog('Interface principal carregada e pronta', 'SUCCESS');
     
     // Tentar testar a conexão com a API Gemini
     testGeminiConnection()
         .then(connected => {
             if (connected) {
-                indexAddLog('API Gemini conectada com sucesso', 'SUCCESS');
+                addLog('API Gemini conectada com sucesso', 'SUCCESS');
             } else {
-                indexAddLog('Não foi possível conectar à API Gemini', 'WARN');
+                addLog('Não foi possível conectar à API Gemini', 'WARN');
             }
         })
         .catch(err => {
-            indexAddLog(`Erro ao testar conexão com API: ${err.message}`, 'ERROR');
+            addLog(`Erro ao testar conexão com API: ${err.message}`, 'ERROR');
         });
     
     // Carregar configurações
     loadConfig()
         .then(config => {
-            indexAddLog('Configurações carregadas com sucesso', 'SUCCESS');
+            addLog('Configurações carregadas com sucesso', 'SUCCESS');
         })
         .catch(error => {
-            indexAddLog(`Erro ao carregar configurações: ${error.message}`, 'ERROR');
+            addLog(`Erro ao carregar configurações: ${error.message}`, 'ERROR');
             updateStatus('Erro ao carregar configurações', 'error');
         });
 });
@@ -766,7 +742,7 @@ const indexDefaultConfig = window.StateManager?.getConfig() || {
 function clearOldConfig() {
     return new Promise((resolve) => {
         chrome.storage.sync.remove(['userConfig'], () => {
-            indexAddLog('Configurações antigas removidas do storage.');
+            addLog('Configurações antigas removidas do storage.');
             resolve();
         });
     });
@@ -775,15 +751,15 @@ function clearOldConfig() {
 // Função para carregar configurações
 function loadConfig() {
     return new Promise((resolve) => {
-        indexAddLog('Iniciando carregamento das configurações...', 'INFO');
+        addLog('Iniciando carregamento das configurações...', 'INFO');
         updateStatus('Carregando configurações...', 'info');
 
         // Utilizar o StateManager para carregar as configurações
         if (window.StateManager) {
-            indexAddLog('Utilizando StateManager para carregar configurações', 'INFO');
+            addLog('Utilizando StateManager para carregar configurações', 'INFO');
             window.StateManager.loadConfig()
                 .then(config => {
-                    indexAddLog('Configurações carregadas via StateManager', 'SUCCESS');
+                    addLog('Configurações carregadas via StateManager', 'SUCCESS');
                     
                     // Atualizar campos da página principal
                     updateCurrentSettings({
@@ -800,25 +776,25 @@ function loadConfig() {
                     resolve(config);
                 })
                 .catch(error => {
-                    indexAddLog(`Erro ao carregar configurações via StateManager: ${error.message}`, 'ERROR');
+                    addLog(`Erro ao carregar configurações via StateManager: ${error.message}`, 'ERROR');
                     updateStatus('Erro ao carregar configurações', 'error');
                     
                     // Em caso de erro, tentar usar a abordagem antiga como fallback
                     loadConfigLegacy()
                         .then(config => resolve(config))
                         .catch(err => {
-                            indexAddLog(`Erro também no fallback: ${err.message}`, 'ERROR');
+                            addLog(`Erro também no fallback: ${err.message}`, 'ERROR');
                             // Usar configurações padrão em último caso
                             resolve(indexDefaultConfig);
                         });
                 });
         } else {
             // Fallback para o método antigo se o StateManager não estiver disponível
-            indexAddLog('StateManager não encontrado, usando método legacy', 'WARN');
+            addLog('StateManager não encontrado, usando método legacy', 'WARN');
             loadConfigLegacy()
                 .then(config => resolve(config))
                 .catch(error => {
-                    indexAddLog(`Erro ao carregar configurações: ${error.message}`, 'ERROR');
+                    addLog(`Erro ao carregar configurações: ${error.message}`, 'ERROR');
                     updateStatus('Erro ao carregar configurações', 'error');
                     resolve(indexDefaultConfig);
                 });
@@ -829,18 +805,18 @@ function loadConfig() {
 // Método legacy para carregar configurações (para compatibilidade)
 function loadConfigLegacy() {
     return new Promise((resolve, reject) => {
-        indexAddLog('Utilizando método legacy para carregar configurações', 'INFO');
+        addLog('Utilizando método legacy para carregar configurações', 'INFO');
         
         chrome.storage.sync.get(['userConfig'], (result) => {
-            indexAddLog(`Resultado do storage: ${JSON.stringify(result)}`, 'DEBUG');
+            addLog(`Resultado do storage: ${JSON.stringify(result)}`, 'DEBUG');
             
             if (!result.userConfig || Object.keys(result.userConfig).length === 0) {
-                indexAddLog('Configuração do usuário não encontrada ou vazia. Usando configuração padrão.', 'INFO');
+                addLog('Configuração do usuário não encontrada ou vazia. Usando configuração padrão.', 'INFO');
                 updateStatus('Usando configurações padrão...', 'info');
                 
                 // Se não houver configuração do usuário, usa a padrão
                 chrome.storage.sync.set({ userConfig: indexDefaultConfig }, () => {
-                    indexAddLog('Configurações padrão salvas no storage.', 'INFO');
+                    addLog('Configurações padrão salvas no storage.', 'INFO');
                     updateStatus('Configurações padrão salvas', 'success');
                     
                     // Atualizar campos da página principal
@@ -862,7 +838,7 @@ function loadConfigLegacy() {
                     result.userConfig.period = parseInt(result.userConfig.period.replace(/[^0-9]/g, '')) || 1;
                 }
                 
-                indexAddLog('Configuração do usuário encontrada e carregada.', 'INFO');
+                addLog('Configuração do usuário encontrada e carregada.', 'INFO');
                 updateStatus('Configurações do usuário carregadas', 'success');
                 
                 // Atualizar campos da página principal
@@ -885,7 +861,7 @@ function loadConfigLegacy() {
 // Inicialização do StateManager listener
 function initStateManagerListener() {
     if (window.StateManager) {
-        indexAddLog('Registrando listener para StateManager', 'INFO');
+        addLog('Registrando listener para StateManager', 'INFO');
         
         // Registrar listener para atualizações de estado
         window.StateManager.subscribe((notification) => {
@@ -893,7 +869,7 @@ function initStateManagerListener() {
             const { state, type, timestamp } = notification;
             
             if (type === 'config') {
-                indexAddLog(`Recebida atualização de configurações do StateManager (${new Date(timestamp).toLocaleTimeString()})`, 'INFO');
+                addLog(`Recebida atualização de configurações do StateManager (${new Date(timestamp).toLocaleTimeString()})`, 'INFO');
                 
                 const config = state.config;
                 if (config) {
@@ -913,96 +889,10 @@ function initStateManagerListener() {
             }
         });
         
-        indexAddLog('Listener registrado com sucesso', 'SUCCESS');
+        addLog('Listener registrado com sucesso', 'SUCCESS');
     } else {
-        indexAddLog('StateManager não disponível para registro de listener', 'WARN');
+        addLog('StateManager não disponível para registro de listener', 'WARN');
     }
-}
-
-// ================== INICIALIZAÇÃO ==================
-// Inicializar o sistema de logs
-// O sistema de logs será carregado apenas se a página for a página de logs
-// Usar a variável global IS_LOG_PAGE que já foi definida no início do arquivo
-// const isLogPage = () => window.location.pathname.includes('/logs.html');
-
-// Se for página de logs, configurar a UI
-if (window.IS_LOG_PAGE) {
-    // Variável que armazena elementos da UI relacionados aos logs
-    const sysUI = {
-        logContainer: null,
-        clearButton: null,
-        exportButton: null,
-        levelFilter: null
-    };
-    
-    // Expor a UI no escopo global para acesso por outros scripts
-    window.sysUI = sysUI;
-    
-    // Função para inicializar a UI de logs
-    const initLogUI = () => {
-        try {
-            // Obter elementos do DOM
-            sysUI.logContainer = document.getElementById('log-container');
-            sysUI.clearButton = document.getElementById('clear-logs-btn');
-            sysUI.exportButton = document.getElementById('export-logs-btn');
-            sysUI.levelFilter = document.getElementById('log-level-filter');
-            
-            // Verificar se obtivemos todos os elementos necessários
-            if (!sysUI.logContainer || !sysUI.clearButton || !sysUI.exportButton || !sysUI.levelFilter) {
-                throw new Error('Elementos da UI de logs não encontrados');
-            }
-            
-            // Configurar eventos
-            sysUI.clearButton.addEventListener('click', sysClearLogs);
-            sysUI.exportButton.addEventListener('click', sysExportLogs);
-            sysUI.levelFilter.addEventListener('change', () => {
-                // Filtrar logs pelo nível selecionado
-                const selectedLevel = sysUI.levelFilter.value;
-                
-                // Todas as entradas de log no container
-                const logEntries = sysUI.logContainer.querySelectorAll('.log-entry');
-                
-                // Iterar sobre cada entrada
-                logEntries.forEach(entry => {
-                    const entryLevel = entry.getAttribute('data-level');
-                    
-                    // Se selectedLevel for 'ALL', mostrar todos
-                    // Caso contrário, verificar se o nível corresponde
-                    if (selectedLevel === 'ALL' || entryLevel === selectedLevel) {
-                        entry.style.display = 'block';
-                    } else {
-                        entry.style.display = 'none';
-                    }
-                });
-            });
-            
-            // Criar conexão com o background script
-            if (chrome.runtime && chrome.runtime.connect) {
-                window.logConnection = chrome.runtime.connect({ name: 'log_channel' });
-                window.logConnection.onMessage.addListener(message => {
-                    if (message.action === 'newLog') {
-                        sysAddLog(message.data.message, message.data.level, message.data.source);
-                    }
-                });
-                
-                // Adicionar log para indicar que o canal foi estabelecido
-                setTimeout(() => {
-                    logToSystem('Sistema de logs inicializado', 'INFO', 'log-sys.js');
-                }, 500);
-            }
-            
-            // Carregar logs existentes
-            sysLoadLogs();
-            
-            return true;
-        } catch (error) {
-            logToSystem('Erro ao inicializar UI de logs: ' + error.message, 'ERROR', 'log-sys.js');
-            return false;
-        }
-    };
-    
-    // Chamar a inicialização quando o DOM estiver pronto
-    document.addEventListener('DOMContentLoaded', initLogUI);
 }
 
 // ================== ANALISADOR DE DADOS ==================
@@ -1013,7 +903,7 @@ class DataAnalyzer {
         this.isProcessing = false;
         
         // Inicializar
-        logToSystem('Inicializando analisador de dados', 'DEBUG', 'analysis.js');
+        addLog('Inicializando analisador de dados', 'DEBUG');
         
         // Expor métodos para a API global
         window.TRADE_ANALYZER_API = {
@@ -1022,7 +912,19 @@ class DataAnalyzer {
             clearCache: this.clearCache.bind(this)
         };
         
-        logToSystem('API do analisador de dados exposta', 'DEBUG', 'analysis.js');
+        addLog('API do analisador de dados exposta', 'DEBUG');
+    }
+    
+    // Método privado para logging da classe
+    _log(message, level = 'DEBUG') {
+        // Usar a função global de log se disponível, adicionando prefix da classe
+        if (typeof addLog === 'function') {
+            addLog(`[DataAnalyzer] ${message}`, level);
+        } else if (typeof window.logToSystem === 'function') {
+            window.logToSystem(`[DataAnalyzer] ${message}`, level, 'analysis.js');
+        } else {
+            console.log(`[${level}][DataAnalyzer] ${message}`);
+        }
     }
     
     // Analisar dados de trading
@@ -1041,7 +943,7 @@ class DataAnalyzer {
             
             // Verificar cache
             if (this.cache[dataSignature] && !options.forceReanalysis) {
-                logToSystem(`Usando resultado em cache para ${symbol}`, 'DEBUG', 'analysis.js');
+                this._log(`Usando resultado em cache para ${symbol}`, 'DEBUG');
                 return this.cache[dataSignature];
             }
             
@@ -1061,7 +963,7 @@ class DataAnalyzer {
                 }
             });
         } catch (error) {
-            logToSystem(`Erro ao analisar dados: ${error.message}`, 'ERROR', 'analysis.js');
+            this._log(`Erro ao analisar dados: ${error.message}`, 'ERROR');
             throw error;
         }
     }
@@ -1077,7 +979,7 @@ class DataAnalyzer {
         const job = this.processingQueue.shift();
         
         try {
-            logToSystem(`Processando análise para ${job.data.symbol || 'desconhecido'}`, 'DEBUG', 'analysis.js');
+            this._log(`Processando análise para ${job.data.symbol || 'desconhecido'}`, 'DEBUG');
             
             // Realizar análise
             const result = await this.performAnalysis(job.data, job.options);
@@ -1091,7 +993,7 @@ class DataAnalyzer {
             // Resolver promessa
             job.resolve(result);
         } catch (error) {
-            logToSystem(`Erro na análise: ${error.message}`, 'ERROR', 'analysis.js');
+            this._log(`Erro na análise: ${error.message}`, 'ERROR');
             job.reject(error);
         } finally {
             // Continuar processamento
@@ -1130,7 +1032,7 @@ class DataAnalyzer {
             
             return result;
         } catch (error) {
-            logToSystem(`Erro durante a análise de ${symbol}: ${error.message}`, 'ERROR', 'analysis.js');
+            this._log(`Erro durante a análise de ${symbol}: ${error.message}`, 'ERROR');
             throw error;
         }
     }
@@ -1196,7 +1098,7 @@ class DataAnalyzer {
                 });
             }
         } catch (error) {
-            logToSystem(`Erro ao detectar sinais: ${error.message}`, 'ERROR', 'analysis.js');
+            this._log(`Erro ao detectar sinais: ${error.message}`, 'ERROR');
         }
     }
     
@@ -1216,7 +1118,7 @@ class DataAnalyzer {
     // Limpar cache de análises
     clearCache() {
         this.cache = {};
-        logToSystem('Cache de análises limpo', 'INFO', 'analysis.js');
+        this._log('Cache de análises limpo', 'INFO');
         return true;
     }
     
@@ -1237,7 +1139,7 @@ class DataAnalyzer {
                 delete this.cache[key];
             });
             
-            logToSystem(`Cache de análises otimizado: ${keysToRemove.length} itens removidos`, 'DEBUG', 'analysis.js');
+            this._log(`Cache de análises otimizado: ${keysToRemove.length} itens removidos`, 'DEBUG');
         }
     }
 }
@@ -1249,12 +1151,12 @@ const analyzer = new DataAnalyzer();
 document.addEventListener('DOMContentLoaded', () => {
     // Verificar se estamos na página de análise
     if (window.location.pathname.includes('/analysis.html')) {
-        logToSystem('Inicializando página de análise', 'INFO', 'index.js');
+        addLog('Inicializando página de análise', 'INFO');
         
         // Configurar área de exibição de gráficos
         const chartContainer = document.getElementById('chart-container');
         if (chartContainer) {
-            logToSystem('Container de gráfico encontrado, configurando...', 'DEBUG', 'index.js');
+            addLog('Container de gráfico encontrado, configurando...', 'DEBUG');
             
             // Configuração de botões e controles
             const symbolInput = document.getElementById('symbol-input');
@@ -1267,11 +1169,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     const timeframe = timeframeSelect.value;
                     
                     if (!symbol) {
-                        logToSystem('Símbolo não informado', 'WARN', 'index.js');
+                        addLog('Símbolo não informado', 'WARN');
                         return;
                     }
                     
-                    logToSystem(`Carregando dados para ${symbol} (${timeframe})`, 'INFO', 'index.js');
+                    addLog(`Carregando dados para ${symbol} (${timeframe})`, 'INFO');
                     
                     // Simulação de carregamento de dados
                     setTimeout(() => {
@@ -1282,22 +1184,22 @@ document.addEventListener('DOMContentLoaded', () => {
                             // Analisar dados
                             analyzer.analyze(simulatedData)
                                 .then(result => {
-                                    logToSystem(`Análise concluída para ${symbol}`, 'SUCCESS', 'index.js');
+                                    addLog(`Análise concluída para ${symbol}`, 'SUCCESS');
                                     renderAnalysisResults(result);
                                 })
                                 .catch(error => {
-                                    logToSystem(`Falha na análise: ${error.message}`, 'ERROR', 'index.js');
+                                    addLog(`Falha na análise: ${error.message}`, 'ERROR');
                                 });
                         } catch (error) {
-                            logToSystem(`Erro ao processar dados: ${error.message}`, 'ERROR', 'index.js');
+                            addLog(`Erro ao processar dados: ${error.message}`, 'ERROR');
                         }
                     }, 1000);
                 });
             } else {
-                logToSystem('Elementos de controle não encontrados', 'ERROR', 'index.js');
+                addLog('Elementos de controle não encontrados', 'ERROR');
             }
         } else {
-            logToSystem('Container de gráfico não encontrado', 'ERROR', 'index.js');
+            addLog('Container de gráfico não encontrado', 'ERROR');
         }
     }
 });
@@ -1323,7 +1225,7 @@ function generateMockData(symbol, timeframe) {
         lastPrice = close;
     }
     
-    logToSystem(`Gerados ${candles.length} candles simulados para ${symbol}`, 'DEBUG', 'index.js');
+    addLog(`Gerados ${candles.length} candles simulados para ${symbol}`, 'DEBUG');
     
     return {
         symbol,
@@ -1404,8 +1306,60 @@ function renderAnalysisResults(result) {
         
         resultsContainer.appendChild(signalsSection);
         
-        logToSystem('Resultados da análise renderizados', 'SUCCESS', 'index.js');
+        addLog('Resultados da análise renderizados', 'SUCCESS');
     } catch (error) {
-        logToSystem(`Erro ao renderizar resultados: ${error.message}`, 'ERROR', 'index.js');
+        addLog(`Erro ao renderizar resultados: ${error.message}`, 'ERROR');
     }
 }
+
+// Função unificada para logs e status
+const logAndUpdateStatus = (message, level = 'INFO', source = 'index.js', showStatus = true, duration = 3000) => {
+    // Log para o sistema centralizado
+    addLog(message, level);
+    
+    // Atualizar o status visível se solicitado
+    if (showStatus) {
+        // Mapear nível de log para tipo de status
+        let statusType = 'info';
+        switch (level.toUpperCase()) {
+            case 'ERROR': statusType = 'error'; break;
+            case 'WARN': statusType = 'warn'; break;
+            case 'SUCCESS': statusType = 'success'; break;
+            default: statusType = 'info';
+        }
+        
+        updateStatusUI(message, statusType, duration);
+    }
+};
+
+// Função interna para atualizar apenas a UI de status, sem registrar logs
+const updateStatusUI = (message, type = 'info', duration = 3000) => {
+    try {
+        // Log interno para debug
+        console.log(`Atualizando UI de status: ${message} (${type})`);
+        
+        // Buscar o elemento de status
+        const statusElement = document.getElementById('status-processo');
+        if (statusElement) {
+            // Remover classes específicas, mas manter a classe base 'status-processo'
+            statusElement.className = 'status-processo';
+            
+            // Adicionar a classe apropriada
+            statusElement.classList.add(type, 'visible');
+            
+            // Definir o texto
+            statusElement.textContent = message;
+            
+            // Auto-limpar após duração
+            if (duration > 0) {
+                setTimeout(() => {
+                    statusElement.classList.remove('visible');
+                }, duration);
+            }
+        } else {
+            console.log('Elemento de status não encontrado na UI');
+        }
+    } catch (error) {
+        console.error(`Erro ao atualizar UI de status: ${error.message}`);
+    }
+};
