@@ -36,6 +36,7 @@
         "src/content/log-sys.js",
         "src/content/navigation.js",
         "src/content/analyze-graph.js",
+        "src/content/trade-history.js",
         "src/content/content.js",
         "src/content/settings.js",
         "src/content/index.js"

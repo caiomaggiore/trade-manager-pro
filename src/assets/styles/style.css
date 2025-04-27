@@ -990,3 +990,18 @@ input:checked + .slider:before {
 .gale-status.inactive::before {
   background: #95a5a6;
 }
+
+/* ================== ANIMAÇÕES PARA HISTÓRICO DE OPERAÇÕES ================== */
+@keyframes highlight {
+  0% { background-color: rgba(46, 204, 113, 0.2); }
+  100% { background-color: transparent; }
+}
+
+.new-operation {
+  animation: highlight 1.5s;
+}
+
+/* Transição suave para elementos da tabela */
+.operations-table tbody tr {
+  transition: background-color 0.3s ease;
+}

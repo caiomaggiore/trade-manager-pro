@@ -143,6 +143,52 @@ const executeAnalysis = (tabId, sendResponse) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log('Mensagem recebida no background:', message);
     
+    // Handler para resultado de operações de trading
+    if (message.type === 'TRADE_RESULT') {
+        console.log('Resultado de operação recebido:', message.data);
+        
+        // Repassar a mensagem para a interface de popup
+        chrome.runtime.sendMessage(message);
+        
+        // Se a operação foi concluída, mostrar notificação
+        if (message.data.status === 'Closed') {
+            const title = message.data.success ? 'Operação bem-sucedida' : 'Operação com perda';
+            const profit = message.data.success ? 
+                `+${message.data.profit}` : 
+                `-${message.data.amount}`;
+            
+            chrome.notifications.create({
+                type: 'basic',
+                iconUrl: '../assets/icons/icon48.png',
+                title: title,
+                message: `${message.data.symbol}: ${profit}`,
+                priority: 1
+            });
+        }
+        
+        if (sendResponse) sendResponse({ success: true });
+        return true;
+    }
+    
+    // Handler para mostrar notificações
+    if (message.action === 'showNotification') {
+        try {
+            chrome.notifications.create({
+                type: 'basic',
+                iconUrl: '../assets/icons/icon48.png',
+                title: message.title || 'Notificação',
+                message: message.message || '',
+                priority: 1
+            });
+            
+            if (sendResponse) sendResponse({ success: true });
+        } catch (error) {
+            console.error('Erro ao criar notificação:', error);
+            if (sendResponse) sendResponse({ success: false, error: error.message });
+        }
+        return false;
+    }
+    
     // Handler para captura de imagem
     if (message.action === 'initiateCapture' && !isProcessing) {
         isProcessing = true; // Marcar como processando para evitar chamadas paralelas

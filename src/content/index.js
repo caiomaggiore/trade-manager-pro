@@ -139,10 +139,216 @@ const indexUI = {
 // ================== VARIÁVEIS GLOBAIS ==================
 let isAutomationRunning = false;
 let automationTimeout = null;
+let historyModuleInitialized = false;
 
 // Expor as constantes globalmente
 window.API_KEY = 'AIzaSyDeYcYUxAN52DNrgZeFNcEfceVMoWJDjWk';
 window.API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${window.API_KEY}`;
+
+// ================== INICIALIZAÇÃO DO MONITORAMENTO ==================
+// Esta função injeta o monitoramento diretamente na página, seguindo o padrão que funciona na v3.1.1
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        // Inicializar sistema de logs
+        initLogging();
+        
+        // Adicionar log de inicialização
+        addLog('Interface principal inicializada', 'INFO');
+        
+        // Obter a aba ativa
+        const tab = await getActiveTab();
+        
+        // Injetar o script de monitoramento diretamente na página
+        addLog('Injetando script de monitoramento na página...', 'INFO');
+        
+        await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: () => {
+                // Função de monitoramento (executada diretamente na página)
+                function startTradeMonitoring() {
+                    // Verificar se o observer já existe
+                    if (window._tradeObserver) {
+                        console.log("Observer já existe, não será criado novamente");
+                        return;
+                    }
+                    
+                    console.log("Iniciando monitoramento de operações no DOM...");
+                    
+                    // Criar observer para monitorar mudanças no DOM
+                    const observer = new MutationObserver((mutations) => {
+                        mutations.forEach((mutation) => {
+                            mutation.addedNodes.forEach((node) => {
+                                if (node.nodeType === Node.ELEMENT_NODE) {
+                                    // Verificar se é um container de modal ou o próprio modal
+                                    if (node.classList && 
+                                        (node.classList.contains('deals-noty-streamer') || 
+                                         node.classList.contains('deals-noty'))) {
+                                        
+                                        console.log("Elemento de modal detectado:", node);
+                                        
+                                        // Processar o modal
+                                        processTradeModal(node);
+                                        
+                                        // Verificar também dentro do nó (para modal dentro do container)
+                                        const dealsNoty = node.querySelector('.deals-noty');
+                                        if (dealsNoty) {
+                                            processTradeModal(dealsNoty);
+                                        }
+                                    }
+                                    
+                                    // Verificar também se o nó contém o modal mas não é o próprio
+                                    const dealsNoty = node.querySelector('.deals-noty');
+                                    if (dealsNoty) {
+                                        processTradeModal(dealsNoty);
+                                    }
+                                    
+                                    // Verificar o ícone do título (como na versão 3.1.1)
+                                    const isTrade = node.querySelector('.deals-noty__title-icon svg');                
+                                    if (isTrade) {
+                                        processTradeModal(node.closest('.deals-noty'));
+                                    }
+                                }
+                            });
+                        });
+                    });
+
+                    // Função para processar o modal e extrair dados
+                    function processTradeModal(modal) {
+                        try {
+                            if (!modal) return;
+                            
+                            // Registrar detecção
+                            console.log("Processando modal:", modal);
+                            
+                            // Obter título e determinar tipo
+                            const titleElement = modal.querySelector('.deals-noty__title');
+                            if (!titleElement) return;
+                            
+                            const tradeTitle = titleElement.textContent.trim();
+                            console.log("Título:", tradeTitle);
+                            
+                            // Determinar tipo de operação baseado no título
+                            const getTradeType = (title) => {
+                                if (title.includes('placed')) return 'Open';
+                                if (title.includes('closed')) return 'Closed';
+                                return null;
+                            };
+                            
+                            const tradeType = getTradeType(tradeTitle);
+                            if (!tradeType) return; // Não é um modal relevante
+                            
+                            // Extrair informações da operação
+                            const profitElement = [...modal.querySelectorAll('.deals-noty__text-col')]
+                                .find(el => el.querySelector('.deals-noty__label').textContent.includes('Profit'))
+                                ?.querySelector('.deals-noty__value');
+
+                            const profit = (parseFloat(profitElement?.textContent.replace('$', '') || 0).toFixed(2));
+                            
+                            // Extrair valor da operação
+                            const amountElement = [...modal.querySelectorAll('.deals-noty__text-col')]
+                                .find(el => el.querySelector('.deals-noty__label').textContent.includes('Amount'))
+                                ?.querySelector('.deals-noty__value');
+
+                            const amountValue = (parseFloat(amountElement?.textContent.replace('$', '') || 0).toFixed(2));
+                            
+                            // Armazenar último valor para cálculos
+                            if (tradeType === 'Open' && amountValue > 0) {
+                                window.lastAmount = amountValue;
+                            }
+
+                            // Obter o tipo de operação (Buy/Sell)
+                            const forecastElement = [...modal.querySelectorAll('.deals-noty__text-col')]
+                                .find(el => el.querySelector('.deals-noty__label').textContent.includes('Forecast'))
+                                ?.querySelector('.deals-noty__value');
+                                
+                            const forecast = forecastElement?.textContent.trim() || '';
+                            
+                            // Calcular valores para registro
+                            const payment = (parseFloat(profit) + parseFloat(window.lastAmount || amountValue)).toFixed(2);
+                            
+                            // Obter símbolo
+                            const symbolElement = modal.querySelector('.deals-noty__symbol-title');
+                            const symbol = symbolElement?.textContent.trim() || 'Unknown';
+                            
+                            // Estruturar o resultado da operação
+                            const result = {
+                                status: tradeType,
+                                success: profit > 0,
+                                profit: profit,
+                                amount: window.lastAmount || amountValue,
+                                action: forecast || payment,
+                                symbol: symbol,
+                                timestamp: Date.now()
+                            };
+
+                            console.log('Operação detectada:', result);
+                            
+                            // Enviar resultado para a extensão
+                            chrome.runtime.sendMessage({
+                                type: 'TRADE_RESULT',
+                                data: result
+                            });
+                        } catch (error) {
+                            console.error("Erro ao processar modal:", error);
+                        }
+                    }
+
+                    // Iniciar monitoramento
+                    observer.observe(document.body, {
+                        childList: true,
+                        subtree: true
+                    });
+                    
+                    // Armazenar referência ao observer para evitar duplicação
+                    window._tradeObserver = observer;
+                    
+                    console.log("Monitoramento de operações iniciado");
+                }
+
+                // Executar a função imediatamente, como na v3.1.1
+                startTradeMonitoring();
+                return true;
+            }
+        });
+        
+        addLog('Script de monitoramento injetado com sucesso', 'SUCCESS');
+        updateStatus('Monitoramento de operações iniciado', 'success');
+        
+    } catch (error) {
+        addLog(`Erro ao inicializar monitoramento: ${error.message}`, 'ERROR');
+        updateStatus('Erro ao iniciar monitoramento', 'error');
+    }
+    
+    // Continuar com a inicialização normal
+    try {
+        // Tentar obter a versão do Manifest e mostrar no rodapé
+        const manifest = chrome.runtime.getManifest();
+        if (indexUI.version) {
+            indexUI.version.textContent = manifest.version || '1.0.0';
+            addLog(`Versão do Trade Manager Pro: ${manifest.version}`, 'INFO');
+        }
+    } catch (error) {
+        addLog('Erro ao obter versão do sistema', 'ERROR');
+        if (indexUI.version) {
+            indexUI.version.textContent = '1.0.0';
+        }
+    }
+    
+    // Testar conexão com a API Gemini
+    testGeminiConnection();
+    
+    // Carregar configurações
+    loadConfig();
+    
+    // Atualizar status inicial
+    updateStatus('Sistema operando normalmente', 'INFO');
+    
+    // Adicionar event listeners
+    addEventListeners();
+    
+    // Inicializar listener para StateManager
+    initStateManagerListener();
+});
 
 // ================== FUNÇÕES DE ANÁLISE ==================
 /**
@@ -600,65 +806,6 @@ async function getActiveTab() {
     return tab;
 }
 
-// Função para monitorar as operações
-function startTradeMonitoring() {
-    if (isAutomationRunning) {
-        updateStatus('Automação já está em execução', 'error');
-        return;
-    }
-
-    isAutomationRunning = true;
-    updateAutomationStatus(true);
-
-    // Função para obter o tipo de operação
-    const getTradeType = (title) => {
-        if (title.includes('CALL')) return 'CALL';
-        if (title.includes('PUT')) return 'PUT';
-        return null;
-    };
-
-    // Função para obter o último valor
-    const funcLastAmout = () => {
-        const lastAmount = document.querySelector('.last-amount');
-        return lastAmount ? parseFloat(lastAmount.textContent.replace('R$ ', '')) : 0;
-    };
-
-    // Função para executar a análise
-    const runAnalysis = async () => {
-        try {
-            const tab = await getActiveTab();
-            const response = await chrome.tabs.sendMessage(tab.id, { action: 'ANALYZE_GRAPH' });
-            if (response && response.success) {
-                updateStatus('Análise concluída com sucesso', 'success');
-            } else {
-                updateStatus('Erro ao analisar o gráfico', 'error');
-            }
-        } catch (error) {
-            addLog(`Erro ao executar análise: ${error.message}`, 'ERROR');
-            updateStatus('Erro ao executar análise', 'error');
-        }
-    };
-
-    // Inicializar a automação
-    const initAutomation = () => {
-        if (!isAutomationRunning) return;
-
-        // Executar a análise
-        analyzeInTab();
-
-        // Agendar a próxima execução
-        automationTimeout = setTimeout(initAutomation, tradeTime * 60 * 1000);
-    };
-
-    // Normalizar o texto
-    const normalizeText = (text) => {
-        return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    };
-
-    // Iniciar a automação
-    initAutomation();
-}
-
 // Função para testar a conexão com a API
 async function testGeminiConnection() {
     try {
@@ -771,15 +918,50 @@ const addEventListeners = () => {
         captureScreen: document.querySelector('#captureBtn'),
         analyzeBtn: document.querySelector('#analyzeBtn'),
         logsBtn: document.querySelector('#logs-btn'),
-        settingsBtn: document.querySelector('#settings-btn')
+        settingsBtn: document.querySelector('#settings-btn'),
+        exportBtn: document.querySelector('#export-csv')
     };
 
     if (elements.startOperation) {
-        elements.startOperation.addEventListener('click', startTradeMonitoring);
+        elements.startOperation.addEventListener('click', () => {
+            if (window.TradeManager?.History) {
+                addLog('Iniciando monitoramento de operações...', 'INFO');
+                window.TradeManager.History.startMonitoring()
+                    .then(() => {
+                        isAutomationRunning = true;
+                        updateAutomationStatus(true);
+                        updateStatus('Monitoramento de operações iniciado com sucesso', 'success');
+                    })
+                    .catch(error => {
+                        addLog(`Erro ao iniciar monitoramento: ${error.message}`, 'ERROR');
+                        updateStatus('Falha ao iniciar monitoramento', 'error');
+                    });
+            } else {
+                // Fallback para a função antiga se o módulo não estiver disponível
+                startTradeMonitoring();
+            }
+        });
     }
+    
     if (elements.cancelOperation) {
-        elements.cancelOperation.addEventListener('click', cancelAutoClose);
+        elements.cancelOperation.addEventListener('click', () => {
+            if (window.TradeManager?.History) {
+                window.TradeManager.History.stopMonitoring()
+                    .then(() => {
+                        isAutomationRunning = false;
+                        updateAutomationStatus(false);
+                        updateStatus('Monitoramento interrompido', 'info');
+                    })
+                    .catch(error => {
+                        addLog(`Erro ao interromper monitoramento: ${error.message}`, 'ERROR');
+                    });
+            } else {
+                // Fallback para a função antiga
+                cancelAutoClose();
+            }
+        });
     }
+    
     if (elements.captureScreen) {
         elements.captureScreen.addEventListener('click', () => {
             addLog('Botão de captura clicado no index', 'INFO');
@@ -792,9 +974,11 @@ const addEventListeners = () => {
             }, '*');
         });
     }
+    
     if (elements.analyzeBtn) {
         elements.analyzeBtn.addEventListener('click', runAnalysis);
     }
+    
     if (elements.logsBtn) {
         elements.logsBtn.addEventListener('click', () => {
             if (window.Navigation) {
@@ -804,6 +988,7 @@ const addEventListeners = () => {
             }
         });
     }
+    
     if (elements.settingsBtn) {
         elements.settingsBtn.addEventListener('click', () => {
             if (window.Navigation) {
@@ -828,6 +1013,10 @@ document.addEventListener('DOMContentLoaded', () => {
         addLog('Sistema Trade Manager Pro inicializado (versão desconhecida)', 'INFO');
     }
     
+    // Inicializar módulo de histórico
+    initHistoryModule();
+    
+    // Configurar event listeners
     addEventListeners();
     addLog('Event listeners configurados com sucesso', 'DEBUG');
     
@@ -1659,5 +1848,33 @@ const checkExtensionConnection = () => {
     } else {
         addLog('Contexto da extensão inválido, tentando novamente em 5 segundos...', 'WARN');
         setTimeout(checkExtensionConnection, 5000);
+    }
+};
+
+// Inicializar integração com o módulo de histórico
+const initHistoryModule = () => {
+    try {
+        // Verificar se o módulo já foi inicializado
+        if (historyModuleInitialized) return;
+        
+        // Verificar se o módulo está disponível
+        if (!window.TradeManager?.History) {
+            addLog('Módulo de histórico não disponível. O monitoramento de operações não estará ativo.', 'WARN');
+            return false;
+        }
+        
+        addLog('Inicializando integração com módulo de histórico...', 'INFO');
+        
+        // Inicializar o módulo se ainda não estiver inicializado
+        if (typeof window.TradeManager.History.init === 'function') {
+            window.TradeManager.History.init();
+        }
+        
+        historyModuleInitialized = true;
+        addLog('Integração com módulo de histórico concluída', 'SUCCESS');
+        return true;
+    } catch (error) {
+        addLog(`Erro ao inicializar módulo de histórico: ${error.message}`, 'ERROR');
+        return false;
     }
 };
