@@ -579,4 +579,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     return true;
   }
+
+  // Buscar configurações de usuário para operações
+  if (message.action === 'GET_USER_CONFIG') {
+    chrome.storage.sync.get(['userConfig'], (result) => {
+      if (chrome.runtime.lastError) {
+        console.error('Erro ao buscar configurações:', chrome.runtime.lastError);
+        sendResponse(null);
+        return;
+      }
+      
+      const userConfig = result.userConfig || {};
+      console.log('Configurações de usuário enviadas para operação:', userConfig);
+      
+      // Extrair apenas os campos relevantes para operações
+      const operationConfig = {
+        tradeValue: userConfig.value || 10,
+        tradeTime: userConfig.period || 1,
+        galeEnabled: userConfig.gale?.active || false,
+        galeLevel: userConfig.gale?.level || '1x'
+      };
+      
+      sendResponse(operationConfig);
+    });
+    
+    // Manter canal aberto para resposta assíncrona
+    return true;
+  }
 }); 
