@@ -11,11 +11,21 @@ class NavigationManager {
         // Monitorar o container da página
         this.pageContainerObserver = null;
         
+        // Propriedade para rastrear a largura da barra de rolagem
+        this.scrollbarWidth = this.getScrollbarWidth();
+        
         // Bind dos métodos
         this.openPage = this.openPage.bind(this);
         this.closePage = this.closePage.bind(this);
         this.initPageHandlers = this.initPageHandlers.bind(this);
         this.init = this.init.bind(this);
+        this.adjustForScrollbar = this.adjustForScrollbar.bind(this);
+        
+        // Listener para redimensionamento da janela
+        window.addEventListener('resize', () => {
+            this.scrollbarWidth = this.getScrollbarWidth();
+            this.adjustForScrollbar();
+        });
 
         // Inicializa quando o DOM estiver pronto
         if (document.readyState === 'loading') {
@@ -25,6 +35,66 @@ class NavigationManager {
         }
         
         console.log('[NavigationManager] Construtor concluído');
+    }
+    
+    // Método para calcular a largura da barra de rolagem
+    getScrollbarWidth() {
+        // Cria um elemento div oculto com barra de rolagem forçada
+        const outer = document.createElement('div');
+        outer.style.visibility = 'hidden';
+        outer.style.overflow = 'scroll';
+        document.body.appendChild(outer);
+        
+        // Cria um elemento div interno
+        const inner = document.createElement('div');
+        outer.appendChild(inner);
+        
+        // Calcula a diferença entre as larguras
+        const scrollbarWidth = outer.offsetWidth - inner.offsetWidth;
+        
+        // Remove os elementos temporários
+        outer.parentNode.removeChild(outer);
+        
+        return scrollbarWidth;
+    }
+    
+    // Verifica se a página tem barra de rolagem vertical
+    hasVerticalScrollbar() {
+        return document.body.scrollHeight > window.innerHeight;
+    }
+    
+    // Ajusta o posicionamento das subpáginas quando há barra de rolagem
+    adjustForScrollbar() {
+        // Se não há página aberta, não faz nada
+        if (!this.currentPage) return;
+        
+        // Verifica se há barra de rolagem vertical
+        const hasScrollbar = this.hasVerticalScrollbar();
+        
+        // Obtém altura do rodapé global para ajustar altura do container
+        const globalFooter = document.querySelector('.global-footer');
+        const footerHeight = globalFooter ? globalFooter.offsetHeight : 0;
+        
+        // Ajusta o container da subpágina
+        if (hasScrollbar) {
+            // Reduz a largura da subpágina quando há barra de rolagem
+            this.currentPage.style.width = '460px';
+            // Ajusta a altura para não cobrir o rodapé
+            this.currentPage.style.height = `calc(100% - ${footerHeight}px)`;
+            console.log(`[NavigationManager] Ajustado para barra de rolagem: largura=460px, altura ajustada para rodapé`);
+        } else {
+            // Restaura a largura original quando não há barra de rolagem
+            this.currentPage.style.width = '480px';
+            this.currentPage.style.height = `calc(100% - ${footerHeight}px)`;
+            console.log('[NavigationManager] Sem barra de rolagem, dimensões padrão');
+        }
+        
+        // Atualiza o iframe para usar 100% da largura/altura disponível
+        const iframe = this.currentPage.querySelector('.subpage-iframe');
+        if (iframe) {
+            iframe.style.width = '100%';
+            iframe.style.height = '100%';
+        }
     }
 
     // Método para configurar o observador de mutação para monitorar páginas
@@ -43,6 +113,7 @@ class NavigationManager {
                         if (node.id === 'page-container') {
                             console.log('[NavigationManager] Container de página detectado:', node);
                             this.currentPage = node;
+                            this.adjustForScrollbar();
                         }
                     });
                     
@@ -127,6 +198,12 @@ class NavigationManager {
                 }
             }
         });
+        
+        // Adiciona o observer para monitorar mudanças no tamanho do conteúdo da página
+        const bodyObserver = new ResizeObserver(() => {
+            this.adjustForScrollbar();
+        });
+        bodyObserver.observe(document.body);
     }
 
     // Atualiza a UI principal com as novas configurações
@@ -200,26 +277,31 @@ class NavigationManager {
         style.textContent = `
             .subpage-container {
                 position: fixed;
-                right: -480px;
+                right: 0;
                 top: 0;
                 width: 480px;
-                height: calc(100% - 65px);
+                height: calc(100% - 65px); /* Ajuste padrão para o rodapé */
                 z-index: 9999999;
                 display: flex;
                 justify-content: flex-end;
                 transition: all 0.3s ease-in-out;
+                transform: translateX(100%);
+                box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+                box-sizing: border-box;
+                max-width: 100vw;
+                overflow: hidden;
             }
 
             .subpage-container.active {
-                right: 0;
+                transform: translateX(0);
             }
 
             .subpage-iframe {
-                width: 480px;
+                width: 100%;
                 height: 100%;
                 border: none;
                 background: #fff;
-                box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+                overflow: hidden;
             }
         `;
 
@@ -265,15 +347,30 @@ class NavigationManager {
 
         // Adiciona listeners globais
         this.addGlobalListeners();
+        
+        // Ajusta o posicionamento para a barra de rolagem
+        this.adjustForScrollbar();
+        
+        // Ajuste adicional após um pequeno delay para garantir que os elementos sejam dimensionados corretamente
+        setTimeout(() => {
+            this.adjustForScrollbar();
+        }, 100);
 
         // Ativa a animação após um pequeno delay para garantir que o DOM foi atualizado
         requestAnimationFrame(() => {
             container.classList.add('active');
+            
+            // Segundo ajuste após a animação começar
+            setTimeout(() => {
+                this.adjustForScrollbar();
+            }, 300);
         });
 
         // Quando o iframe carregar, inicializa os handlers da página
         iframe.addEventListener('load', () => {
             this.initPageHandlers(iframe, pageName);
+            // Ajuste final após o carregamento completo
+            this.adjustForScrollbar();
         });
     }
 

@@ -6,6 +6,7 @@
     <title>Trade Manager Pro - Configurações</title>
     <link rel="stylesheet" href="../assets/styles/style.css">
     <link rel="stylesheet" href="../assets/styles/subpage.css">
+    <link rel="stylesheet" href="../assets/styles/subpage-fix.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body class="subpage">
@@ -16,84 +17,86 @@
         </button>
     </div>
 
-    <div class="subpage-grid settings-grid">
-        <!-- Coluna 1 -->
-        <div class="subpage-group settings-group">
-            <h3>Controle de Risco</h3>
-            
-            <div class="automation-control">
-                <div class="automation-wrapper">
-                    <label class="switch">
-                        <input type="checkbox" id="toggleGale" checked>
-                        <span class="slider"></span>
-                    </label>
-                    <span class="automation-label">Gale Ativo</span>
+    <div class="content">
+        <div class="subpage-grid settings-grid">
+            <!-- Coluna 1 -->
+            <div class="subpage-group settings-group">
+                <h3>Controle de Risco</h3>
+                
+                <div class="automation-control">
+                    <div class="automation-wrapper">
+                        <label class="switch">
+                            <input type="checkbox" id="toggleGale" checked>
+                            <span class="slider"></span>
+                        </label>
+                        <span class="automation-label">Gale Ativo</span>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <label>Nível de Gale</label>
+                    <select id="gale-select" class="styled-select">
+                        <option value="1x">1x</option>
+                        <option value="1.1x">1.1x</option>
+                        <option value="1.2x">1.2x</option>
+                        <option value="1.3x">1.3x</option>
+                        <option value="1.4x">1.4x</option>
+                        <option value="1.5x">1.5x</option>
+                    </select>
+                </div>
+
+                <div class="setting-item">
+                    <label>Lucro Diário (R$)</label>
+                    <input type="number" id="daily-profit" class="styled-select" min="0">
+                </div>
+
+                <div class="setting-item">
+                    <label>Stop Loss (R$)</label>
+                    <input type="number" id="stop-loss" class="styled-select" min="0">
                 </div>
             </div>
 
-            <div class="setting-item">
-                <label>Nível de Gale</label>
-                <select id="gale-select" class="styled-select">
-                    <option value="1x">1x</option>
-                    <option value="1.1x">1.1x</option>
-                    <option value="1.2x">1.2x</option>
-                    <option value="1.3x">1.3x</option>
-                    <option value="1.4x">1.4x</option>
-                    <option value="1.5x">1.5x</option>
-                </select>
-            </div>
-
-            <div class="setting-item">
-                <label>Lucro Diário (R$)</label>
-                <input type="number" id="daily-profit" class="styled-select" min="0">
-            </div>
-
-            <div class="setting-item">
-                <label>Stop Loss (R$)</label>
-                <input type="number" id="stop-loss" class="styled-select" min="0">
+            <!-- Coluna 2 -->
+            <div class="subpage-group settings-group">
+                <h3>Parâmetros de Operação</h3>
+                <div class="automation-control">
+                    <div class="automation-wrapper">
+                        <label class="switch">
+                            <input type="checkbox" id="toggleAuto">
+                            <span class="slider"></span>
+                        </label>
+                        <span class="automation-label">Automação</span>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <label>Valor</label>
+                    <input type="number" id="trade-value" class="styled-select" min="1">
+                </div>
+                <div class="setting-item">
+                    <label>Período</label>
+                    <input type="number" id="trade-time" class="styled-select" min="5">
+                </div>
             </div>
         </div>
 
-        <!-- Coluna 2 -->
-        <div class="subpage-group settings-group">
-            <h3>Parâmetros de Operação</h3>
-            <div class="automation-control">
-                <div class="automation-wrapper">
-                    <label class="switch">
-                        <input type="checkbox" id="toggleAuto">
-                        <span class="slider"></span>
-                    </label>
-                    <span class="automation-label">Automação</span>
+        <div class="subpage-grid settings-grid">
+            <div class="subpage-group settings-group" style="grid-column: 1 / -1;">
+                <h3>Configurações Avançadas</h3>
+                <div class="automation-control">
+                    <div class="automation-wrapper">
+                        <label class="switch">
+                            <input type="checkbox" id="toggleTestMode">
+                            <span class="slider"></span>
+                        </label>
+                        <span class="automation-label">Modo Teste de Análise</span>
+                    </div>
                 </div>
+                <p class="setting-description">
+                    Quando ativado, o sistema usará um algoritmo de análise simplificado que produz resultados mais diretos, mas potencialmente menos precisos.
+                    <br>
+                    <small><strong>Atenção:</strong> Este modo é para testes e desenvolvimento. Os resultados podem não ser confiáveis para operações reais.</small>
+                </p>
             </div>
-            <div class="setting-item">
-                <label>Valor</label>
-                <input type="number" id="trade-value" class="styled-select" min="1">
-            </div>
-            <div class="setting-item">
-                <label>Período</label>
-                <input type="number" id="trade-time" class="styled-select" min="5">
-            </div>
-        </div>
-    </div>
-
-    <div class="subpage-grid settings-grid">
-        <div class="subpage-group settings-group" style="grid-column: 1 / -1;">
-            <h3>Configurações Avançadas</h3>
-            <div class="automation-control">
-                <div class="automation-wrapper">
-                    <label class="switch">
-                        <input type="checkbox" id="toggleTestMode">
-                        <span class="slider"></span>
-                    </label>
-                    <span class="automation-label">Modo Teste de Análise</span>
-                </div>
-            </div>
-            <p class="setting-description">
-                Quando ativado, o sistema usará um algoritmo de análise simplificado que produz resultados mais diretos, mas potencialmente menos precisos.
-                <br>
-                <small><strong>Atenção:</strong> Este modo é para testes e desenvolvimento. Os resultados podem não ser confiáveis para operações reais.</small>
-            </p>
         </div>
     </div>
     

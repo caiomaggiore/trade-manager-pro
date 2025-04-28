@@ -22,7 +22,8 @@ window.TradeManager.History = (function() {
     const UI = {
         operationsBody: document.querySelector('#operations-body'),
         profitCurrent: document.querySelector('#profitCurrent'),
-        exportBtn: document.querySelector('#export-csv')
+        exportBtn: document.querySelector('#export-csv'),
+        clearHistoryBtn: document.querySelector('#clear-history')
     };
     
     // Sistema de logs (integração)
@@ -382,6 +383,12 @@ window.TradeManager.History = (function() {
             logToSystem("Listener de exportação configurado", "DEBUG");
         }
         
+        // Limpar histórico
+        if (UI.clearHistoryBtn) {
+            UI.clearHistoryBtn.addEventListener('click', clearHistory);
+            logToSystem("Listener de limpar histórico configurado", "DEBUG");
+        }
+        
         // Listener para receber mensagens do background
         chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             if (message.type === 'TRADE_RESULT') {
@@ -426,6 +433,7 @@ window.TradeManager.History = (function() {
         UI.operationsBody = document.querySelector('#operations-body');
         UI.profitCurrent = document.querySelector('#profitCurrent');
         UI.exportBtn = document.querySelector('#export-csv');
+        UI.clearHistoryBtn = document.querySelector('#clear-history');
         
         if (!UI.operationsBody) {
             logToSystem("Elemento operations-body não encontrado", "ERROR");
