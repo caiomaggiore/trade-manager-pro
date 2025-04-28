@@ -1,7 +1,6 @@
 // ================== GERENCIADOR DE NAVEGAÇÃO ==================
 class NavigationManager {
     constructor() {
-        console.log('[NavigationManager] Inicializando...');
         this.currentPage = null;
         this.pages = {
             settings: chrome.runtime.getURL('src/layout/settings.html'),
@@ -33,8 +32,6 @@ class NavigationManager {
         } else {
             this.init();
         }
-        
-        console.log('[NavigationManager] Construtor concluído');
     }
     
     // Método para calcular a largura da barra de rolagem
@@ -81,12 +78,10 @@ class NavigationManager {
             this.currentPage.style.width = '460px';
             // Ajusta a altura para não cobrir o rodapé
             this.currentPage.style.height = `calc(100% - ${footerHeight}px)`;
-            console.log(`[NavigationManager] Ajustado para barra de rolagem: largura=460px, altura ajustada para rodapé`);
         } else {
             // Restaura a largura original quando não há barra de rolagem
             this.currentPage.style.width = '480px';
             this.currentPage.style.height = `calc(100% - ${footerHeight}px)`;
-            console.log('[NavigationManager] Sem barra de rolagem, dimensões padrão');
         }
         
         // Atualiza o iframe para usar 100% da largura/altura disponível
@@ -111,7 +106,6 @@ class NavigationManager {
                     // Verificar se algum elemento foi adicionado
                     mutation.addedNodes.forEach((node) => {
                         if (node.id === 'page-container') {
-                            console.log('[NavigationManager] Container de página detectado:', node);
                             this.currentPage = node;
                             this.adjustForScrollbar();
                         }
@@ -120,7 +114,6 @@ class NavigationManager {
                     // Verificar se algum elemento foi removido
                     mutation.removedNodes.forEach((node) => {
                         if (node.id === 'page-container' && this.currentPage === node) {
-                            console.log('[NavigationManager] Container de página removido');
                             this.currentPage = null;
                         }
                     });
@@ -133,14 +126,10 @@ class NavigationManager {
             childList: true,
             subtree: true
         });
-        
-        console.log('[NavigationManager] Observador de páginas configurado');
     }
 
     // Inicialização
     init() {
-        console.log('[NavigationManager] Método init iniciado');
-        
         // Configura o observador de páginas
         this.setupPageObserver();
         
@@ -180,14 +169,8 @@ class NavigationManager {
         
         // Adiciona listener para mensagens postMessage das subpáginas
         window.addEventListener('message', (event) => {
-            console.log(`[NavigationManager] Recebido postMessage! Evento completo:`, event);
-            console.log(`[NavigationManager] Dados da mensagem:`, event.data);
-            console.log(`[NavigationManager] Origem da mensagem:`, event.origin);
-            console.log(`[NavigationManager] Action da mensagem: ${event.data?.action}`);
-            
             // Fecha a página quando receber a ação closePage
             if (event.data?.action === 'closePage') {
-                console.log('[NavigationManager] Executando closePage via postMessage');
                 this.closePage();
             }
             
@@ -208,8 +191,6 @@ class NavigationManager {
 
     // Atualiza a UI principal com as novas configurações
     updateMainUI(config) {
-        console.log('[NavigationManager] Atualizando UI principal com config:', JSON.stringify(config));
-        
         // Atualiza o display de Gale
         const currentGale = document.getElementById('current-gale');
         if (currentGale) {
@@ -230,7 +211,6 @@ class NavigationManager {
                 currentGale.textContent = 'Gale: Desativado';
                 currentGale.className = 'gale-status inactive';
             }
-            console.log(`[NavigationManager] Status do Gale atualizado: ${galeActive ? 'Ativo' : 'Desativado'}, Nível: ${galeLevel}`);
         }
 
         // Atualiza o display de Lucro Diário
@@ -248,19 +228,13 @@ class NavigationManager {
         // Atualiza o status de automação
         const automationStatus = document.getElementById('automation-status');
         if (automationStatus) {
-            automationStatus.textContent = `Automação: ${config.automation ? 'Ativa' : 'Inativa'}`;
-        }
-
-        // Atualiza o valor de entrada
-        const currentValue = document.getElementById('current-value');
-        if (currentValue) {
-            currentValue.textContent = `Valor de entrada: R$ ${config.value}`;
-        }
-
-        // Atualiza o período
-        const currentTime = document.getElementById('current-time');
-        if (currentTime) {
-            currentTime.textContent = `Período: ${config.period}m`;
+            if (config.autoActive) {
+                automationStatus.textContent = 'Automação: Ativa';
+                automationStatus.className = 'automation-status active';
+            } else {
+                automationStatus.textContent = 'Automação: Inativa';
+                automationStatus.className = 'automation-status inactive';
+            }
         }
     }
 
@@ -311,67 +285,55 @@ class NavigationManager {
 
     // Função para abrir uma página em um iframe
     openPage(pageName) {
-        console.log(`[NavigationManager] Abrindo página ${pageName}...`);
-        
+        // Verificar se a página solicitada existe
         if (!this.pages[pageName]) {
             console.error(`Página ${pageName} não encontrada`);
-            return;
+            return false;
         }
-
-        // Injeta os estilos necessários para as subpáginas
-        this.injectSubpageStyles();
         
-        // Se já existe um iframe, remove ele primeiro
-        this.closePage();
-
-        // Cria o container do iframe
-        const container = document.createElement('div');
-        container.id = 'page-container';
-        container.className = 'subpage-container';
+        // Se já tem uma página aberta, fechar primeiro
+        if (this.currentPage) {
+            this.closePage();
+        }
         
-        // Armazena o nome da página para referência
-        container.dataset.pageName = pageName;
-
-        // Cria o iframe
+        // Criar o container da página
+        const pageContainer = document.createElement('div');
+        pageContainer.id = 'page-container';
+        pageContainer.className = 'subpage-container';
+        pageContainer.dataset.pageName = pageName;
+        
+        // Injetar o iframe
         const iframe = document.createElement('iframe');
-        iframe.src = this.pages[pageName];
         iframe.className = 'subpage-iframe';
-
-        // Adiciona o iframe ao container e o container ao documento da página web
-        container.appendChild(iframe);
-        document.body.appendChild(container);
+        iframe.src = this.pages[pageName];
+        iframe.allowTransparency = true;
+        iframe.frameBorder = '0';
+        iframe.scrolling = 'auto';
         
-        // Definimos currentPage após adicionar ao DOM
-        this.currentPage = container;
-        console.log(`[NavigationManager] Página ${pageName} aberta, referência salva:`, this.currentPage);
-
-        // Adiciona listeners globais
-        this.addGlobalListeners();
+        // Adicionar o iframe ao container
+        pageContainer.appendChild(iframe);
         
-        // Ajusta o posicionamento para a barra de rolagem
+        // Adicionar o container ao body
+        document.body.appendChild(pageContainer);
+        
+        // Armazenar referência para a página atual
+        this.currentPage = pageContainer;
+        
+        // Configurar as dimensões corretas
         this.adjustForScrollbar();
         
-        // Ajuste adicional após um pequeno delay para garantir que os elementos sejam dimensionados corretamente
+        // Adicionar listeners específicos para esta página
+        this.initPageHandlers(iframe, pageName);
+        
+        // Adicionar classe 'active' após um pequeno delay para permitir animação
         setTimeout(() => {
-            this.adjustForScrollbar();
-        }, 100);
-
-        // Ativa a animação após um pequeno delay para garantir que o DOM foi atualizado
-        requestAnimationFrame(() => {
-            container.classList.add('active');
-            
-            // Segundo ajuste após a animação começar
-            setTimeout(() => {
-                this.adjustForScrollbar();
-            }, 300);
-        });
-
-        // Quando o iframe carregar, inicializa os handlers da página
-        iframe.addEventListener('load', () => {
-            this.initPageHandlers(iframe, pageName);
-            // Ajuste final após o carregamento completo
-            this.adjustForScrollbar();
-        });
+            pageContainer.classList.add('active');
+        }, 10);
+        
+        // Configurar listeners globais para gerenciar a página
+        this.addGlobalListeners();
+        
+        return true;
     }
 
     // Adiciona listeners globais (ESC e clique fora)
@@ -400,7 +362,6 @@ class NavigationManager {
 
     // Função para realmente remover o elemento com segurança
     forceRemoveElement(element) {
-        console.log('[NavigationManager] Tentando remover o elemento forçadamente');
         if (!element) return false;
         
         try {
@@ -428,66 +389,45 @@ class NavigationManager {
     
     // Função para fechar a página atual
     closePage() {
-        console.log('[NavigationManager] Fechando página...');
-        console.log('[NavigationManager] Estado atual - currentPage:', this.currentPage);
-        console.log('[NavigationManager] Elemento page-container existe?', document.getElementById('page-container') !== null);
-        
-        // Se this.currentPage está nulo, mas o container existe no DOM, vamos recuperá-lo
-        if (!this.currentPage && document.getElementById('page-container')) {
-            console.log('[NavigationManager] Recuperando referência perdida para página atual');
-            this.currentPage = document.getElementById('page-container');
-        }
-        
+        // Verificar se há uma página aberta
         if (!this.currentPage) {
-            console.log('[NavigationManager] Nenhuma página aberta para fechar');
             return;
         }
         
-        try {
-            // Remove a classe active para iniciar a animação de saída
-            this.currentPage.classList.remove('active');
-            
-            // Remove listeners
-            this.removeGlobalListeners();
-            
-            // Guarda uma referência para o elemento que queremos remover
-            const elementToRemove = this.currentPage;
-            
-            // Remove o elemento após a animação terminar
-            setTimeout(() => {
-                if (elementToRemove) {
-                    try {
-                        if (document && document.body && elementToRemove.parentNode === document.body) {
-                            document.body.removeChild(elementToRemove);
-                            console.log('[NavigationManager] Página removida com sucesso');
-                        } else {
-                            console.log('[NavigationManager] Página não está no document.body, tentando método alternativo');
-                            if (elementToRemove.parentNode) {
-                                elementToRemove.parentNode.removeChild(elementToRemove);
-                                console.log('[NavigationManager] Página removida com método alternativo');
-                            } else {
-                                console.log('[NavigationManager] Página não tem pai, não pode ser removida');
-                                this.forceRemoveElement(elementToRemove);
-                            }
-                        }
-                    } catch (error) {
-                        console.error('[NavigationManager] Erro ao remover página:', error);
-                        this.forceRemoveElement(elementToRemove);
-                    } finally {
-                        // Limpar a referência
-                        this.currentPage = null;
+        // Remover listeners globais
+        this.removeGlobalListeners();
+        
+        // Referência temporária para a página atual
+        const pageElement = this.currentPage;
+        
+        // Limpar a referência antes de remover o elemento
+        this.currentPage = null;
+        
+        // Remover a classe 'active' para iniciar a animação de saída
+        pageElement.classList.remove('active');
+        
+        // Remover o elemento após a transição
+        setTimeout(() => {
+            try {
+                // Verificar se o elemento ainda existe no DOM
+                if (document.body.contains(pageElement)) {
+                    document.body.removeChild(pageElement);
+                } else {
+                    // O elemento não está no document.body, tentar método alternativo
+                    
+                    // Tentar remover do pai diretamente
+                    if (pageElement.parentNode) {
+                        pageElement.parentNode.removeChild(pageElement);
+                    } else {
+                        // Removido log de página sem pai
                     }
                 }
-            }, 500);
-        } catch (error) {
-            console.error('[NavigationManager] Erro ao fechar página:', error);
-            
-            // Força a remoção em caso de erro
-            if (this.currentPage) {
-                this.forceRemoveElement(this.currentPage);
-                this.currentPage = null;
+            } catch (error) {
+                console.error('Erro ao remover página:', error);
+                // Tentar remoção forçada como último recurso
+                this.forceRemoveElement(pageElement);
             }
-        }
+        }, 300); // Tempo suficiente para a animação de saída
     }
 
     // Inicializa os handlers específicos de cada página
@@ -507,20 +447,64 @@ class NavigationManager {
         }
     }
 
-    // Handlers específicos para a página de configurações
+    // Inicializa a página de configurações
     initSettingsPage(doc) {
-        console.log('Página de configurações carregada');
+        // Inicializa handlers específicos para a página de configurações
+        if (!doc) return;
+        
+        try {
+            // Configura evento para o botão de salvar configurações
+            const saveBtn = doc.getElementById('save-settings');
+            if (saveBtn) {
+                saveBtn.addEventListener('click', () => {
+                    // Evento de salvar configurações
+                });
+            }
+            
+            // Configura evento para o botão de fechar
+            const closeBtn = doc.getElementById('close-settings');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', () => {
+                    this.closePage();
+                });
+            }
+        } catch (error) {
+            console.error('Erro ao inicializar página de configurações:', error);
+        }
     }
     
-    // Handlers específicos para a página de logs
+    // Inicializa a página de logs
     initLogsPage(doc) {
-        console.log('Página de logs carregada');
+        // Inicializa handlers específicos para a página de logs
+        if (!doc) return;
+        
+        try {
+            // Configura evento para o botão de fechar logs
+            const closeBtn = doc.getElementById('close-logs');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', () => {
+                    this.closePage();
+                });
+            }
+            
+            // Configura evento para o botão de limpar logs
+            const clearBtn = doc.getElementById('clear-logs');
+            if (clearBtn) {
+                clearBtn.addEventListener('click', () => {
+                    // Evento de limpar logs
+                });
+            }
+        } catch (error) {
+            console.error('Erro ao inicializar página de logs:', error);
+        }
     }
 }
 
 // Cria e exporta a instância do gerenciador de navegação
 const navigationManager = new NavigationManager();
-console.log('[NavigationManager] Inicializado com sucesso');
+
+// Injecta os estilos das subpáginas para garantir o funcionamento correto
+navigationManager.injectSubpageStyles();
 
 // Expõe uma API para outros scripts
 window.Navigation = {
@@ -529,5 +513,4 @@ window.Navigation = {
 };
 
 // Também expõe o próprio navigationManager para acesso direto se necessário
-window.navigationManager = navigationManager;
-console.log('[NavigationManager] API exposta globalmente via window.Navigation e window.navigationManager'); 
+window.navigationManager = navigationManager; 

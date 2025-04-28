@@ -10,6 +10,12 @@
 // Namespace global para o módulo
 window.TradeManager = window.TradeManager || {};
 
+// Verifica se estamos na página correta para o histórico de operações
+const isTradeHistoryPage = () => {
+    return window.location.href.includes('/history') || 
+           document.querySelector('#operations-body') !== null;
+};
+
 // Inicialização do módulo de histórico
 window.TradeManager.History = (function() {
     // Cache para evitar duplicidade de operações
@@ -20,10 +26,10 @@ window.TradeManager.History = (function() {
     
     // Referência aos elementos da UI
     const UI = {
-        operationsBody: document.querySelector('#operations-body'),
-        profitCurrent: document.querySelector('#profitCurrent'),
-        exportBtn: document.querySelector('#export-csv'),
-        clearHistoryBtn: document.querySelector('#clear-history')
+        operationsBody: null,
+        profitCurrent: null,
+        exportBtn: null,
+        clearHistoryBtn: null
     };
     
     // Sistema de logs (integração)
@@ -34,8 +40,10 @@ window.TradeManager.History = (function() {
             return;
         }
         
-        // Fallback para console
-        console.log(`[${level}][trade-history.js] ${message}`);
+        // Fallback para console apenas para erros
+        if (level.toUpperCase() === 'ERROR') {
+            console.error(`[${level}][trade-history.js] ${message}`);
+        }
         
         // Tentar enviar para o sistema centralizado via mensagem
         try {
@@ -56,7 +64,10 @@ window.TradeManager.History = (function() {
      */
     const addOperation = (operation) => {
         if (!UI.operationsBody) {
-            logToSystem("Elemento operations-body não encontrado", "ERROR");
+            // Não logar erro se não estivermos na página correta
+            if (isTradeHistoryPage()) {
+                logToSystem("Elemento operations-body não encontrado", "ERROR");
+            }
             return;
         }
 
@@ -422,6 +433,12 @@ window.TradeManager.History = (function() {
      * Inicializa o módulo de histórico
      */
     const init = () => {
+        // Verificar se estamos na página correta antes de inicializar
+        if (!isTradeHistoryPage()) {
+            // Não estamos na página correta, mas isso não é um erro
+            return;
+        }
+        
         if (isInitialized) {
             logToSystem("Módulo de histórico já inicializado", "WARN");
             return;
@@ -436,7 +453,9 @@ window.TradeManager.History = (function() {
         UI.clearHistoryBtn = document.querySelector('#clear-history');
         
         if (!UI.operationsBody) {
+            // Só logar como erro se estivermos na página que deveria ter o elemento
             logToSystem("Elemento operations-body não encontrado", "ERROR");
+            return; // Não continuar a inicialização se o elemento principal não existir
         }
         
         // Configurar listeners
@@ -460,19 +479,27 @@ window.TradeManager.History = (function() {
         stopMonitoring: stopTradeMonitoring,
         exportToCSV,
         clearHistory,
-        getTotalProfit: () => profitCurrent
+        getTotalProfit: () => profitCurrent,
+        isTradeHistoryPage: isTradeHistoryPage
     };
 })();
 
 // Auto-inicialização quando o script é carregado
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
+        // Verificar se estamos na página correta antes de inicializar
         if (window.TradeManager && window.TradeManager.History) {
-            window.TradeManager.History.init();
+            // Só inicializar se a detecção de página indicar que estamos na página correta
+            if (isTradeHistoryPage()) {
+                window.TradeManager.History.init();
+            }
         }
     });
 } else {
+    // Mesmo para carregamento imediato, verificar se estamos na página certa
     if (window.TradeManager && window.TradeManager.History) {
-        window.TradeManager.History.init();
+        if (isTradeHistoryPage()) {
+            window.TradeManager.History.init();
+        }
     }
 } 

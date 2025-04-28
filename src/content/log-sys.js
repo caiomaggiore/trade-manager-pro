@@ -11,7 +11,6 @@ const isLogPage = () => {
 
 // Detectar se estamos na página de logs
 window.IS_LOG_PAGE = isLogPage();
-console.log(`[log-sys.js] Estamos na página de logs? ${window.IS_LOG_PAGE}`);
 
 // ================== ELEMENTOS DA UI ==================
 const sysUI = {
@@ -81,8 +80,10 @@ function logToSystem(message, level = 'INFO', source = 'SYSTEM') {
     const logLevel = level.toUpperCase();
     const logSource = source.toUpperCase();
     
-    // Log no console sempre para depuração
-    console.log(`[${logLevel}][${logSource}] ${message}`);
+    // Log no console apenas para erros
+    if (logLevel === 'ERROR') {
+        console.error(`[${logLevel}][${logSource}] ${message}`);
+    }
     
     try {
         // Se estamos na página de logs, adicionar diretamente
@@ -151,12 +152,10 @@ const LogSystem = {
     ],
     
     init() {
-        console.log('[LogSystem] Inicializando sistema de logs...');
         this.container = document.querySelector('.log-container');
         
         // Para evitar inicializações duplicadas
         if (this.initialized) {
-            console.log('[LogSystem] Sistema já inicializado, ignorando...');
             return this;
         }
         
@@ -168,8 +167,6 @@ const LogSystem = {
             // Adicionar log de inicialização somente uma vez
             if (this.logs.length === 0) {
                 this.addLog('Sistema de logs inicializado', 'INFO', 'LogSystem');
-            } else {
-                console.log(`[LogSystem] ${this.logs.length} logs carregados do storage`);
             }
             
             // Atualizar a UI agora que temos os logs
@@ -209,10 +206,11 @@ const LogSystem = {
                     const storedLogs = result.systemLogs || [];
                     
                     if (storedLogs.length > 0) {
-                        console.log(`[LogSystem] Carregando ${storedLogs.length} logs do storage`);
+                        // Filtrar logs duplicados antes de processá-los
+                        const uniqueLogs = this.removeDuplicateLogs(storedLogs);
                         
                         // Converter os logs armazenados para o formato interno
-                        this.logs = storedLogs.map(log => {
+                        this.logs = uniqueLogs.map(log => {
                             // Criar um timestamp baseado na data armazenada ou usar a atual como fallback
                             const logDate = log.date ? new Date(log.date) : new Date();
                             
@@ -232,8 +230,6 @@ const LogSystem = {
                         if (this.logs.length > this.maxLogs) {
                             this.logs = this.logs.slice(-this.maxLogs);
                         }
-                        
-                        console.log(`[LogSystem] ${this.logs.length} logs carregados e ordenados`);
                     }
                     
                     resolve();
@@ -243,6 +239,27 @@ const LogSystem = {
             console.error('[LogSystem] Erro ao carregar logs:', error);
             throw error;
         }
+    },
+    
+    // Método para remover logs duplicados
+    removeDuplicateLogs(logs) {
+        // Map para armazenar logs únicos usando uma chave composta
+        const uniqueMap = new Map();
+        
+        // Percorrer todos os logs
+        logs.forEach(log => {
+            // Criar uma chave composta de timestamp + message + source + level
+            // Para identificar logs idênticos ou quase idênticos
+            const key = `${log.timestamp || ''}-${log.message}-${log.source}-${log.level}`;
+            
+            // Se já existe um log com esta chave, só mantém o mais recente
+            if (!uniqueMap.has(key) || (uniqueMap.get(key).timestamp < log.timestamp)) {
+                uniqueMap.set(key, log);
+            }
+        });
+        
+        // Converter o map de volta para array
+        return Array.from(uniqueMap.values());
     },
     
     shouldFilterMessage(message) {
@@ -282,12 +299,8 @@ const LogSystem = {
     },
     
     addLog(message, level = 'INFO', source = 'system') {
-        // Nunca filtrar mensagens, removido o filtro shouldFilterMessage
-        
         // Criar timestamp atual
         const now = new Date();
-        
-        // Removido o filtro de mensagens duplicadas para garantir que todas as mensagens sejam registradas
         
         // Formatar a mensagem com o timestamp atual
         const formattedLog = this.formatLog(message, level, source, now);
@@ -308,9 +321,6 @@ const LogSystem = {
         if (this.logs.length > this.maxLogs) {
             this.logs.shift();
         }
-        
-        // Adicionar ao console para debugging
-        console.log(formattedLog);
         
         // Salvar no storage para persistência se possível
         this.saveLogToStorage(message, level, source);
@@ -374,27 +384,44 @@ const LogSystem = {
                 // Criar timestamp atual
                 const now = new Date();
                 
-                // Adicionar novo log
-                storedLogs.push({
+                // Criar o novo log
+                const newLog = {
                     message,
                     level,
                     source,
                     date: now.toISOString(), // Formato ISO para fácil conversão
                     timestamp: now.getTime() // Timestamp em milissegundos para ordenação
+                };
+                
+                // Verificar se já existe um log muito similar nos últimos 10 segundos
+                const isDuplicate = storedLogs.some(log => {
+                    return log.message === message && 
+                           log.level === level && 
+                           log.source === source &&
+                           (now.getTime() - log.timestamp) < 10000; // 10 segundos
                 });
                 
-                // Limitar a quantidade de logs armazenados (manter os 1000 mais recentes)
-                if (storedLogs.length > 1000) {
-                    storedLogs = storedLogs.slice(-1000);
-                }
-                
-                // Salvar logs atualizados
-                chrome.storage.local.set({ systemLogs: storedLogs }, () => {
-                    if (chrome.runtime.lastError) {
-                        const errorMsg = chrome.runtime.lastError.message || 'Erro desconhecido';
-                        console.error(`[LogSystem] Erro ao salvar logs: ${errorMsg}`);
+                // Só adiciona se não for um log duplicado muito recente
+                if (!isDuplicate) {
+                    // Adicionar novo log
+                    storedLogs.push(newLog);
+                    
+                    // Limitar a quantidade de logs armazenados
+                    if (storedLogs.length > 1000) {
+                        storedLogs = storedLogs.slice(-1000);
                     }
-                });
+                    
+                    // Remover duplicados antes de salvar
+                    storedLogs = this.removeDuplicateLogs(storedLogs);
+                    
+                    // Salvar logs atualizados
+                    chrome.storage.local.set({ systemLogs: storedLogs }, () => {
+                        if (chrome.runtime.lastError) {
+                            const errorMsg = chrome.runtime.lastError.message || 'Erro desconhecido';
+                            console.error(`[LogSystem] Erro ao salvar logs: ${errorMsg}`);
+                        }
+                    });
+                }
             });
             
             return true;
@@ -687,34 +714,27 @@ const sysClearLogs = async () => {
 
 // Fechar página de logs
 const closeLogs = () => {
-    console.log('[LogSystem] Tentando fechar a página de logs...');
-    
     try {
         // Método 1: Tentar acessar diretamente o navigationManager
         if (window.parent && window.parent.navigationManager) {
-            console.log('[LogSystem] Chamando navigationManager.closePage()');
             window.parent.navigationManager.closePage();
             return;
         }
         
         // Método 2: Tentar fechar usando window.close()
-        console.log('[LogSystem] Tentando window.close()');
         window.close();
         
         // Método 3: Usar postMessage para comunicar com o frame pai
-        console.log('[LogSystem] Enviando mensagem postMessage para fechar');
         if (window.parent) {
             window.parent.postMessage({ action: 'closePage' }, '*');
         }
         
         // Método 4: Tentar esconder o elemento iframe (fallback)
-        console.log('[LogSystem] Tentando esconder o elemento iframe');
         if (window.frameElement) {
             window.frameElement.style.display = 'none';
         }
         
         // Caso extremo: recarregar a página principal
-        console.log('[LogSystem] Última tentativa: voltando para a página principal');
         if (window.parent) {
             window.parent.location.href = 'index.html';
         }
@@ -864,8 +884,6 @@ const initLogUI = () => {
     sysUI.logContainer = document.getElementById('log-container');
     sysUI.levelFilter = document.getElementById('log-level-filter');
     
-    console.log('[log-sys.js] UI da página de logs inicializada');
-    
     // Adicionar um log de inicialização
     sysAddLog('Sistema de logs inicializado', 'INFO', 'log-sys.js');
 };
@@ -873,8 +891,6 @@ const initLogUI = () => {
 // ================== EVENT LISTENERS ==================
 document.addEventListener('DOMContentLoaded', () => {
     if (window.IS_LOG_PAGE) {
-        console.log('[LogSystem] Inicializando página de logs');
-        
         // Atualizar referências de UI que podem não estar disponíveis no carregamento do script
         sysUI.copyBtn = document.getElementById('copy-logs') || document.getElementById('copy-log-btn');
         sysUI.saveBtn = document.getElementById('export-logs') || document.getElementById('save-log-btn');
@@ -886,8 +902,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Verificar elementos obrigatórios
         if (!sysUI.logContainer) {
             console.error('Container de logs não encontrado');
-        return;
-    }
+            return;
+        }
     
         // Inicializar o novo sistema de logs em vez de carregar o sistema antigo
         if (window.LogSystem) {
@@ -907,7 +923,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Atualizar o filtro para categoria exata
                 CURRENT_FILTER_LEVEL = selectedLevel;
-                console.log(`[LogSystem] Filtro de logs alterado para: ${selectedLevel}`);
                 
                 // Usar o novo método de filtragem
                 if (window.LogSystem) {
@@ -938,7 +953,11 @@ window.addLog = (message, level, source) => {
     if (window.LogSystem) {
         return window.LogSystem.addLog(message, level, source);
     } else {
-        console.log(`[${level}][${source}] ${message} (LogSystem não inicializado)`);
+        // Não usar console.log para evitar logs desnecessários
+        if (level.toUpperCase() === 'ERROR') {
+            console.error(`[${level}][${source}] ${message} (LogSystem não inicializado)`);
+        }
+        return false;
     }
 };
 

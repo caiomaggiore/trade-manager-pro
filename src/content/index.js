@@ -9,8 +9,10 @@ const addLog = (message, level = 'INFO') => {
         return;
     }
     
-    // Fallback: método original quando logToSystem não está disponível
-    console.log(`[${level}][index.js] ${message}`); // Log local para debug
+    // Fallback: apenas erros são exibidos no console
+    if (level.toUpperCase() === 'ERROR') {
+        console.error(`[${level}][index.js] ${message}`);
+    }
     
     // Enviar para o sistema centralizado via mensagem
     try {
@@ -56,7 +58,7 @@ const updateStatus = (message, level = 'INFO') => {
         statusElement.classList.add(statusClass, 'visible');
         statusElement.textContent = message;
     } else {
-        // Log adicional se o elemento de status não existir
+        // Log adicional se o elemento de status não existir, apenas se for erro
         addLog('Elemento de status não encontrado na UI', 'WARN');
     }
 };
@@ -68,7 +70,7 @@ const initLogging = () => {
     try {
         // Verificar se o sistema de logs já existe
         if (typeof window.logToSystem === 'function') {
-            addLog('Sistema de logs já disponível', 'DEBUG');
+            addLog('Sistema de logs disponível', 'DEBUG');
             logInitialized = true;
             return;
         }
@@ -87,9 +89,6 @@ const initLogging = () => {
         const script = document.createElement('script');
         script.src = '../content/log-sys.js';
         script.onload = () => {
-            addLog('Sistema de logs carregado dinamicamente', 'INFO');
-            
-            // Inicializar o sistema após o carregamento
             if (typeof window.LogSystem === 'object') {
                 window.LogSystem.init();
                 logInitialized = true;
@@ -1687,9 +1686,6 @@ const logAndUpdateStatus = (message, level = 'INFO', source = 'index.js', showSt
 // Função interna para atualizar apenas a UI de status, sem registrar logs
 const updateStatusUI = (message, type = 'info', duration = 3000) => {
     try {
-        // Log interno para debug
-        console.log(`Atualizando UI de status: ${message} (${type})`);
-        
         // Registrar no sistema de logs centralizado
         addLog(`Status UI atualizado: ${message}`, type.toUpperCase());
         
@@ -1712,7 +1708,6 @@ const updateStatusUI = (message, type = 'info', duration = 3000) => {
                 }, duration);
             }
         } else {
-            console.log('Elemento de status não encontrado na UI');
             addLog('Elemento de status não encontrado na UI', 'WARN');
         }
     } catch (error) {
