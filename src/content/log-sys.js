@@ -157,6 +157,14 @@ const LogSystem = {
                 throw new Error('API de storage não disponível');
             }
             
+            // Verificar se os logs foram recentemente limpos
+            const clearFlag = localStorage.getItem('logsRecentlyCleared');
+            if (clearFlag && (Date.now() - parseInt(clearFlag)) < 5000) { // 5 segundos
+                console.log('[LogSystem] Logs foram recentemente limpos, ignorando carregamento do storage');
+                this.logs = []; // Garantir que logs estejam vazios
+                return;
+            }
+            
             // Carregar logs usando Promise
             const result = await new Promise((resolve, reject) => {
                 chrome.storage.local.get(['systemLogs'], (result) => {
@@ -169,6 +177,19 @@ const LogSystem = {
             });
             
             const storedLogs = result.systemLogs || [];
+            
+            // Verificar se o storage está vazio ou tem apenas o log de limpeza
+            if (storedLogs.length === 0) {
+                this.logs = [];
+                return;
+            }
+            
+            if (storedLogs.length === 1 && 
+                storedLogs[0].message && 
+                storedLogs[0].message.includes('Todos os logs foram limpos')) {
+                this.logs = storedLogs;
+                return;
+            }
             
             if (storedLogs.length > 0) {
                 // Filtrar logs duplicados
@@ -395,24 +416,114 @@ const LogSystem = {
     
     // Limpar todos os logs
     async clearLogs() {
+        // Limpar o array de logs em memória
         this.logs = [];
         
-        // Adicionar log de limpeza
-        this.addLog('Todos os logs foram limpos', 'INFO', 'LogSystem');
+        // Variável para rastrear se o storage foi limpo com sucesso
+        let storageCleared = false;
         
-        // Limpar no storage também
+        // Definir flag no localStorage para indicar que os logs foram limpos recentemente
+        try {
+            localStorage.setItem('logsRecentlyCleared', Date.now().toString());
+        } catch (e) {
+            console.warn('[LogSystem] Não foi possível definir flag de limpeza:', e);
+        }
+        
+        // Limpar no storage também - com múltiplas tentativas
         if (isExtensionContextValid() && chrome.storage && chrome.storage.local) {
             try {
+                // Primeira tentativa: remover a chave systemLogs
                 await new Promise(resolve => {
-                    chrome.storage.local.remove(['systemLogs'], resolve);
+                    chrome.storage.local.remove(['systemLogs'], () => {
+                        if (chrome.runtime.lastError) {
+                            console.error(`[LogSystem] Erro ao limpar logs (tentativa 1): ${chrome.runtime.lastError.message}`);
+                            resolve(false);
+                        } else {
+                            resolve(true);
+                        }
+                    });
                 });
+                
+                // Segunda tentativa: definir a chave systemLogs como um array vazio
+                await new Promise(resolve => {
+                    chrome.storage.local.set({ systemLogs: [] }, () => {
+                        if (chrome.runtime.lastError) {
+                            console.error(`[LogSystem] Erro ao limpar logs (tentativa 2): ${chrome.runtime.lastError.message}`);
+                            resolve(false);
+                        } else {
+                            storageCleared = true;
+                            resolve(true);
+                        }
+                    });
+                });
+                
+                // Verificar se a limpeza foi bem-sucedida
+                if (storageCleared) {
+                    console.log('[LogSystem] Storage limpo com sucesso');
+                } else {
+                    console.warn('[LogSystem] Possível falha ao limpar o storage');
+                }
             } catch (error) {
                 console.error(`[LogSystem] Erro ao limpar logs do storage: ${error.message}`);
             }
+        } else {
+            console.warn('[LogSystem] Contexto da extensão inválido, não foi possível limpar o storage');
         }
+        
+        // Adicionar log de limpeza - apenas após tentar limpar o storage para não salvar novamente
+        this.addLog('Todos os logs foram limpos', 'INFO', 'LogSystem');
+        
+        // Verificar novamente o storage para garantir que está vazio
+        this.verifyStorageCleared();
         
         // Atualizar a UI
         this.updateUI();
+        
+        // Notificar outras instâncias sobre a limpeza de logs
+        try {
+            chrome.runtime.sendMessage({
+                action: 'logsCleaned',
+                timestamp: Date.now()
+            });
+        } catch (e) {
+            // Ignorar erros de comunicação
+        }
+        
+        return storageCleared;
+    },
+    
+    // Método auxiliar para verificar se o storage foi realmente limpo
+    async verifyStorageCleared() {
+        if (!isExtensionContextValid() || !chrome.storage || !chrome.storage.local) {
+            return false;
+        }
+        
+        try {
+            const result = await new Promise(resolve => {
+                chrome.storage.local.get(['systemLogs'], result => {
+                    resolve(result);
+                });
+            });
+            
+            const logs = result.systemLogs || [];
+            
+            // Se ainda houver logs no storage após a limpeza
+            if (logs.length > 1) { // Permitir 1 log (o da limpeza)
+                console.warn(`[LogSystem] Detectados ${logs.length} logs no storage após limpeza`);
+                
+                // Tentar limpar novamente
+                await new Promise(resolve => {
+                    chrome.storage.local.set({ systemLogs: [] }, resolve);
+                });
+                
+                return false;
+            }
+            
+            return true;
+        } catch (error) {
+            console.error(`[LogSystem] Erro ao verificar limpeza do storage: ${error.message}`);
+            return false;
+        }
     },
     
     // Filtrar logs por nível
@@ -470,35 +581,40 @@ const LogSystem = {
     copyLogs() {
         const content = this.getFormattedLogs();
         
-        // Em ambiente de iframe, usar sempre o método fallback
-        // para evitar problemas de permissão de clipboard
-        this.fallbackCopy(content);
-    },
-    
-    // Método alternativo de cópia para browsers antigos
-    fallbackCopy(content) {
-        const textarea = document.createElement('textarea');
-        textarea.value = content;
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        
+        // Usar apenas o método seguro - via background script
         try {
-            textarea.select();
-            const success = document.execCommand('copy');
-            
-            if (success) {
-                // Atualizar status em vez de mostrar alert
-                updateStatus('Logs copiados para a área de transferência', 'success');
+            if (isExtensionContextValid()) {
+                updateStatus('Copiando logs...', 'info');
+                
+                // Enviar para o background script, que injetará na página principal
+                chrome.runtime.sendMessage({
+                    action: 'copyTextToClipboard',
+                    text: content
+                }, response => {
+                    if (response && response.success) {
+                        updateStatus('Logs copiados para a área de transferência', 'success');
+                    } else {
+                        const errorMsg = response ? response.error : 'Erro desconhecido';
+                        updateStatus('Não foi possível copiar: ' + errorMsg, 'error');
+                        this.offerDownloadAlternative();
+                    }
+                });
             } else {
-                throw new Error('Comando de copiar falhou');
+                updateStatus('Conexão com a extensão perdida', 'error');
+                this.offerDownloadAlternative();
             }
         } catch (err) {
-            console.error('Erro ao copiar logs:', err);
-            updateStatus('Erro ao copiar logs: ' + (err.message || 'erro desconhecido'), 'error');
-        } finally {
-            document.body.removeChild(textarea);
+            console.error('Erro ao solicitar cópia:', err);
+            updateStatus('Erro ao copiar logs', 'error');
+            this.offerDownloadAlternative();
         }
+    },
+    
+    // Sugerir alternativa de download
+    offerDownloadAlternative() {
+        setTimeout(() => {
+            updateStatus('Tente usar o botão "Salvar como arquivo"', 'info');
+        }, 2000);
     }
 };
 
@@ -551,6 +667,27 @@ function logToSystem(message, level = 'INFO', source = 'SYSTEM') {
 
 // Configurar receptor de mensagens para receber logs de outros scripts
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    // Processamento da mensagem de limpeza de logs
+    if (request.action === 'logsCleaned') {
+        // Definir a flag local
+        try {
+            localStorage.setItem('logsRecentlyCleared', request.timestamp.toString());
+            
+            // Se estamos na página de logs, atualizar a UI
+            if (window.IS_LOG_PAGE && LogSystem.initialized) {
+                LogSystem.logs = []; // Limpar os logs em memória
+                LogSystem.addLog('Logs foram limpos em outra instância', 'INFO', 'LogSystem');
+                LogSystem.updateUI();
+            }
+            
+            sendResponse({ success: true });
+        } catch (e) {
+            console.warn('[LogSystem] Erro ao processar mensagem de limpeza:', e);
+            sendResponse({ success: false, error: e.message });
+        }
+        return true;
+    }
+    
     // Processamento simplificado de mensagens de log
     if (request.action === 'logMessage' || request.action === 'addLog') {
         const message = request.message || request.logMessage;
@@ -776,7 +913,7 @@ function updateLogFilters() {
 }
 
 // Função para atualizar o status de operação sem usar alerts
-function updateStatus(message, type = 'info') {
+function updateStatus(message, type = 'info', duration = 3000) {
     // Tentar usar a função de atualização de status da página principal
     try {
         // Se estamos em um iframe, enviar para o pai
@@ -784,28 +921,77 @@ function updateStatus(message, type = 'info') {
             window.parent.postMessage({
                 action: 'updateStatus',
                 message: message,
-                type: type
+                type: type,
+                duration: duration
             }, '*');
             return true;
         }
         
         // Se estamos na página principal, tentar usar a função global
         if (typeof window.updateStatusUI === 'function') {
-            window.updateStatusUI(message, type);
+            window.updateStatusUI(message, type, duration);
             return true;
         }
         
         // Alternativa: elemento de status na própria página
         const statusEl = document.getElementById('status-processo');
         if (statusEl) {
-            statusEl.textContent = message;
-            statusEl.className = `status-processo ${type}`;
-            statusEl.style.display = 'block';
+            // Remover classes anteriores
+            statusEl.className = 'status-processo';
             
-            // Auto-ocultar após 3 segundos
+            // Adicionar classe de acordo com o tipo
+            statusEl.classList.add(type, 'visible');
+            statusEl.textContent = message;
+            
+            // Auto-ocultar após o tempo especificado
             setTimeout(() => {
-                statusEl.style.display = 'none';
-            }, 3000);
+                statusEl.classList.remove('visible');
+            }, duration);
+            
+            return true;
+        }
+        
+        // Se não encontrou o elemento padrão, criar um temporário
+        if (!document.getElementById('temp-status-message')) {
+            const tempStatus = document.createElement('div');
+            tempStatus.id = 'temp-status-message';
+            tempStatus.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                padding: 10px 15px;
+                border-radius: 4px;
+                color: white;
+                font-weight: bold;
+                z-index: 9999;
+                opacity: 0;
+                transition: opacity 0.3s ease;
+            `;
+            
+            // Definir cor de acordo com o tipo
+            switch(type) {
+                case 'error': tempStatus.style.backgroundColor = '#f44336'; break;
+                case 'success': tempStatus.style.backgroundColor = '#4caf50'; break;
+                case 'warn': tempStatus.style.backgroundColor = '#ff9800'; break;
+                default: tempStatus.style.backgroundColor = '#2196f3'; // info
+            }
+            
+            tempStatus.textContent = message;
+            document.body.appendChild(tempStatus);
+            
+            // Exibir com fade
+            setTimeout(() => { tempStatus.style.opacity = '1'; }, 10);
+            
+            // Remover após o tempo especificado
+            setTimeout(() => {
+                tempStatus.style.opacity = '0';
+                setTimeout(() => {
+                    if (tempStatus.parentNode) {
+                        document.body.removeChild(tempStatus);
+                    }
+                }, 300);
+            }, duration);
+            
             return true;
         }
     } catch (e) {
@@ -813,7 +999,7 @@ function updateStatus(message, type = 'info') {
     }
     
     // Fallback para console se não conseguir atualizar UI
-    console.log(`[STATUS] ${message}`);
+    console.log(`[STATUS][${type.toUpperCase()}] ${message}`);
     return false;
 }
 

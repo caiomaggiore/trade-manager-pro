@@ -651,4 +651,109 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Manter canal aberto para resposta assíncrona
     return true;
   }
+
+  // Handler para copiar texto para a área de transferência
+  if (message.action === 'copyTextToClipboard') {
+    try {
+      // Obter a aba ativa para injetar o script de cópia
+      chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+        if (!tabs || !tabs[0] || !tabs[0].id) {
+          sendResponse({success: false, error: "Nenhuma aba ativa encontrada"});
+          return;
+        }
+        
+        // Injetar script para copiar o texto na aba atual
+        chrome.scripting.executeScript({
+          target: {tabId: tabs[0].id},
+          function: function(textToCopy) {
+            function copyToClipboard(text) {
+              try {
+                // Método 1: função de cópia via navigator.clipboard
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                  navigator.clipboard.writeText(text).then(function() {
+                    // Criar um elemento para mostrar feedback
+                    var notification = document.createElement('div');
+                    notification.textContent = 'Logs copiados com sucesso!';
+                    notification.style.cssText = 'position:fixed;top:10px;right:10px;background:#4CAF50;color:white;padding:10px;border-radius:4px;z-index:9999';
+                    document.body.appendChild(notification);
+                    
+                    // Remover após 3 segundos
+                    setTimeout(function() {
+                      if (notification.parentNode) document.body.removeChild(notification);
+                    }, 3000);
+                    
+                    return true;
+                  }).catch(function(err) {
+                    // Método 2: fallback para execCommand
+                    return fallbackCopy(text);
+                  });
+                } else {
+                  // Método 2: fallback para execCommand
+                  return fallbackCopy(text);
+                }
+              } catch (e) {
+                // Método 2: fallback para execCommand
+                return fallbackCopy(text);
+              }
+              
+              return false;
+            }
+            
+            function fallbackCopy(text) {
+              try {
+                var textArea = document.createElement('textarea');
+                textArea.value = text;
+                
+                // Tornar invisível mas ainda presente no DOM
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-9999px';
+                textArea.style.top = '0';
+                
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                
+                var success = false;
+                try {
+                  success = document.execCommand('copy');
+                } catch (err) {
+                  success = false;
+                }
+                
+                // Feedback visual
+                if (success) {
+                  var notification = document.createElement('div');
+                  notification.textContent = 'Logs copiados com sucesso!';
+                  notification.style.cssText = 'position:fixed;top:10px;right:10px;background:#4CAF50;color:white;padding:10px;border-radius:4px;z-index:9999';
+                  document.body.appendChild(notification);
+                  
+                  // Remover após 3 segundos
+                  setTimeout(function() {
+                    if (notification.parentNode) document.body.removeChild(notification);
+                  }, 3000);
+                }
+                
+                document.body.removeChild(textArea);
+                return success;
+              } catch (err) {
+                return false;
+              }
+            }
+            
+            return copyToClipboard(textToCopy);
+          },
+          args: [message.text]
+        }, function(results) {
+          if (chrome.runtime.lastError) {
+            sendResponse({success: false, error: chrome.runtime.lastError.message});
+          } else {
+            sendResponse({success: true, results: results});
+          }
+        });
+      });
+    } catch (err) {
+      sendResponse({success: false, error: err.message});
+    }
+    return true; // Manter canal aberto
+  }
 }); 
