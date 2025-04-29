@@ -85,15 +85,11 @@ const getTradeParameters = (settings, analysis, availablePeriods) => {
  */
 async function handleCaptureRequest(request) {
     try {
-        console.log('Iniciando captura de tela...');
-        
         // Captura a tela visível
         const dataUrl = await chrome.tabs.captureVisibleTab(null, {
             format: 'png',
             quality: 100
         });
-
-        console.log('Captura concluída, processando imagem...');
 
         // Se não precisar de processamento, retorna a imagem
         if (!request.requireProcessing) {
@@ -141,7 +137,8 @@ const executeAnalysis = (tabId, sendResponse) => {
 
 // ================== EVENT LISTENERS ==================
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log('Mensagem recebida no background:', message);
+    // Remover o log que causa poluição no console
+    // console.log('Mensagem recebida no background:', message);
     
     // Handler para resultado de operações de trading
     if (message.type === 'TRADE_RESULT') {
@@ -168,6 +165,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         
         if (sendResponse) sendResponse({ success: true });
         return true;
+    }
+    
+    // Handler para atualização de status - reencaminha para as tabs ativas
+    if (message.action === 'updateStatus') {
+        try {
+            // Obter todas as tabs ativas e enviar a mensagem para elas
+            chrome.tabs.query({active: true}, (tabs) => {
+                tabs.forEach(tab => {
+                    chrome.tabs.sendMessage(tab.id, {
+                        action: 'updateStatus',
+                        message: message.message,
+                        type: message.type || 'info',
+                        duration: message.duration || 3000
+                    }).catch(err => {
+                        // Silenciar erros de comunicação
+                        console.debug('Tab não disponível para update de status');
+                    });
+                });
+            });
+            
+            // Responde com sucesso
+            if (sendResponse) sendResponse({ success: true });
+        } catch (error) {
+            console.error('Erro ao repassar status:', error);
+            if (sendResponse) sendResponse({ success: false, error: error.message });
+        }
+        return true; // Manter canal aberto
     }
     
     // Handler para mostrar notificações
@@ -260,82 +284,90 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   // Handler para executar ação de compra/venda na plataforma
-  if (message.action === 'EXECUTE_TRADE_ACTION') {
-    console.log(`Recebendo comando para executar ${message.tradeAction}`);
-    
-    // Definir um timeout para garantir que alguma resposta seja enviada
-    const timeout = setTimeout(() => {
-        sendResponse({ success: false, error: "Timeout na execução da operação" });
-    }, 15000); // 15 segundos de timeout
-    
+  if (message.action === 'EXECUTE_TRADE_ACTION') {    
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (!tabs[0]?.id) {
-        clearTimeout(timeout);
         console.error('Nenhuma guia ativa encontrada');
         sendResponse({ success: false, error: "Nenhuma guia ativa encontrada" });
         return;
       }
       
-      // Registrar informações sobre a guia ativa para debug
-      console.log('Guia ativa:', tabs[0].url, 'ID:', tabs[0].id);
-      
       // Tentar injetar o script diretamente, sem verificar se já está injetado
       const executeScript = () => {
-        chrome.scripting.executeScript({
-          target: { tabId: tabs[0].id },
-          files: ['src/content/content.js']
-        }, (injectionResults) => {
-          const injectError = chrome.runtime.lastError;
-          if (injectError) {
-            console.error('Erro ao injetar script:', injectError);
-            // Mesmo com erro, tentamos enviar a mensagem como último recurso
-            setTimeout(() => sendTradeMessage(), 100);
-          } else {
-            console.log('Script injetado com sucesso');
-            // Espera 300ms para garantir que o script seja carregado completamente
-            setTimeout(() => sendTradeMessage(), 300);
-          }
-        });
+        try {
+          chrome.scripting.executeScript({
+            target: { tabId: tabs[0].id },
+            files: ['src/content/content.js']
+          }, (injectionResults) => {
+            const injectError = chrome.runtime.lastError;
+            if (injectError) {
+              console.error('Erro ao injetar script:', injectError.message);
+              
+              // Tentar caminhos alternativos em caso de falha
+              chrome.scripting.executeScript({
+                target: { tabId: tabs[0].id },
+                files: ['content.js']
+              }, (altResults) => {
+                const altError = chrome.runtime.lastError;
+                if (altError) {
+                  console.error('Erro ao injetar script alternativo:', altError.message);
+                  // Mesmo com erro, tentamos enviar a mensagem como último recurso
+                  setTimeout(() => sendTradeMessage(), 100);
+                } else {
+                  // Espera 300ms para garantir que o script seja carregado completamente
+                  setTimeout(() => sendTradeMessage(), 300);
+                }
+              });
+            } else {
+              // Espera 300ms para garantir que o script seja carregado completamente
+              setTimeout(() => sendTradeMessage(), 300);
+            }
+          });
+        } catch (error) {
+          console.error('Exceção ao injetar script:', error.message);
+          // Ainda tentar enviar a mensagem como último recurso
+          setTimeout(() => sendTradeMessage(), 100);
+        }
       };
       
       // Função para enviar a mensagem de execução de trade
       const sendTradeMessage = () => {
-        console.log('Enviando mensagem de execução para a guia:', tabs[0].id);
-        
-        chrome.tabs.sendMessage(tabs[0].id, {
-          action: 'EXECUTE_TRADE_ACTION',
-          tradeAction: message.tradeAction
-        }, (response) => {
-          clearTimeout(timeout); // Limpar o timeout
-          
-          const sendError = chrome.runtime.lastError;
-          if (sendError) {
-            console.error('Erro ao enviar mensagem para content script:', sendError);
-            sendResponse({ 
-              success: false, 
-              error: `Comunicação com a página falhou: ${sendError.message}` 
-            });
-          } else if (!response) {
-            console.error('Sem resposta do content script');
-            sendResponse({ 
-              success: false, 
-              error: 'Content script não respondeu ao comando' 
-            });
-          } else {
-            console.log('Resposta recebida do content script:', response);
-            sendResponse(response);
-          }
-        });
+        try {
+          chrome.tabs.sendMessage(tabs[0].id, {
+            action: 'EXECUTE_TRADE_ACTION',
+            tradeAction: message.tradeAction
+          }, (response) => {            
+            const sendError = chrome.runtime.lastError;
+            if (sendError) {
+              console.error('Erro ao enviar mensagem para content script:', sendError.message);
+              sendResponse({ 
+                success: false, 
+                error: `Comunicação com a página falhou: ${sendError.message}` 
+              });
+            } else if (!response) {
+              console.error('Sem resposta do content script');
+              sendResponse({ 
+                success: false, 
+                error: 'Content script não respondeu ao comando' 
+              });
+            } else {
+              sendResponse(response);
+            }
+          });
+        } catch (sendError) {
+          console.error('Exceção ao enviar mensagem:', sendError.message);
+          sendResponse({ 
+            success: false, 
+            error: `Falha ao comunicar com a página: ${sendError.message}` 
+          });
+        }
       };
       
       // Primeiro tentamos enviar mensagem diretamente para ver se o script já está injetado
-      console.log('Verificando se o content script já está injetado...');
       chrome.tabs.sendMessage(tabs[0].id, { action: 'PING' }, (pingResponse) => {
         if (chrome.runtime.lastError) {
-          console.log('Content script não detectado, injetando...');
           executeScript();
         } else {
-          console.log('Content script já ativo, executando diretamente.');
           sendTradeMessage();
         }
       });
@@ -479,8 +511,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const logLevel = message.level || "INFO";
       const logSource = message.source || "system";
       
-      // Registrar diretamente no console do background (para depuração)
-      console.log(`[BACKGROUND LOG] [${logLevel}][${logSource}] ${logMessage}`);
+      // Registrar apenas erros no console do background
+      if (logLevel === 'ERROR') {
+        console.error(`[BACKGROUND LOG] [${logLevel}][${logSource}] ${logMessage}`);
+      }
       
       // Armazenar no storage local diretamente
       chrome.storage.local.get(['systemLogs'], function(result) {
@@ -492,27 +526,39 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         
         const logs = result.systemLogs || [];
         
-        // Adicionar novo log
-        logs.push({
-          message: logMessage,
-          level: logLevel,
-          source: logSource,
-          date: new Date().toISOString(),
-          timestamp: new Date().getTime()
+        // Verificar se este log é muito similar a outro log recente (dentro de 5 segundos)
+        const now = new Date().getTime();
+        const isDuplicate = logs.some(log => {
+          return log.message === logMessage && 
+                 log.level === logLevel && 
+                 log.source === logSource &&
+                 (now - log.timestamp) < 5000; // 5 segundos
         });
         
-        // Limitar a quantidade de logs armazenados (manter os 500 mais recentes)
-        if (logs.length > 500) {
-          logs.splice(0, logs.length - 500);
-        }
-        
-        // Salvar logs atualizados
-        chrome.storage.local.set({ systemLogs: logs }, function() {
-          if (chrome.runtime.lastError) {
-            const errorMsg = chrome.runtime.lastError.message || 'Erro desconhecido ao salvar logs';
-            console.error(`[BACKGROUND] Erro ao salvar logs: ${errorMsg}`);
+        // Só adiciona se não for um log duplicado muito recente
+        if (!isDuplicate) {
+          // Adicionar novo log
+          logs.push({
+            message: logMessage,
+            level: logLevel,
+            source: logSource,
+            date: new Date().toISOString(),
+            timestamp: now
+          });
+          
+          // Limitar a quantidade de logs armazenados (manter os 500 mais recentes)
+          if (logs.length > 500) {
+            logs.splice(0, logs.length - 500);
           }
-        });
+          
+          // Salvar logs atualizados
+          chrome.storage.local.set({ systemLogs: logs }, function() {
+            if (chrome.runtime.lastError) {
+              const errorMsg = chrome.runtime.lastError.message || 'Erro desconhecido ao salvar logs';
+              console.error(`[BACKGROUND] Erro ao salvar logs: ${errorMsg}`);
+            }
+          });
+        }
       });
       
       // Responder imediatamente para evitar erros de promessa não resolvida
@@ -590,7 +636,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       
       const userConfig = result.userConfig || {};
-      console.log('Configurações de usuário enviadas para operação:', userConfig);
       
       // Extrair apenas os campos relevantes para operações
       const operationConfig = {

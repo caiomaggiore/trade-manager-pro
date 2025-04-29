@@ -50,7 +50,7 @@ const injectInterface = () => {
     // Escuta mensagens do iframe
     window.addEventListener('message', (event) => {
         if (event.data.action === 'captureScreen') {
-            console.log('Mensagem de captura recebida do iframe');
+            safeLog('Mensagem de captura recebida do iframe', 'INFO');
             chrome.runtime.sendMessage({
                 action: 'initiateCapture',
                 actionType: event.data.actionType,
@@ -69,11 +69,11 @@ const injectInterface = () => {
   const startTradeMonitoring = () => {
     // Verificar se o observer já existe
     if (window._tradeObserver) {
-      console.log("Observer já existe, não será criado novamente");
+      safeLog("Observer já existe, não será criado novamente", "INFO");
       return;
     }
     
-    console.log("Iniciando monitoramento de operações direto no DOM da plataforma...");
+    safeLog("Iniciando monitoramento de operações", "INFO");
     
     // Função para processar modal de notificação de trade
     const processTradeModal = (modal) => {
@@ -83,14 +83,11 @@ const injectInterface = () => {
           return;
         }
         
-        console.log("Modal de operação detectado:", modal);
-        
         // Obter título da operação
         const titleElement = modal.querySelector('.deals-noty__title');
         if (!titleElement) return;
         
         const titleText = titleElement.textContent.trim();
-        console.log("Título do modal:", titleText);
         
         // Determinar tipo de operação
         let tradeType = null;
@@ -153,8 +150,7 @@ const injectInterface = () => {
           timestamp: Date.now()
         };
         
-        console.log("Operação detectada:", result);
-        sendLog(`Operação detectada: ${result.status} ${result.symbol}`, 'INFO');
+        safeLog(`Operação detectada: ${result.status} ${result.symbol}`, 'INFO');
         
         // Enviar resultado para processamento
         chrome.runtime.sendMessage({
@@ -163,8 +159,7 @@ const injectInterface = () => {
         });
         
       } catch (error) {
-        console.error("Erro ao processar modal de operação:", error);
-        sendLog(`Erro ao processar modal: ${error.message}`, 'ERROR');
+        safeLog(`Erro ao processar modal de operação: ${error.message}`, 'ERROR');
       }
     };
     
@@ -202,8 +197,7 @@ const injectInterface = () => {
     // Armazenar referência para evitar duplicação
     window._tradeObserver = observer;
     
-    console.log("Monitoramento de operações iniciado com sucesso");
-    sendLog("Monitoramento de operações iniciado no DOM da plataforma", "SUCCESS");
+    safeLog("Monitoramento de operações iniciado com sucesso", "SUCCESS");
   };
   
   // Inicialização
@@ -244,11 +238,15 @@ const injectInterface = () => {
             
             sendResponse({ dataUrl: canvas.toDataURL('image/png') });
         } catch (error) {
+            safeLog(`Erro ao processar captura: ${error.message}`, 'ERROR');
             sendResponse({ error: error.message });
         }
         };
   
-        img.onerror = () => sendResponse({ error: 'Erro ao carregar imagem' });
+        img.onerror = () => {
+          safeLog('Erro ao carregar imagem para processamento', 'ERROR');
+          sendResponse({ error: 'Erro ao carregar imagem' });
+        };
         img.src = message.dataUrl;
         return true; // Mantém o canal aberto
     }
@@ -260,292 +258,248 @@ const injectInterface = () => {
       return true;
     }
     
-    // Novo handler para executar operações de compra/venda
+    // Handler para executar operações de compra/venda
     if (message.action === 'EXECUTE_TRADE_ACTION') {
-      console.log(`Content script: Recebido comando para executar ${message.tradeAction}`);
-      sendLog(`Iniciando execução de ${message.tradeAction}`, 'SUCCESS');
+      safeLog(`Recebido comando para executar ${message.tradeAction}`, 'INFO');
       
       // Log para registrar a solicitação da operação
-      chrome.runtime.sendMessage({
-        action: 'logMessage',
-        message: `Solicitação de operação ${message.tradeAction} recebida`,
-        level: 'SUCCESS',
-        source: 'content.js'
-      });
+      try {
+        chrome.runtime.sendMessage({
+          action: 'logMessage',
+          message: `Solicitação de operação ${message.tradeAction} recebida`,
+          level: 'INFO',
+          source: 'content.js'
+        });
+      } catch (logError) {
+        // Silenciar erros de logging para não afetar a execução principal
+        console.log(`Erro ao enviar log: ${logError.message}`);
+      }
       
       try {
         // Primeiro configurar a operação com as configurações do usuário
-        sendLog('Aplicando configurações antes de executar a operação', 'INFO');
+        safeLog('Aplicando configurações antes de executar a operação', 'INFO');
         
         // Obter configurações atuais do usuário (via mensagem)
         chrome.runtime.sendMessage({ action: 'GET_USER_CONFIG' }, async (config) => {
-            try {
-                if (chrome.runtime.lastError) {
-                    throw new Error(chrome.runtime.lastError.message);
+          try {
+            if (chrome.runtime.lastError) {
+              const errorMsg = chrome.runtime.lastError.message;
+              safeLog(`Erro ao obter configurações: ${errorMsg}`, 'ERROR');
+              sendResponse({ 
+                success: false, 
+                error: `Erro ao obter configurações: ${errorMsg}` 
+              });
+              return;
+            }
+            
+            // Se não recebeu configurações, tenta usar defaults
+            const userConfig = config || { tradeValue: 10, tradeTime: 1 };
+            
+            // Configurar a operação
+            const configured = await TradingConfig.configureOperation(userConfig);
+            if (!configured) {
+                throw new Error('Falha ao configurar parâmetros da operação');
+            }
+            
+            // Buscar o painel de controle com seletores mais abrangentes
+            const findControlPanel = () => {
+              // Tentar vários seletores possíveis
+              const selectors = [
+                '.call-put-block.control-panel',
+                '.call-put-block',
+                '.tour-action-buttons-container',
+                '#put-call-buttons-chart-1'
+              ];
+              
+              for (const selector of selectors) {
+                const element = document.querySelector(selector);
+                if (element) {
+                  safeLog(`Painel de controle encontrado via seletor: ${selector}`, 'INFO');
+                  return element;
                 }
-                
-                // Se não recebeu configurações, tenta usar defaults
-                const userConfig = config || { tradeValue: 10, tradeTime: 1 };
-                
-                // Configurar a operação
-                const configured = await TradingConfig.configureOperation(userConfig);
-                if (!configured) {
-                    throw new Error('Falha ao configurar parâmetros da operação');
-                }
-                
-                // Buscar o painel de controle com seletores mais abrangentes
-                const findControlPanel = () => {
-                  // Tentar vários seletores possíveis
-                  const selectors = [
-                    '.call-put-block.control-panel',
-                    '.call-put-block',
-                    '.tour-action-buttons-container',
-                    '#put-call-buttons-chart-1'
-                  ];
-                  
-                  for (const selector of selectors) {
-                    const element = document.querySelector(selector);
-                    if (element) {
-                      safeLog(`Painel de controle encontrado via seletor: ${selector}`);
-                      return element;
-                    }
-                  }
-                  
-                  return null;
+              }
+              
+              return null;
+            };
+            
+            const controlPanel = findControlPanel();
+            
+            if (!controlPanel) {
+              safeLog('Erro: Painel de controle não encontrado', 'ERROR');
+              
+              sendResponse({ 
+                success: false, 
+                error: 'Painel de controle não encontrado na página' 
+              });
+              return true;
+            }
+            
+            // Seletores mais flexíveis para os botões
+            const findTradeButton = (action) => {
+              // Se a ação for WAIT, retorna null (não há botão para esperar)
+              if (action === 'WAIT') {
+                safeLog('Ação WAIT detectada - não há botão físico para esta ação', 'WARN');
+                return null;
+              }
+              
+              try {
+                // Seletores mais básicos para maior compatibilidade
+                const selectors = {
+                  'BUY': [
+                    'button.btn-call',
+                    'a.btn-call',
+                    '.btn-call',
+                    'button.btn-green',
+                    'a.btn-green',
+                    '.btn-green',
+                    '[data-type="call"]',
+                    '[data-action="call"]',
+                    '[class*="call"]',
+                    'button:contains("Buy")',
+                    'a:contains("Buy")'
+                  ],
+                  'SELL': [
+                    'button.btn-put',
+                    'a.btn-put',
+                    '.btn-put',
+                    'button.btn-red',
+                    'a.btn-red', 
+                    '.btn-red',
+                    '[data-type="put"]',
+                    '[data-action="put"]',
+                    '[class*="put"]',
+                    'button:contains("Sell")',
+                    'a:contains("Sell")'
+                  ]
                 };
                 
-                const controlPanel = findControlPanel();
+                const buttonSelectors = selectors[action] || [];
+                let targetButton = null;
                 
-                if (!controlPanel) {
-                  console.error('Painel de controle não encontrado');
-                  safeLog('Erro: Painel de controle não encontrado', 'error');
-                  
-                  // Tenta imprimir os elementos disponíveis para debug
-                  console.log('Elementos disponíveis na página:');
-                  document.querySelectorAll('div').forEach(el => {
-                    if (el.className && (el.className.includes('call') || el.className.includes('put'))) {
-                      console.log(`Elemento potencial: ${el.tagName}.${el.className}`);
+                // Procurar em toda a página
+                for (const selector of buttonSelectors) {
+                  try {
+                    const elements = document.querySelectorAll(selector);
+                    if (elements && elements.length > 0) {
+                      // Pegar o primeiro elemento visível
+                      for (const element of elements) {
+                        if (element.offsetParent !== null) { // Verifica se é visível
+                          safeLog(`Botão ${action} encontrado via seletor: ${selector}`, 'SUCCESS');
+                          targetButton = element;
+                          break;
+                        }
+                      }
+                      
+                      if (targetButton) break;
                     }
-                  });
-                  
-                  sendResponse({ 
-                    success: false, 
-                    error: 'Painel de controle não encontrado na página' 
-                  });
-                  return true;
+                  } catch (err) {
+                    // Ignorar erros de seletor individual
+                    continue;
+                  }
                 }
-                
-                // Seletores mais flexíveis para os botões
-                const findTradeButton = (action) => {
-                  // Se a ação for WAIT, retorna null (não há botão para esperar)
-                  if (action === 'WAIT') {
-                    sendLog('Ação WAIT detectada - não há botão físico para esta ação', 'WARN');
-                    return null;
-                  }
-                  
-                  const selectors = {
-                    'BUY': [
-                      '.button-call-wrap .btn-call',
-                      '.btn-call',
-                      '.action-high-low a.btn-call',
-                      'a.btn-call',
-                      '[class*="call-wrap"] a',
-                      '.btn-green', // Alguns sites usam cores em vez de call/put
-                      'button:contains("Buy")',
-                      'a:contains("Buy")'
-                    ],
-                    'SELL': [
-                      '.button-put-wrap .btn-put',
-                      '.btn-put',
-                      '.action-high-low a.btn-put',
-                      'a.btn-put',
-                      '[class*="put-wrap"] a',
-                      '.btn-red', // Alguns sites usam cores em vez de call/put
-                      'button:contains("Sell")',
-                      'a:contains("Sell")'
-                    ]
-                  };
-                  
-                  const buttonSelectors = selectors[action] || [];
-                  sendLog(`Procurando botão para ação ${action} com ${buttonSelectors.length} seletores`, 'INFO');
-                  
-                  // Primeiro tenta elementos dentro do painel de controle
-                  for (const selector of buttonSelectors) {
-                    try {
-                      const button = controlPanel.querySelector(selector);
-                      if (button) {
-                        sendLog(`Botão ${action} encontrado via seletor: ${selector} (no painel)`, 'SUCCESS');
-                        return button;
-                      }
-                    } catch (err) {
-                      // Ignora erros de seletor inválido
-                    }
-                  }
-                  
-                  // Se não encontrar, busca em toda a página
-                  for (const selector of buttonSelectors) {
-                    try {
-                      const button = document.querySelector(selector);
-                      if (button) {
-                        sendLog(`Botão ${action} encontrado via seletor: ${selector} (global)`, 'SUCCESS');
-                        return button;
-                      }
-                    } catch (err) {
-                      // Ignora erros de seletor inválido
-                    }
-                  }
-                  
-                  sendLog(`Nenhum botão encontrado para ${action} após tentar todos os seletores`, 'ERROR');
-                  return null;
-                };
-                
-                const targetButton = findTradeButton(message.tradeAction);
                 
                 if (!targetButton) {
-                  const errorMsg = `Botão para ${message.tradeAction} não encontrado`;
-                  console.error(errorMsg);
-                  
-                  // Log para o sistema centralizado com nível ERROR para garantir que apareça
-                  sendLog(errorMsg, 'ERROR');
-                  
-                  // Se for uma ação WAIT, registrar mensagem específica
-                  if (message.tradeAction === 'WAIT') {
-                    sendLog('Erro de operação WAIT: Esta plataforma não suporta botão de espera', 'ERROR');
-                    sendLog('Recomendação: Para operações WAIT, não execute nenhuma ação', 'WARN');
-                  }
-                  
-                  sendResponse({ 
-                    success: false, 
-                    error: errorMsg
-                  });
-                  return true;
+                  safeLog(`Nenhum botão encontrado para ${action} após tentar todos os seletores`, 'ERROR');
                 }
                 
-                // Simular o clique no botão
-                console.log(`Clicando no botão ${message.tradeAction}...`);
-                sendLog(`Executando operação ${message.tradeAction}`, 'INFO');
-
-                try {
-                  // Encontrar o painel de controle
-                  const controlPanel = findControlPanel();
-                  
-                  if (!controlPanel) {
-                    const errorMsg = 'Painel de controle não encontrado na página';
-                    console.error(errorMsg);
-                    sendLog(errorMsg, 'ERROR');
-                    
-                    // Depuração adicional
-                    console.log('Elementos disponíveis na página:');
-                    document.querySelectorAll('div').forEach(el => {
-                      if (el.className && (el.className.includes('call') || el.className.includes('put'))) {
-                        console.log(`Elemento potencial: ${el.tagName}.${el.className}`);
-                      }
-                    });
-                    
-                    sendResponse({ 
-                      success: false, 
-                      error: errorMsg 
-                    });
-                    return true;
-                  }
-                  
-                  // Buscar o botão para a ação solicitada
-                  const targetButton = findTradeButton(message.tradeAction);
-                  
-                  if (!targetButton) {
-                    const errorMsg = `Botão para ${message.tradeAction} não encontrado`;
-                    console.error(errorMsg);
-                    sendLog(errorMsg, 'ERROR');
-                    
-                    // Se for uma ação WAIT, registrar mensagem específica
-                    if (message.tradeAction === 'WAIT') {
-                      sendLog('Erro de operação WAIT: Esta plataforma não suporta botão de espera', 'ERROR');
-                      sendLog('Recomendação: Para operações WAIT, não execute nenhuma ação', 'WARN');
-                    }
-                    
-                    sendResponse({ 
-                      success: false, 
-                      error: errorMsg
-                    });
-                    return true;
-                  }
-                  
-                  // Simular o clique no botão
-                  console.log(`Clicando no botão ${message.tradeAction}...`);
-                  sendLog(`Executando operação ${message.tradeAction}`, 'INFO');
-                  
-                  targetButton.click();
-                  sendLog(`Operação ${message.tradeAction} executada com sucesso`, 'SUCCESS');
-                  
-                  // Adicionar um log após a execução para confirmar que o clique foi realizado
-                  setTimeout(() => {
-                    sendLog(`Operação ${message.tradeAction} processada pela plataforma`, 'SUCCESS');
-                  }, 300);
-                  
-                  sendResponse({ 
-                    success: true, 
-                    message: `Operação ${message.tradeAction} executada com sucesso` 
-                  });
-                } catch (error) {
-                  // Captura erros gerais
-                  const errorMsg = `Erro ao executar operação ${message.tradeAction}: ${error.message}`;
-                  console.error(errorMsg);
-                  sendLog(errorMsg, 'ERROR');
-                  
-                  sendResponse({ 
-                    success: false, 
-                    error: errorMsg
-                  });
-                }
-            } catch (error) {
-                console.error('Erro ao executar operação:', error);
-                safeLog(`Erro na execução: ${error.message}`, 'error');
-                sendResponse({ 
-                    success: false, 
-                    error: error.message 
-                });
+                return targetButton;
+              } catch (error) {
+                safeLog(`Erro ao buscar botão ${action}: ${error.message}`, 'ERROR');
+                return null;
+              }
+            };
+            
+            const targetButton = findTradeButton(message.tradeAction);
+            
+            if (!targetButton) {
+              const errorMsg = `Botão para ${message.tradeAction} não encontrado`;
+              safeLog(errorMsg, 'ERROR');
+              
+              // Se for uma ação WAIT, registrar mensagem específica
+              if (message.tradeAction === 'WAIT') {
+                safeLog('Erro de operação WAIT: Esta plataforma não suporta botão de espera', 'ERROR');
+                safeLog('Recomendação: Para operações WAIT, não execute nenhuma ação', 'WARN');
+              }
+              
+              sendResponse({ 
+                success: false, 
+                error: errorMsg
+              });
+              return true;
             }
+            
+            // Simular o clique no botão
+            safeLog(`Executando operação ${message.tradeAction}`, 'INFO');
+
+            try {
+              targetButton.click();
+              safeLog(`Operação ${message.tradeAction} executada com sucesso`, 'SUCCESS');
+              
+              // Adicionar um log após a execução para confirmar que o clique foi realizado
+              setTimeout(() => {
+                safeLog(`Operação ${message.tradeAction} processada pela plataforma`, 'SUCCESS');
+              }, 300);
+              
+              sendResponse({ 
+                success: true, 
+                message: `Operação ${message.tradeAction} executada com sucesso` 
+              });
+            } catch (error) {
+              // Captura erros gerais
+              const errorMsg = `Erro ao executar operação ${message.tradeAction}: ${error.message}`;
+              safeLog(errorMsg, 'ERROR');
+              
+              sendResponse({ 
+                success: false, 
+                error: errorMsg
+              });
+            }
+          } catch (error) {
+            safeLog(`Erro na execução: ${error.message}`, 'ERROR');
+            sendResponse({ 
+              success: false, 
+              error: error.message 
+            });
+          }
         });
         
         // Manter canal aberto para resposta assíncrona
         return true;
         
-      } catch (error) {
-        console.error('Erro ao executar operação:', error);
-        safeLog(`Erro na execução: ${error.message}`, 'error');
+      } catch (outerError) {
+        safeLog(`Erro ao iniciar execução: ${outerError.message}`, 'ERROR');
         sendResponse({ 
-            success: false, 
-            error: error.message 
+          success: false, 
+          error: `Falha ao iniciar execução: ${outerError.message}` 
         });
       }
-      
-      return true;
     }
     
     // Handler simples para verificar se o content script está ativo
     if (message.action === 'PING') {
-      sendResponse({ status: 'alive' });
+      safeLog('Recebido PING, enviando PONG', 'DEBUG');
+      sendResponse({ success: true, message: 'PONG' });
       return true;
     }
 
     // Adicionar handler específico para análise de gráficos
     if (message.action === 'ANALYZE_GRAPH') {
-      sendLog('Iniciando análise do gráfico a partir da solicitação do popup', 'SUCCESS');
+      safeLog('Iniciando análise do gráfico a partir da solicitação', 'INFO');
       
       // Processar análise de gráfico aqui
       try {
         // Capturar screenshot para análise
-        sendLog('Capturando tela para análise', 'INFO');
+        safeLog('Capturando tela para análise', 'INFO');
         
         // Simular execução da análise e retornar sucesso para testes
         setTimeout(() => {
-          sendLog('Análise de gráfico concluída com sucesso', 'SUCCESS');
+          safeLog('Análise de gráfico concluída com sucesso', 'SUCCESS');
           sendResponse({ success: true, result: 'Análise simulada' });
         }, 500);
         
         return true; // Manter canal aberto para resposta assíncrona
       } catch (error) {
-        sendLog(`Erro durante análise de gráfico: ${error.message}`, 'ERROR');
+        safeLog(`Erro durante análise de gráfico: ${error.message}`, 'ERROR');
         sendResponse({ success: false, error: error.message });
         return true;
       }
@@ -631,13 +585,18 @@ const safeLog = (message, level = 'info') => {
   try {
     // Tenta usar sendLog se disponível
     if (typeof sendLog === 'function') {
-      sendLog(message);
+      sendLog(message, level);
     } else {
-      // Fallback para console
-      console[level](`[TradingBot] ${message}`);
+      // Fallback para console apenas para erros
+      if (level.toLowerCase() === 'error') {
+        console.error(`[TradingBot] ${message}`);
+      }
     }
   } catch (error) {
-    console.log(`[TradingBot] ${message}`);
+    // Apenas erros são mostrados no console
+    if (level.toLowerCase() === 'error') {
+      console.error(`[TradingBot] ${message}`);
+    }
   }
 };
 
@@ -652,8 +611,10 @@ const sendLog = (message, level = 'INFO') => {
       source: 'content.js'
     });
     
-    // Log local para debug
-    console.log(`[${level.toUpperCase()}][content.js] ${message}`);
+    // Log local apenas para erros
+    if (level.toUpperCase() === 'ERROR') {
+      console.error(`[${level.toUpperCase()}][content.js] ${message}`);
+    }
   } catch (error) {
     console.error(`[content.js] Erro ao enviar log: ${error.message}`);
   }
@@ -919,4 +880,74 @@ const TradingConfig = {
       return false;
     }
   }
+};
+
+const executeTradeAction = async (action, config) => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      safeLog(`Executando ação de trade: ${action}`, 'INFO');
+      
+      // Se a ação for WAIT, apenas espera o tempo configurado
+      if (action === 'WAIT') {
+        const waitTime = (config && config.waitTime) || 5000; // Padrão de 5 segundos
+        safeLog(`Esperando ${waitTime}ms antes de prosseguir`, 'INFO');
+        setTimeout(() => {
+          safeLog('Espera concluída', 'SUCCESS');
+          resolve({ success: true, message: `Esperou ${waitTime}ms com sucesso` });
+        }, waitTime);
+        return;
+      }
+      
+      // Para ações BUY ou SELL, primeiro tenta configurar a operação
+      if (config) {
+        try {
+          const configResult = await TradingConfig.configureOperation(config);
+          if (!configResult) {
+            throw new Error('Falha ao configurar operação');
+          }
+          safeLog('Operação configurada com sucesso', 'SUCCESS');
+        } catch (configError) {
+          safeLog(`Erro ao configurar operação: ${configError.message}`, 'ERROR');
+          return reject({ success: false, message: `Erro ao configurar operação: ${configError.message}` });
+        }
+      }
+
+      // Busca o botão de trading
+      const tradeButton = findTradeButton(action);
+      
+      if (!tradeButton) {
+        const errorMsg = `Não foi possível encontrar o botão para a ação ${action}`;
+        safeLog(errorMsg, 'ERROR');
+        return reject({ success: false, message: errorMsg });
+      }
+      
+      // Verifica se o botão está habilitado
+      if (tradeButton.disabled || tradeButton.classList.contains('disabled') || 
+          getComputedStyle(tradeButton).opacity < 0.5) {
+        const errorMsg = `O botão para ${action} está desabilitado ou não clicável`;
+        safeLog(errorMsg, 'WARN');
+        return reject({ success: false, message: errorMsg });
+      }
+      
+      // Tenta executar o clique
+      try {
+        safeLog(`Clicando no botão de ${action}...`, 'INFO');
+        tradeButton.click();
+        
+        // Verifica se o clique foi bem sucedido (verificação simples)
+        setTimeout(() => {
+          safeLog(`Ação ${action} executada com sucesso`, 'SUCCESS');
+          resolve({ success: true, message: `Ação ${action} executada` });
+        }, 200);
+      } catch (clickError) {
+        const errorMsg = `Erro ao clicar no botão de ${action}: ${clickError.message}`;
+        safeLog(errorMsg, 'ERROR');
+        reject({ success: false, message: errorMsg });
+      }
+    } catch (error) {
+      const errorMsg = `Erro geral ao executar a ação ${action}: ${error.message}`;
+      safeLog(errorMsg, 'ERROR');
+      reject({ success: false, message: errorMsg });
+    }
+  });
 };

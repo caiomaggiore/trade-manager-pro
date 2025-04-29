@@ -12,6 +12,13 @@ const isLogPage = () => {
 // Detectar se estamos na página de logs
 window.IS_LOG_PAGE = isLogPage();
 
+// Lista de mensagens que devem ser ignoradas para não poluir o log
+const IGNORED_MESSAGES = [
+    'Página de logs inicializada',
+    'Sistema de logs inicializado',
+    'undefined'
+];
+
 // ================== ELEMENTOS DA UI ==================
 const sysUI = {
     copyBtn: document.getElementById('copy-logs'),
@@ -227,6 +234,11 @@ const LogSystem = {
     // Verificar se um log é duplicado
     isDuplicateLog(message, level, source) {
         if (!message) return true; // Considerar undefined como duplicata
+        
+        // Verificar se devemos ignorar este tipo de mensagem
+        if (shouldIgnoreMessage(message)) {
+            return true;
+        }
         
         // Chave para verificação de duplicata no curto prazo
         const key = `${message}-${level}-${source}`;
@@ -449,24 +461,17 @@ const LogSystem = {
         a.click();
         
         URL.revokeObjectURL(url);
+        
+        // Atualizar status em vez de mostrar alert
+        updateStatus('Logs salvos como arquivo', 'success');
     },
     
     // Copiar logs para a área de transferência
     copyLogs() {
         const content = this.getFormattedLogs();
         
-        // Usar a nova API Clipboard se disponível
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(content)
-                .then(() => alert('Logs copiados para a área de transferência!'))
-                .catch(err => {
-                    console.error('Erro ao copiar logs:', err);
-                    this.fallbackCopy(content);
-                });
-            return;
-        }
-        
-        // Método fallback para browsers mais antigos
+        // Em ambiente de iframe, usar sempre o método fallback
+        // para evitar problemas de permissão de clipboard
         this.fallbackCopy(content);
     },
     
@@ -483,13 +488,14 @@ const LogSystem = {
             const success = document.execCommand('copy');
             
             if (success) {
-                alert('Logs copiados para a área de transferência!');
+                // Atualizar status em vez de mostrar alert
+                updateStatus('Logs copiados para a área de transferência', 'success');
             } else {
                 throw new Error('Comando de copiar falhou');
             }
         } catch (err) {
             console.error('Erro ao copiar logs:', err);
-            alert('Erro ao copiar logs: ' + err.message);
+            updateStatus('Erro ao copiar logs: ' + (err.message || 'erro desconhecido'), 'error');
         } finally {
             document.body.removeChild(textarea);
         }
@@ -650,7 +656,7 @@ document.addEventListener('DOMContentLoaded', () => {
         sysUI.logContainer = document.getElementById('log-container');
         sysUI.levelFilter = document.getElementById('log-level-filter');
         
-        // Inicializar o sistema de logs
+        // Inicializar o sistema de logs (sem criar log de inicialização)
         LogSystem.init();
         
         // Configurar eventos dos botões
@@ -767,4 +773,56 @@ function updateLogFilters() {
     
     // Atualizar os contadores
     updateLogCounters();
+}
+
+// Função para atualizar o status de operação sem usar alerts
+function updateStatus(message, type = 'info') {
+    // Tentar usar a função de atualização de status da página principal
+    try {
+        // Se estamos em um iframe, enviar para o pai
+        if (window !== window.top) {
+            window.parent.postMessage({
+                action: 'updateStatus',
+                message: message,
+                type: type
+            }, '*');
+            return true;
+        }
+        
+        // Se estamos na página principal, tentar usar a função global
+        if (typeof window.updateStatusUI === 'function') {
+            window.updateStatusUI(message, type);
+            return true;
+        }
+        
+        // Alternativa: elemento de status na própria página
+        const statusEl = document.getElementById('status-processo');
+        if (statusEl) {
+            statusEl.textContent = message;
+            statusEl.className = `status-processo ${type}`;
+            statusEl.style.display = 'block';
+            
+            // Auto-ocultar após 3 segundos
+            setTimeout(() => {
+                statusEl.style.display = 'none';
+            }, 3000);
+            return true;
+        }
+    } catch (e) {
+        console.error('Erro ao atualizar status:', e);
+    }
+    
+    // Fallback para console se não conseguir atualizar UI
+    console.log(`[STATUS] ${message}`);
+    return false;
+}
+
+// Função para verificar se uma mensagem deve ser ignorada
+function shouldIgnoreMessage(message) {
+    if (!message) return true;
+    
+    // Verificar se a mensagem está na lista de ignorados
+    return IGNORED_MESSAGES.some(ignored => 
+        message.includes(ignored) || message === ignored
+    );
 } 
