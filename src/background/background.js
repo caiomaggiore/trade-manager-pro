@@ -142,13 +142,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     // Handler para resultado de operações de trading
     if (message.type === 'TRADE_RESULT') {
-        console.log('Resultado de operação recebido:', message.data);
+        // Enviar sinal de notificação para o popup e outras páginas
+        chrome.runtime.sendMessage({
+            type: 'TRADE_RESULT',
+            data: message.data
+        });
         
-        // Repassar a mensagem para a interface de popup
-        chrome.runtime.sendMessage(message);
-        
-        // Se a operação foi concluída, mostrar notificação
-        if (message.data.status === 'Closed') {
+        // Criar notificação somente se origem for do content script
+        // Isso evita duplicação de notificações já que só o background deve gerar notificações
+        if (message.data.status === 'Closed' && sender.tab) {
             const title = message.data.success ? 'Operação bem-sucedida' : 'Operação com perda';
             const profit = message.data.success ? 
                 `+${message.data.profit}` : 

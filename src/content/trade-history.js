@@ -407,20 +407,6 @@ window.TradeManager.History = (function() {
                 logToSystem(`Operação recebida: ${trade.symbol} - ${trade.status}`, "INFO");
                 addOperation(trade);
                 
-                // Enviar notificação se configurado
-                if (trade.status === 'Closed') {
-                    const sucessoMsg = trade.success ? 'GANHOU' : 'PERDEU';
-                    const notificationMessage = `${trade.symbol}: ${sucessoMsg} ${trade.success ? '+' + trade.profit : '-' + trade.amount}`;
-                    
-                    // Enviar notificação
-                    chrome.runtime.sendMessage({
-                        action: 'showNotification',
-                        title: 'Operação Finalizada',
-                        message: notificationMessage,
-                        type: trade.success ? 'success' : 'error'
-                    });
-                }
-                
                 if (sendResponse) sendResponse({ success: true });
             }
             
