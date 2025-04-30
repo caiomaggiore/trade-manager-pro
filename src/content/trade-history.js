@@ -457,6 +457,57 @@ window.TradeManager.History = (function() {
     // Inicialização automática quando o DOM estiver pronto
     document.addEventListener('DOMContentLoaded', init);
     
+    /**
+     * Notifica o sistema de automação sobre o resultado da operação
+     * @param {Object} operation - Dados da operação
+     */
+    const notifyAutomationSystem = (operation) => {
+        try {
+            // Só notificar operações fechadas/concluídas
+            if (operation.status !== 'Closed') {
+                return;
+            }
+            
+            logToSystem(`Notificando sistema de automação: operação ${operation.success ? 'vencedora' : 'perdedora'}`, 'INFO');
+            
+            // Notificar o sistema de Gale, se disponível
+            if (window.GaleSystem) {
+                if (operation.success) {
+                    // Se for sucesso, resetar o gale
+                    const result = window.GaleSystem.resetGale();
+                    logToSystem(`Operação bem-sucedida, sistema de gale: ${result.message}`, 'SUCCESS');
+                } else {
+                    // Se for falha, aplicar o gale
+                    const result = window.GaleSystem.applyGale(operation);
+                    logToSystem(`Operação com perda, sistema de gale: ${result.message}`, 'WARN');
+                }
+            } else {
+                logToSystem('Sistema de Gale não disponível para notificação', 'WARN');
+            }
+            
+            // Criar um evento para notificar o sistema de automação (método legado)
+            try {
+                const operationResultEvent = new CustomEvent('operationResult', {
+                    detail: {
+                        success: operation.success,
+                        profit: parseFloat(operation.profit),
+                        amount: parseFloat(operation.amount),
+                        symbol: operation.symbol,
+                        timestamp: operation.timestamp
+                    }
+                });
+                
+                // Disparar o evento
+                document.dispatchEvent(operationResultEvent);
+                logToSystem(`Evento 'operationResult' disparado`, 'DEBUG');
+            } catch (error) {
+                logToSystem(`Erro ao disparar evento: ${error.message}`, 'ERROR');
+            }
+        } catch (error) {
+            logToSystem(`Erro ao notificar sistema de automação: ${error.message}`, 'ERROR');
+        }
+    };
+    
     // API pública
     return {
         init,
@@ -466,7 +517,8 @@ window.TradeManager.History = (function() {
         exportToCSV,
         clearHistory,
         getTotalProfit: () => profitCurrent,
-        isTradeHistoryPage: isTradeHistoryPage
+        isTradeHistoryPage: isTradeHistoryPage,
+        notifyAutomationSystem: notifyAutomationSystem
     };
 })();
 

@@ -64,6 +64,27 @@
          <div id="last-profit" >Lucro atual: <span id="profitCurrent">0</span></div>
          </div>
      </div>
+
+     <!-- Sistema de Gale - Botões para teste -->
+     <div class="gale-test-panel">
+        <h3>Sistema de Gale - Testes</h3>
+        <div class="gale-status-info">
+            <span>Status do Gale: </span>
+            <span id="gale-level">Nível 0</span> | 
+            <span id="gale-value">Valor atual: R$ 0</span>
+        </div>
+        <div class="gale-test-buttons">
+            <button id="simulate-loss" class="btn common-button">
+                <i class="fas fa-arrow-down"></i> Simular Perda (Aplicar Gale)
+            </button>
+            <button id="simulate-win" class="btn common-button">
+                <i class="fas fa-arrow-up"></i> Simular Ganho (Resetar Gale)
+            </button>
+            <button id="check-gale-status" class="btn secondary">
+                <i class="fas fa-info-circle"></i> Verificar Status
+            </button>
+        </div>
+     </div>
  
      <div class="operations-table">
          <table>
@@ -229,7 +250,48 @@
    <script src="../content/log-sys.js"></script>
    <script src="../content/analyze-graph.js"></script>
    <script src="../content/navigation.js"></script>
+   <script src="../content/state-manager.js"></script>
+   <script src="../content/gale-system.js"></script>
    <script src="../content/trade-history.js"></script>
    <script src="../content/index.js"></script>
+
+   <style>
+    .gale-test-panel {
+        background-color: #f5f5f5;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        padding: 15px;
+        margin: 15px 0;
+    }
+    
+    .gale-test-panel h3 {
+        margin-top: 0;
+        margin-bottom: 10px;
+        color: #333;
+    }
+    
+    .gale-status-info {
+        margin-bottom: 15px;
+        font-size: 14px;
+    }
+    
+    .gale-test-buttons {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    
+    #simulate-loss {
+        background-color: #ff6b6b;
+    }
+    
+    #simulate-win {
+        background-color: #51cf66;
+    }
+    
+    #check-gale-status {
+        background-color: #339af0;
+    }
+   </style>
 </body>
 </html>

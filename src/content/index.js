@@ -1123,6 +1123,9 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         addEventListeners();
         addLog('Event listeners configurados com sucesso', 'DEBUG');
         
+        // Configurar os botões de teste do sistema de Gale
+        setupGaleTestButtons();
+        
         // Inicializar o listener do StateManager para atualizações de configurações
         initStateManagerListener();
         
@@ -2009,6 +2012,85 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             }
             return true;
         });
+    }
+    
+    // Configurar funcionalidades para o sistema de gale
+    function setupGaleTestButtons() {
+        try {
+            const simulateLossBtn = document.getElementById('simulate-loss');
+            const simulateWinBtn = document.getElementById('simulate-win');
+            const checkGaleStatusBtn = document.getElementById('check-gale-status');
+            const galeLevelDisplay = document.getElementById('gale-level');
+            const galeValueDisplay = document.getElementById('gale-value');
+            
+            if (!simulateLossBtn || !simulateWinBtn || !checkGaleStatusBtn) {
+                console.warn('Botões de teste de gale não encontrados');
+                return;
+            }
+            
+            // Função para atualizar o display de status do gale
+            const updateGaleStatusDisplay = (status) => {
+                if (galeLevelDisplay) {
+                    galeLevelDisplay.textContent = `Nível ${status.level || 0}`;
+                }
+                if (galeValueDisplay) {
+                    galeValueDisplay.textContent = `Valor atual: R$ ${status.nextValue || status.originalValue || 0}`;
+                }
+            };
+            
+            // Verifica o status inicial
+            if (window.GaleSystem) {
+                const initialStatus = window.GaleSystem.getStatus();
+                updateGaleStatusDisplay(initialStatus);
+            }
+            
+            // Botão para simular perda e aplicar gale
+            simulateLossBtn.addEventListener('click', () => {
+                if (window.GaleSystem) {
+                    const result = window.GaleSystem.simulateGale();
+                    updateStatus(`Simulação de perda: ${result.message}`, result.success ? 'success' : 'error');
+                    
+                    // Atualizar display
+                    const updatedStatus = window.GaleSystem.getStatus();
+                    updateGaleStatusDisplay(updatedStatus);
+                } else {
+                    updateStatus('Sistema de Gale não está disponível', 'error');
+                }
+            });
+            
+            // Botão para simular ganho e resetar gale
+            simulateWinBtn.addEventListener('click', () => {
+                if (window.GaleSystem) {
+                    const result = window.GaleSystem.simulateReset();
+                    updateStatus(`Simulação de ganho: ${result.message}`, result.success ? 'success' : 'info');
+                    
+                    // Atualizar display
+                    const updatedStatus = window.GaleSystem.getStatus();
+                    updateGaleStatusDisplay(updatedStatus);
+                } else {
+                    updateStatus('Sistema de Gale não está disponível', 'error');
+                }
+            });
+            
+            // Botão para verificar status do gale
+            checkGaleStatusBtn.addEventListener('click', () => {
+                if (window.GaleSystem) {
+                    const status = window.GaleSystem.getStatus();
+                    updateStatus(`Status do Gale: Nível ${status.level}, Próx. valor: R$ ${status.nextValue}`, 'info');
+                    updateGaleStatusDisplay(status);
+                    
+                    // Adicionar log com detalhes completos
+                    addLog(`Status do Gale - Nível: ${status.level}, Ativo: ${status.active}, Valor original: ${status.originalValue}, Próximo valor: ${status.nextValue}`, 'INFO');
+                } else {
+                    updateStatus('Sistema de Gale não está disponível', 'error');
+                }
+            });
+            
+            addLog('Botões de teste do sistema de Gale configurados', 'INFO');
+        } catch (error) {
+            console.error('Erro ao configurar botões de teste do gale:', error);
+            addLog(`Erro ao configurar botões de teste do gale: ${error.message}`, 'ERROR');
+        }
     }
 } else {
     console.log('Trade Manager Pro - Index Module já foi carregado anteriormente');
