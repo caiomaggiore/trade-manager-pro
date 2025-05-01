@@ -119,16 +119,37 @@ async function handleCaptureRequest(request) {
  * Executa a análise após injetar o content script se necessário
  * @param {number} tabId - ID da guia ativa
  * @param {function} sendResponse - Função para enviar resposta
+ * @param {object} metadata - Metadados adicionais sobre a análise
  */
-const executeAnalysis = (tabId, sendResponse) => {
+const executeAnalysis = (tabId, sendResponse, metadata = {}) => {
+  console.log(`Executando análise na tab ${tabId}`, metadata);
+  
+  // Verificar se o tabId é válido
+  if (!tabId) {
+    console.error('ID de tab inválido para análise');
+    sendResponse({ success: false, error: "Tab ID inválido" });
+    return;
+  }
+  
   chrome.tabs.captureVisibleTab({ format: 'png' }, (dataUrl) => {
+    // Verificar se houve erro na captura
+    if (chrome.runtime.lastError) {
+      console.error('Erro na captura:', chrome.runtime.lastError);
+      sendResponse({ success: false, error: `Erro na captura: ${chrome.runtime.lastError.message}` });
+      return;
+    }
+    
+    // Enviar mensagem para o content script processar a imagem
     chrome.tabs.sendMessage(tabId, {
       action: 'PROCESS_ANALYSIS',
-      imageData: dataUrl
+      imageData: dataUrl,
+      metadata: metadata // Passar metadados para o script de conteúdo
     }, (response) => {
       if (chrome.runtime.lastError) {
-        sendResponse({ success: false, error: "Falha na comunicação final" });
+        console.error('Erro na comunicação final:', chrome.runtime.lastError);
+        sendResponse({ success: false, error: `Falha na comunicação final: ${chrome.runtime.lastError.message}` });
       } else {
+        console.log('Análise processada com sucesso');
         sendResponse(response);
       }
     });
@@ -251,38 +272,77 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Handler para início de análise
   if (message.action === 'START_ANALYSIS') {
+    // Log para rastreamento
+    console.log('Solicitação de análise recebida:', message);
+    
     // Definir um timeout para garantir que alguma resposta seja enviada
     const timeout = setTimeout(() => {
+        console.warn('Timeout na solicitação de análise');
         sendResponse({ success: false, error: "Timeout na análise" });
     }, 30000); // 30 segundos de timeout
     
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (!tabs[0]?.id) {
         clearTimeout(timeout);
+        console.error('Nenhuma guia ativa encontrada para análise');
         sendResponse({ success: false, error: "Nenhuma guia ativa encontrada" });
         return;
       }
 
-      chrome.tabs.sendMessage(tabs[0].id, { action: 'PING' }, (response) => {
+      // Verificar se é uma solicitação do sistema de gale e adicionar dados extras
+      const isFromGale = message.source === 'gale-system';
+      console.log(`Iniciando análise ${isFromGale ? 'do sistema de gale' : 'padrão'}`);
+      
+      // Criar objeto de metadados
+      const metadata = {
+        source: message.source || 'user',
+        trigger: message.trigger || 'manual',
+        timestamp: Date.now()
+      };
+      
+      // Verificar se o content script está disponível
+      chrome.tabs.sendMessage(tabs[0].id, { action: 'PING' }, (pingResponse) => {
+        // Se houver erro no ping, content script não está disponível
         if (chrome.runtime.lastError) {
+          console.log('Content script não disponível, injetando...');
+          
           chrome.scripting.executeScript({
             target: { tabId: tabs[0].id },
             files: ['scripts/content.js']
           }, () => {
-            executeAnalysis(tabs[0].id, (result) => {
+            // Verificar erro na injeção
+            if (chrome.runtime.lastError) {
+              clearTimeout(timeout);
+              console.error('Erro ao injetar content script:', chrome.runtime.lastError);
+              sendResponse({ 
+                success: false, 
+                error: `Erro ao injetar script: ${chrome.runtime.lastError.message}` 
+              });
+              return;
+            }
+            
+            // Aguardar um momento para garantir que o script foi carregado
+            setTimeout(() => {
+              console.log('Content script injetado, executando análise');
+              executeAnalysis(tabs[0].id, (result) => {
                 clearTimeout(timeout);
+                console.log('Resultado da análise:', result);
                 sendResponse(result);
-            });
+              }, metadata);
+            }, 500);
           });
         } else {
+          // Content script já disponível, executar análise diretamente
+          console.log('Content script disponível, executando análise');
           executeAnalysis(tabs[0].id, (result) => {
             clearTimeout(timeout);
+            console.log('Resultado da análise:', result);
             sendResponse(result);
-          });
+          }, metadata);
         }
       });
     });
-    return true;
+    return true; // Manter canal aberto para resposta assíncrona
   }
 
   // Handler para executar ação de compra/venda na plataforma

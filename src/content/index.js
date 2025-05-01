@@ -2034,7 +2034,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     galeLevelDisplay.textContent = `Nível ${status.level || 0}`;
                 }
                 if (galeValueDisplay) {
-                    galeValueDisplay.textContent = `Valor atual: R$ ${status.nextValue || status.originalValue || 0}`;
+                    galeValueDisplay.textContent = `Valor atual: R$ ${status.currentValue || status.originalValue || 0}`;
                 }
             };
             
@@ -2087,6 +2087,19 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             });
             
             addLog('Botões de teste do sistema de Gale configurados', 'INFO');
+            
+            // Adicionar listener para atualização automática do status do Gale
+            chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+                // Verificar se é uma mensagem de atualização do Gale
+                if (message.action === 'GALE_UPDATED' || message.action === 'GALE_RESET') {
+                    if (window.GaleSystem) {
+                        const updatedStatus = window.GaleSystem.getStatus();
+                        updateGaleStatusDisplay(updatedStatus);
+                        addLog(`Status do Gale atualizado automaticamente - Nível: ${updatedStatus.level}, Valor atual: ${updatedStatus.currentValue}`, 'DEBUG');
+                    }
+                }
+                return true;
+            });
         } catch (error) {
             console.error('Erro ao configurar botões de teste do gale:', error);
             addLog(`Erro ao configurar botões de teste do gale: ${error.message}`, 'ERROR');
