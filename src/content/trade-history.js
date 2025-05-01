@@ -543,16 +543,27 @@ window.TradeManager.History = (function() {
             if (typeof window.GaleSystem !== 'undefined' && window.GaleSystem) {
                 try {
                     if (operation.success) {
-                        // Se for sucesso, resetar o gale
-                        if (typeof window.GaleSystem.resetGale === 'function') {
+                        // Se for sucesso, resetar o gale (usando função de interface)
+                        if (typeof window.GaleSystem.simulateReset === 'function') {
+                            logToSystem(`Operação bem-sucedida, chamando simulateReset para resetar gale`, 'SUCCESS');
+                            const result = window.GaleSystem.simulateReset();
+                            logToSystem(`Resultado do reset: ${result.message}`, 'SUCCESS');
+                            galeSystemNotified = true;
+                        } else if (typeof window.GaleSystem.resetGale === 'function') {
+                            // Fallback para método direto
                             const result = window.GaleSystem.resetGale();
                             logToSystem(`Operação bem-sucedida, sistema de gale: ${result.message}`, 'SUCCESS');
                             galeSystemNotified = true;
                         }
                     } else {
-                        // Se for falha, aplicar o gale
-                        if (typeof window.GaleSystem.applyGale === 'function') {
-                            // Incluir o timestamp para evitar problemas de duplicação
+                        // Se for falha, aplicar o gale usando simulateGale (mesma função do botão)
+                        if (typeof window.GaleSystem.simulateGale === 'function') {
+                            logToSystem(`Operação com perda, chamando simulateGale para aplicar gale`, 'WARN');
+                            const result = window.GaleSystem.simulateGale();
+                            logToSystem(`Resultado da aplicação de gale: ${result.message}`, 'WARN');
+                            galeSystemNotified = true;
+                        } else if (typeof window.GaleSystem.applyGale === 'function') {
+                            // Fallback para método direto apenas se o simulateGale não existir
                             const result = window.GaleSystem.applyGale({
                                 ...operation,
                                 source: 'trade-history',

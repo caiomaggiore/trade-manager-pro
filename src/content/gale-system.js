@@ -135,10 +135,18 @@
         try {
             log('Acionando nova análise após aplicação de gale...', 'INFO');
             
-            // Tentar localizar o botão de análise
+            // Primeiro, tentar localizar o botão de análise da interface principal (mais confiável)
+            const analyzeBtn = document.querySelector('#analyzeBtn');
+            if (analyzeBtn) {
+                log('Botão de análise (analyzeBtn) encontrado, simulando clique', 'SUCCESS');
+                analyzeBtn.click();
+                return true;
+            }
+            
+            // Se não encontrar analyzeBtn, tentar o botão alternativo
             const analyzeButton = document.querySelector('#run-analysis');
             if (analyzeButton) {
-                log('Botão de análise encontrado, simulando clique', 'INFO');
+                log('Botão alternativo de análise encontrado, simulando clique', 'INFO');
                 analyzeButton.click();
                 return true;
             }
@@ -201,34 +209,40 @@
             // Log detalhado para ver quem está chamando o gale
             log(`Aplicando gale solicitado por: ${data.source || 'desconhecido'}`, 'INFO');
             
+            // Obter o valor atual configurado
+            let currentEntryValue = 0;
+            if (window.StateManager) {
+                currentEntryValue = parseFloat(window.StateManager.getConfig().value || 0);
+                log(`Valor atual de entrada: ${currentEntryValue}`, 'DEBUG');
+            }
+            
+            // Se não temos um valor atual, usar o valor original
+            if (currentEntryValue <= 0) {
+                log(`Valor atual inválido, usando valor original: ${originalValue}`, 'WARN');
+                currentEntryValue = originalValue;
+            }
+            
             // Definir o nível de gale corretamente
             if (galeCount === 0) {
                 galeCount = 1; // Primeiro nível de gale
+                
+                // Se for a primeira aplicação do gale, salvar o valor original
+                if (window.StateManager) {
+                    originalValue = parseFloat(window.StateManager.getConfig().value || 10);
+                    log(`Valor original salvo para primeiro gale: ${originalValue}`, 'DEBUG');
+                }
             } else {
                 galeCount++; // Incrementar níveis subsequentes
             }
             
             log(`Aplicando Gale nível ${galeCount}`, 'INFO');
             
-            // Se for a primeira aplicação do gale, garantir que temos o valor original
-            if (galeCount === 1 && window.StateManager) {
-                originalValue = window.StateManager.getConfig().value || 10;
-                log(`Valor original salvo: ${originalValue}`, 'DEBUG');
-            }
+            // Calcular novo valor usando o valor atual como base
+            // Fórmula: valorAtual + (valorAtual * multiplicador)
+            const newValue = parseFloat((currentEntryValue + (currentEntryValue * galeMultiplier)).toFixed(2));
             
-            // Calcular novo valor
-            const currentValue = originalValue;
-            let newValue = currentValue;
-            
-            // Aplicar o multiplicador conforme o nível do gale
-            for (let i = 0; i < galeCount; i++) {
-                newValue = newValue + (currentValue * galeMultiplier);
-            }
-            
-            // Arredondar para duas casas decimais
-            newValue = parseFloat(newValue.toFixed(2));
-            
-            log(`Novo valor calculado: ${newValue} (Original: ${originalValue}, Gale nível ${galeCount}, multiplicador: ${galeMultiplier})`, 'INFO');
+            log(`Novo valor calculado: ${newValue} (Valor atual: ${currentEntryValue}, Gale nível ${galeCount}, multiplicador: ${galeMultiplier})`, 'INFO');
+            log(`Fórmula aplicada: ${currentEntryValue} + (${currentEntryValue} * ${galeMultiplier})`, 'DEBUG');
             
             // Atualizar o valor no StateManager
             if (window.StateManager) {
@@ -258,6 +272,7 @@
                 level: galeCount,
                 newValue: newValue,
                 originalValue: originalValue,
+                currentValue: currentEntryValue,
                 multiplier: galeMultiplier
             });
             
@@ -265,6 +280,7 @@
                 success: true, 
                 level: galeCount, 
                 newValue: newValue,
+                currentValue: currentEntryValue,
                 message: `Gale nível ${galeCount} aplicado. Novo valor: ${newValue}`
             };
         } catch (error) {
@@ -331,26 +347,28 @@
     
     // Obter status atual do sistema de gale
     function getStatus() {
-        // Calcular o próximo valor usando a mesma fórmula da função applyGale
-        let currentValue = originalValue;
-        let nextValue = currentValue;
-        
-        // Se já estiver em um nível de gale, calcular o valor atual
-        for (let i = 0; i < galeCount; i++) {
-            nextValue = nextValue + (currentValue * galeMultiplier);
+        // Obter o valor atual configurado
+        let currentEntryValue = 0;
+        if (window.StateManager) {
+            currentEntryValue = parseFloat(window.StateManager.getConfig().value || 0);
         }
         
-        // Calcular o próximo valor (valor atual + valor base * multiplicador)
-        let nextGaleValue = nextValue + (currentValue * galeMultiplier);
+        // Se não temos um valor atual válido, usar o valor original
+        if (currentEntryValue <= 0) {
+            currentEntryValue = originalValue;
+        }
+        
+        // Calcular o próximo valor para o próximo gale
+        // Fórmula: valorAtual + (valorAtual * multiplicador)
+        const nextGaleValue = parseFloat((currentEntryValue + (currentEntryValue * galeMultiplier)).toFixed(2));
         
         return {
             active: isActive,
             level: galeCount,
             originalValue: originalValue,
+            currentValue: currentEntryValue,
             currentMultiplier: galeMultiplier,
-            nextValue: galeCount > 0 ? 
-                nextGaleValue.toFixed(2) : 
-                originalValue
+            nextValue: nextGaleValue
         };
     }
     
