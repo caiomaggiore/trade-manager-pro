@@ -75,11 +75,15 @@ window.TradeManager.History = (function() {
         const existingRows = UI.operationsBody.getElementsByTagName('tr');
         const timestampStr = operation.timestamp.toString();
         const symbol = operation.symbol;
+        const status = operation.status;
 
-        // Verifica se já existe uma linha com o mesmo timestamp e símbolo
+        // Verifica se já existe uma linha com o mesmo timestamp, símbolo E status
+        // Adicionamos verificação de status para distinguir operações abertas e fechadas
         for (const row of existingRows) {
-            if (row.dataset.timestamp === timestampStr && row.dataset.symbol === symbol) {
-                logToSystem(`Operação duplicada ignorada: ${symbol} em ${new Date(operation.timestamp).toLocaleTimeString()}`, 'DEBUG');
+            if (row.dataset.timestamp === timestampStr && 
+                row.dataset.symbol === symbol &&
+                row.dataset.status === status) {
+                logToSystem(`Operação duplicada ignorada: ${symbol} em ${new Date(operation.timestamp).toLocaleTimeString()} com status ${status}`, 'DEBUG');
                 return; // Encerra a função se encontrar duplicata
             }
         }
@@ -105,6 +109,7 @@ window.TradeManager.History = (function() {
         // Adiciona atributos de dados para verificação futura
         row.dataset.timestamp = timestampStr;
         row.dataset.symbol = symbol;
+        row.dataset.status = status; // Adicionar status como atributo para facilitar verificação de duplicatas
 
         // Calcular o lucro/prejuízo total
         if (UI.profitCurrent) {
@@ -132,10 +137,18 @@ window.TradeManager.History = (function() {
         row.classList.add('new-operation');
         
         // Armazenar a operação no cache para evitar duplicações
-        operationsCache[`${operation.timestamp}_${operation.symbol}`] = operation;
+        operationsCache[`${operation.timestamp}_${operation.symbol}_${operation.status}`] = operation;
         
         // Opcional: Persistir localmente as operações
         saveOperationsToLocalStorage();
+        
+        // Notificar o sistema de automação sobre resultado, com um pequeno delay
+        // para garantir que todos os sistemas estejam prontos
+        if (operation.status === 'Closed') {
+            setTimeout(() => {
+                notifyAutomationSystem(operation);
+            }, 500);
+        }
     };
     
     /**
@@ -168,7 +181,7 @@ window.TradeManager.History = (function() {
                 
                 // Adicionar cada operação
                 operations.forEach(op => {
-                    operationsCache[`${op.timestamp}_${op.symbol}`] = op;
+                    operationsCache[`${op.timestamp}_${op.symbol}_${op.status}`] = op;
                     addOperation(op);
                 });
             }
@@ -248,6 +261,32 @@ window.TradeManager.History = (function() {
                             return;
                         }
                         
+                        // Cache para evitar envio de operações duplicadas
+                        if (!window._processedTrades) {
+                            window._processedTrades = new Set();
+                        }
+                        
+                        // Função para gerar ID único de operação
+                        const generateTradeId = (symbol, status, timestamp) => {
+                            return `${symbol}_${status}_${timestamp}`;
+                        };
+                        
+                        // Verificar se uma operação já foi processada recentemente
+                        const isProcessedRecently = (trade) => {
+                            const tradeId = generateTradeId(trade.symbol, trade.status, trade.timestamp);
+                            if (window._processedTrades.has(tradeId)) {
+                                return true;
+                            }
+                            
+                            // Adicionar ao cache com timeout para expiração (5 segundos)
+                            window._processedTrades.add(tradeId);
+                            setTimeout(() => {
+                                window._processedTrades.delete(tradeId);
+                            }, 5000);
+                            
+                            return false;
+                        };
+                        
                         // Criar observer para monitorar notificações de operações
                         const observer = new MutationObserver((mutations) => {
                             mutations.forEach((mutation) => {
@@ -284,25 +323,45 @@ window.TradeManager.History = (function() {
 
                                             const TradeTypeElement = node.querySelector('.deals-noty__value')?.textContent;
                                             const payment = (parseFloat(profit) + parseFloat(window.lastAmount || 0)).toFixed(2);
+                                            
+                                            const tradeStatus = getTradeType(tradeTitle);
+                                            const symbol = node.querySelector('.deals-noty__symbol-title')?.textContent;
+                                            const timestamp = Date.now();
 
                                             // Estruturar dados da operação
                                             const result = {
-                                                status: getTradeType(tradeTitle),
+                                                status: tradeStatus,
                                                 success: (profit > 0),
                                                 profit: profit,
                                                 amount: window.lastAmount || amountValue,
                                                 action: TradeTypeElement === 'Buy' || TradeTypeElement === 'Sell' ? payment : profit,
-                                                symbol: node.querySelector('.deals-noty__symbol-title')?.textContent,
-                                                timestamp: Date.now()
+                                                symbol: symbol,
+                                                timestamp: timestamp
                                             };
+                                            
+                                            // Verificar se é uma operação duplicada
+                                            if (isProcessedRecently(result)) {
+                                                console.log('Operação duplicada ignorada:', result.symbol, result.status);
+                                                return;
+                                            }
 
                                             console.log('Operação detectada:', result);                  
                                             
                                             // Enviar o resultado para a extensão
-                                            chrome.runtime.sendMessage({
-                                                type: 'TRADE_RESULT',
-                                                data: result
-                                            });
+                                            try {
+                                                chrome.runtime.sendMessage({
+                                                    type: 'TRADE_RESULT',
+                                                    data: result
+                                                }, (response) => {
+                                                    if (chrome.runtime.lastError) {
+                                                        console.error('Erro ao enviar resultado da operação:', chrome.runtime.lastError);
+                                                    } else {
+                                                        console.log('Operação enviada com sucesso');
+                                                    }
+                                                });
+                                            } catch (error) {
+                                                console.error('Erro ao enviar operação:', error);
+                                            }
                                         }
                                     }
                                 });
@@ -463,29 +522,82 @@ window.TradeManager.History = (function() {
      */
     const notifyAutomationSystem = (operation) => {
         try {
-            // Só notificar operações fechadas/concluídas
+            // Verificação mais robusta para garantir que só operações realmente fechadas sejam consideradas
             if (operation.status !== 'Closed') {
+                logToSystem(`Ignorando notificação para operação não fechada: ${operation.symbol} - ${operation.status}`, 'DEBUG');
+                return;
+            }
+
+            // Validação adicional para garantir que temos dados válidos
+            if (!operation.symbol || typeof operation.success !== 'boolean') {
+                logToSystem(`Dados de operação inválidos ou incompletos, cancelando notificação`, 'WARN');
                 return;
             }
             
-            logToSystem(`Notificando sistema de automação: operação ${operation.success ? 'vencedora' : 'perdedora'}`, 'INFO');
+            logToSystem(`Notificando sistema de automação: operação ${operation.success ? 'vencedora' : 'perdedora'} - ${operation.symbol}`, 'INFO');
             
-            // Notificar o sistema de Gale, se disponível
-            if (window.GaleSystem) {
-                if (operation.success) {
-                    // Se for sucesso, resetar o gale
-                    const result = window.GaleSystem.resetGale();
-                    logToSystem(`Operação bem-sucedida, sistema de gale: ${result.message}`, 'SUCCESS');
-                } else {
-                    // Se for falha, aplicar o gale
-                    const result = window.GaleSystem.applyGale(operation);
-                    logToSystem(`Operação com perda, sistema de gale: ${result.message}`, 'WARN');
+            // Notificar o sistema de Gale, com verificação mais robusta
+            let galeSystemNotified = false;
+            
+            // Método 1: Tentar usar a API global do GaleSystem diretamente
+            if (typeof window.GaleSystem !== 'undefined' && window.GaleSystem) {
+                try {
+                    if (operation.success) {
+                        // Se for sucesso, resetar o gale
+                        if (typeof window.GaleSystem.resetGale === 'function') {
+                            const result = window.GaleSystem.resetGale();
+                            logToSystem(`Operação bem-sucedida, sistema de gale: ${result.message}`, 'SUCCESS');
+                            galeSystemNotified = true;
+                        }
+                    } else {
+                        // Se for falha, aplicar o gale
+                        if (typeof window.GaleSystem.applyGale === 'function') {
+                            // Incluir o timestamp para evitar problemas de duplicação
+                            const result = window.GaleSystem.applyGale({
+                                ...operation,
+                                source: 'trade-history',
+                                notifyTime: Date.now()
+                            });
+                            logToSystem(`Operação com perda, sistema de gale: ${result.message}`, 'WARN');
+                            galeSystemNotified = true;
+                        }
+                    }
+                } catch (galeError) {
+                    logToSystem(`Erro ao notificar GaleSystem diretamente: ${galeError.message}`, 'ERROR');
                 }
             } else {
-                logToSystem('Sistema de Gale não disponível para notificação', 'WARN');
+                logToSystem(`GaleSystem não encontrado para notificação direta`, 'WARN');
             }
             
-            // Criar um evento para notificar o sistema de automação (método legado)
+            // Método 2: Se a comunicação direta falhar, tentar via mensagem do Chrome
+            if (!galeSystemNotified) {
+                try {
+                    if (chrome && chrome.runtime) {
+                        const action = operation.success ? 'RESET_GALE' : 'APPLY_GALE';
+                        chrome.runtime.sendMessage({
+                            action: action,
+                            data: {
+                                ...operation,
+                                source: 'trade-history',
+                                notifyTime: Date.now()
+                            }
+                        }, (response) => {
+                            if (chrome.runtime.lastError) {
+                                logToSystem(`Erro na comunicação com background: ${chrome.runtime.lastError.message}`, 'ERROR');
+                                return;
+                            }
+                            
+                            if (response && response.success) {
+                                logToSystem(`Operação ${operation.success ? 'bem-sucedida' : 'com perda'}, resposta do sistema de gale via mensagem recebida`, operation.success ? 'SUCCESS' : 'WARN');
+                            }
+                        });
+                    }
+                } catch (msgError) {
+                    logToSystem(`Erro ao enviar mensagem para sistema de gale: ${msgError.message}`, 'ERROR');
+                }
+            }
+            
+            // Método 3: Criar um evento personalizado para notificar o sistema de automação (método legado)
             try {
                 const operationResultEvent = new CustomEvent('operationResult', {
                     detail: {
@@ -500,8 +612,8 @@ window.TradeManager.History = (function() {
                 // Disparar o evento
                 document.dispatchEvent(operationResultEvent);
                 logToSystem(`Evento 'operationResult' disparado`, 'DEBUG');
-            } catch (error) {
-                logToSystem(`Erro ao disparar evento: ${error.message}`, 'ERROR');
+            } catch (eventError) {
+                logToSystem(`Erro ao disparar evento: ${eventError.message}`, 'ERROR');
             }
         } catch (error) {
             logToSystem(`Erro ao notificar sistema de automação: ${error.message}`, 'ERROR');
