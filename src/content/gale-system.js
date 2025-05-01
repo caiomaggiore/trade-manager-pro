@@ -239,10 +239,11 @@
             
             // Calcular novo valor usando o valor atual como base
             // Fórmula: valorAtual + (valorAtual * multiplicador)
-            const newValue = parseFloat((currentEntryValue + (currentEntryValue * galeMultiplier)).toFixed(2));
+            const multipliedValue = parseFloat((currentEntryValue * galeMultiplier).toFixed(2));
+            const newValue = parseFloat((currentEntryValue + multipliedValue).toFixed(2));
             
-            log(`Novo valor calculado: ${newValue} (Valor atual: ${currentEntryValue}, Gale nível ${galeCount}, multiplicador: ${galeMultiplier})`, 'INFO');
-            log(`Fórmula aplicada: ${currentEntryValue} + (${currentEntryValue} * ${galeMultiplier})`, 'DEBUG');
+            log(`Novo valor calculado: ${newValue} (Valor atual: ${currentEntryValue}, Adicional: ${multipliedValue}, Gale nível ${galeCount}, multiplicador: ${galeMultiplier})`, 'INFO');
+            log(`Fórmula aplicada: ${currentEntryValue} + (${currentEntryValue} * ${galeMultiplier}) = ${currentEntryValue} + ${multipliedValue}`, 'DEBUG');
             
             // Atualizar o valor no StateManager
             if (window.StateManager) {
@@ -360,7 +361,8 @@
         
         // Calcular o próximo valor para o próximo gale
         // Fórmula: valorAtual + (valorAtual * multiplicador)
-        const nextGaleValue = parseFloat((currentEntryValue + (currentEntryValue * galeMultiplier)).toFixed(2));
+        const multipliedValue = parseFloat((currentEntryValue * galeMultiplier).toFixed(2));
+        const nextGaleValue = parseFloat((currentEntryValue + multipliedValue).toFixed(2));
         
         return {
             active: isActive,
