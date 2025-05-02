@@ -108,7 +108,7 @@
                 }
                 
                 if (message.action === GALE_ACTIONS.RESET) {
-                    const result = resetGale();
+                    const result = resetGale(message.data);
                     sendResponse({ success: true, result: result });
                     return true;
                 }
@@ -206,6 +206,21 @@
                 return { success: false, message: 'Gale desativado' };
             }
             
+            // Verificar se a operação tem a flag 'isHistorical'
+            if (data.isHistorical) {
+                log(`Ignorando aplicação de gale para operação histórica`, 'INFO');
+                return { success: false, message: 'Operação histórica ignorada' };
+            }
+            
+            // Verificar se a operação é recente (menos de 30 segundos)
+            const now = Date.now();
+            const operationTime = data.timestamp || data.notifyTime || 0;
+            
+            if (operationTime > 0 && (now - operationTime) > 30000) { // 30 segundos
+                log(`Ignorando aplicação de gale para operação antiga (${Math.round((now - operationTime)/1000)}s atrás)`, 'WARN');
+                return { success: false, message: 'Operação muito antiga para aplicar gale' };
+            }
+            
             // Log detalhado para ver quem está chamando o gale
             log(`Aplicando gale solicitado por: ${data.source || 'desconhecido'}`, 'INFO');
             
@@ -292,12 +307,29 @@
     }
     
     // Resetar gale para o valor original
-    function resetGale() {
+    function resetGale(data = {}) {
         try {
             // Verificar se há algo para resetar
             if (galeCount === 0) {
                 log('Não há gale ativo para resetar', 'INFO');
                 return { success: false, message: 'Não há gale para resetar' };
+            }
+            
+            // Verificar se a operação tem a flag 'isHistorical'
+            if (data && data.isHistorical) {
+                log(`Ignorando reset de gale para operação histórica`, 'INFO');
+                return { success: false, message: 'Operação histórica ignorada' };
+            }
+            
+            // Verificar se a operação é recente (menos de 30 segundos)
+            if (data && data.timestamp) {
+                const now = Date.now();
+                const operationTime = data.timestamp || data.notifyTime || 0;
+                
+                if (operationTime > 0 && (now - operationTime) > 30000) { // 30 segundos
+                    log(`Ignorando reset de gale para operação antiga (${Math.round((now - operationTime)/1000)}s atrás)`, 'WARN');
+                    return { success: false, message: 'Operação muito antiga para resetar gale' };
+                }
             }
             
             // Resetar contador
@@ -507,8 +539,13 @@
             const beforeStatus = getStatus();
             log(`Status antes do reset: nível ${beforeStatus.level}, valor original ${beforeStatus.originalValue}`, 'DEBUG');
             
-            // Usar a mesma função principal
-            return resetGale();
+            // Usar a mesma função principal com dados de simulação
+            return resetGale({
+                source: 'button',
+                timestamp: Date.now(),
+                action: 'Manual Reset',
+                symbol: 'MANUAL'
+            });
         } catch (error) {
             log(`Erro ao simular reset: ${error.message}`, 'ERROR');
             return { success: false, message: `Erro: ${error.message}` };

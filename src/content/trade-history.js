@@ -144,7 +144,8 @@ window.TradeManager.History = (function() {
         
         // Notificar o sistema de automação sobre resultado, com um pequeno delay
         // para garantir que todos os sistemas estejam prontos
-        if (operation.status === 'Closed') {
+        // Apenas notificar se não for uma operação histórica carregada do localStorage
+        if (operation.status === 'Closed' && !operation.isHistorical) {
             setTimeout(() => {
                 notifyAutomationSystem(operation);
             }, 500);
@@ -156,7 +157,21 @@ window.TradeManager.History = (function() {
      */
     const saveOperationsToLocalStorage = () => {
         try {
-            const operations = Object.values(operationsCache);
+            // Obter todas as operações do cache
+            let operations = Object.values(operationsCache);
+            
+            // Filtrar para manter apenas operações dos últimos 7 dias
+            const oneWeekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+            operations = operations.filter(op => op.timestamp > oneWeekAgo);
+            
+            // Limitar o número de operações salvas (máximo 100)
+            if (operations.length > 100) {
+                // Ordenar por timestamp (mais recentes primeiro)
+                operations.sort((a, b) => b.timestamp - a.timestamp);
+                // Manter apenas as 100 mais recentes
+                operations = operations.slice(0, 100);
+            }
+            
             localStorage.setItem('tradeOperations', JSON.stringify(operations));
             logToSystem(`${operations.length} operações salvas no localStorage`, 'DEBUG');
         } catch (error) {
@@ -181,6 +196,8 @@ window.TradeManager.History = (function() {
                 
                 // Adicionar cada operação
                 operations.forEach(op => {
+                    // Marcar operação como histórica para não acionar o gale
+                    op.isHistorical = true;
                     operationsCache[`${op.timestamp}_${op.symbol}_${op.status}`] = op;
                     addOperation(op);
                 });
@@ -531,6 +548,19 @@ window.TradeManager.History = (function() {
             // Validação adicional para garantir que temos dados válidos
             if (!operation.symbol || typeof operation.success !== 'boolean') {
                 logToSystem(`Dados de operação inválidos ou incompletos, cancelando notificação`, 'WARN');
+                return;
+            }
+            
+            // Verificar se é uma operação histórica carregada do localStorage
+            if (operation.isHistorical) {
+                logToSystem(`Ignorando notificação para operação histórica: ${operation.symbol}`, 'INFO');
+                return;
+            }
+            
+            // Verificar se a operação é recente (menos de 30 segundos atrás)
+            const isRecent = Date.now() - operation.timestamp < 30000; // 30 segundos
+            if (!isRecent) {
+                logToSystem(`Ignorando notificação para operação antiga: ${operation.symbol}`, 'INFO');
                 return;
             }
             
