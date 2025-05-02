@@ -1119,6 +1119,20 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         // Inicializar módulo de histórico
         initHistoryModule();
         
+        // Verificar e atualizar a visibilidade do painel de teste do Gale
+        if (window.StateManager) {
+            const config = window.StateManager.getConfig();
+            if (config) {
+                updateGaleTestPanelVisibility(config.devMode);
+            } else {
+                // Se não houver configurações, ocultar o painel por padrão
+                updateGaleTestPanelVisibility(false);
+            }
+        } else {
+            // Se não houver StateManager, ocultar o painel por padrão
+            updateGaleTestPanelVisibility(false);
+        }
+        
         // Configurar event listeners
         addEventListeners();
         addLog('Event listeners configurados com sucesso', 'DEBUG');
@@ -1233,6 +1247,9 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                             autoActive: config.automation
                         });
                         
+                        // Atualizar visibilidade do painel de teste do Gale
+                        updateGaleTestPanelVisibility(config.devMode);
+                        
                         updateStatus('Configurações carregadas com sucesso', 'success');
                         resolve(config);
                     })
@@ -1344,6 +1361,9 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                             tradeTime: config.period,
                             autoActive: config.automation
                         });
+                        
+                        // Atualizar visibilidade do painel de teste do Gale baseado no modo desenvolvedor
+                        updateGaleTestPanelVisibility(config.devMode);
                         
                         updateStatus('Configurações atualizadas', 'success', 2000);
                     }
@@ -2105,6 +2125,20 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             addLog(`Erro ao configurar botões de teste do gale: ${error.message}`, 'ERROR');
         }
     }
+
+    // Função para atualizar a visibilidade do painel de teste do Gale baseado no modo desenvolvedor
+    const updateGaleTestPanelVisibility = (devModeEnabled) => {
+        const galeTestPanel = document.getElementById('gale-test-panel');
+        if (!galeTestPanel) return;
+        
+        if (devModeEnabled) {
+            galeTestPanel.classList.remove('hidden');
+            addLog('Painel de teste do Gale exibido (Modo Desenvolvedor ativo)', 'INFO');
+        } else {
+            galeTestPanel.classList.add('hidden');
+            addLog('Painel de teste do Gale ocultado', 'DEBUG');
+        }
+    };
 } else {
     console.log('Trade Manager Pro - Index Module já foi carregado anteriormente');
 }

@@ -9,7 +9,8 @@ const settingsUI = {
     toggleAuto: document.getElementById('toggleAuto'),
     tradeValue: document.getElementById('trade-value'),
     tradeTime: document.getElementById('trade-time'),
-    toggleTestMode: document.getElementById('toggleTestMode')
+    toggleTestMode: document.getElementById('toggleTestMode'),
+    toggleDevMode: document.getElementById('toggleDevMode')
 };
 
 // Função simplificada para enviar logs ao sistema centralizado
@@ -87,6 +88,7 @@ const applySettingsToUI = (config) => {
     settingsUI.tradeValue.value = config.value || '';
     settingsUI.tradeTime.value = config.period || '';
     settingsUI.toggleTestMode.checked = config.testMode || false;
+    settingsUI.toggleDevMode.checked = config.devMode || false;
 
     // Atualiza o estado do select de gale
     settingsUI.galeSelect.disabled = !settingsUI.toggleGale.checked;
@@ -106,7 +108,8 @@ const getSettingsFromUI = () => {
         automation: settingsUI.toggleAuto.checked,
         value: parseInt(settingsUI.tradeValue.value) || 0,
         period: parseInt(settingsUI.tradeTime.value) || 0,
-        testMode: settingsUI.toggleTestMode.checked
+        testMode: settingsUI.toggleTestMode.checked,
+        devMode: settingsUI.toggleDevMode.checked
     };
     logFromSettings('Configurações coletadas da UI: ' + JSON.stringify(config), 'DEBUG');
     return config;
