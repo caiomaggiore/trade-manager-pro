@@ -470,6 +470,10 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         }
     };
 
+    // Expor a função de análise globalmente para uso por outros módulos
+    window.TradeManager = window.TradeManager || {};
+    window.TradeManager.runAnalysis = runAnalysis;
+
     // Função para mostrar o modal de resultados
     function showAnalysisModal(result) {
         // Variável global para armazenar o resultado atual da análise
