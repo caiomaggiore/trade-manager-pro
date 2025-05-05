@@ -9,6 +9,24 @@ chrome.runtime.onInstalled.addListener(() => {
     tradeValue: 10, // Valor padrão
     tradeTime: 0    // Período dinâmico por padrão
   });
+  
+  // Inicializar o storage de operações e logs
+  chrome.storage.local.get(['tradeOperations'], (result) => {
+    if (!result || !result.tradeOperations) {
+      chrome.storage.local.set({ 'tradeOperations': [] }, () => {
+        console.log('[background] Storage de operações inicializado');
+      });
+    }
+  });
+  
+  // Inicializar logs do sistema
+  chrome.storage.local.get(['systemLogs'], (result) => {
+    if (!result || !result.systemLogs) {
+      chrome.storage.local.set({ 'systemLogs': [] }, () => {
+        console.log('[background] Storage de logs inicializado');
+      });
+    }
+  });
 });
 
 // ================== VARIÁVEIS GLOBAIS ==================
@@ -220,7 +238,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Handler para mostrar notificações
     if (message.action === 'showNotification') {
         try {
-            chrome.notifications.create({
+            const notificationId = message.id || `notification_${Date.now()}`;
+            chrome.notifications.create(notificationId, {
                 type: 'basic',
                 iconUrl: '../assets/icons/icon48.png',
                 title: message.title || 'Notificação',
