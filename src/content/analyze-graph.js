@@ -3,46 +3,24 @@
 // =============================================
 // Definir a função para log primeiro para evitar problemas de referência circular
 function logFromAnalyzer(message, level = 'INFO') {
-    // Não elevar mais o nível para manter a consistência com o nível original
+    // console.log(`%c[${level}][analyze-graph.js] ${message}`, 'background: #3498db; color: white; padding: 3px; border-radius: 3px;'); // Manter para depuração local se desejar
     
-    // Verificar se a função global de log está disponível
-    if (typeof window.logToSystem === 'function') {
-        try {
-            window.logToSystem(message, level, 'analyze-graph.js');
-            return;
-        } catch (err) {
-            // Fallback para console se logToSystem falhar
-            console.log(`%c[${level}][analyze-graph.js] ${message}`, 'background: #3498db; color: white; padding: 3px; border-radius: 3px;');
-        }
-    } else {
-        // Fallback: método original quando logToSystem não está disponível
-        console.log(`%c[${level}][analyze-graph.js] ${message}`, 'background: #3498db; color: white; padding: 3px; border-radius: 3px;');
-    }
-    
-    // Enviar para o sistema centralizado via mensagem
+    // Enviar para o sistema centralizado de logs (log-sys.js ou background)
     try {
-        // Verificar se o contexto da extensão ainda é válido
-        if (chrome && chrome.runtime && chrome.runtime.id) {
+        if (chrome && chrome.runtime && chrome.runtime.id) { // Verificar se o contexto da extensão é válido
             chrome.runtime.sendMessage({
-                action: 'logMessage',
-                message: message,
+                action: 'addLog', // PADRONIZADO para addLog
+                logMessage: `[analyze-graph.js] ${message}`, // Usando logMessage
                 level: level,
-                source: 'analyze-graph.js'
-            }, response => {
-                // Silenciar erros do callback
-                if (chrome.runtime.lastError) {
-                    // Apenas logar no console e continuar
-                    console.log(`Erro ao enviar log (ignorando): ${chrome.runtime.lastError.message}`);
-                }
-            });
+                source: 'analyze-graph.js' // Redundante se já prefixado, mas bom para o receptor
+            }); // Callback removido
         }
     } catch (error) {
-        // Apenas logar e continuar - não queremos que falhas de log interrompam a análise
-        console.log('Não foi possível enviar log para o background. Continuando execução...');
+        console.warn('[analyze-graph.js] Exceção ao tentar enviar log via runtime:', error);
     }
 }
 
-// Agora podemos usar a função de log
+// Agora podemos usar a função de log corrigida
 logFromAnalyzer('AnalyzeGraph: Iniciando carregamento...', 'INFO');
 
 // Removendo as constantes duplicadas e usando as do index.js
@@ -57,28 +35,10 @@ logFromAnalyzer('AnalyzeGraph: Iniciando carregamento...', 'INFO');
  * @param {string} source - Origem do log (padrão: 'analyze-graph.js')
  */
 function graphAddLog(message, level = 'INFO', source = 'analyze-graph.js') {
-    // Não elevar mais o nível para manter a consistência com o nível original
-    
-    // Não forçar mais a fonte a incluir "analysis" para permitir logs naturais
-    
-    // Verificar se temos a função global do sistema de logs
-    if (typeof window.logToSystem === 'function') {
-        try {
-            window.logToSystem(message, level, source);
-            return;
-        } catch (error) {
-            // Se logToSystem falhar, use o fallback
-            console.log(`%c[${level}][${source}] ${message}`, 'background: #3498db; color: white; padding: 3px; border-radius: 3px;');
-        }
-    }
-    
-    // Método alternativo (fallback) caso a função global não esteja disponível
-    try {
-        logFromAnalyzer(`[${level}][${source}] ${message}`, level);
-    } catch (error) {
-        // Último recurso - apenas logar no console e continuar
-        console.log(`%c[${level}][${source}] ${message}`, 'background: #3498db; color: white; padding: 3px; border-radius: 3px;');
-    }
+    // Chama a função de log padronizada deste módulo
+    // O parâmetro 'source' aqui é mais para compatibilidade se a função era chamada com ele,
+    // mas logFromAnalyzer já adiciona um prefixo [analyze-graph.js]
+    logFromAnalyzer(message, level); 
 }
 
 /**

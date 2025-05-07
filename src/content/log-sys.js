@@ -254,32 +254,8 @@ const LogSystem = {
     
     // Verificar se um log é duplicado
     isDuplicateLog(message, level, source) {
-        if (!message) return true; // Considerar undefined como duplicata
-        
-        // Verificar se devemos ignorar este tipo de mensagem
-        if (shouldIgnoreMessage(message)) {
-            return true;
-        }
-        
-        // Chave para verificação de duplicata no curto prazo
-        const key = `${message}-${level}-${source}`;
-        
-        // Verificar se é a mesma mensagem chamada imediatamente
-        if (key === this.lastLogKey) {
-            return true;
-        }
-        
-        // Atualizar a última chave
-        this.lastLogKey = key;
-        
-        // Verificar nos logs recentes (último minuto)
-        const now = new Date().getTime();
-        return this.logs.some(log => 
-            log.message === message && 
-            log.level === level && 
-            log.source === source && 
-            (now - log.timestamp.getTime()) < 10000 // 10 segundos
-        );
+        // Temporariamente desabilitado para garantir que todos os logs sejam exibidos durante o teste
+        return false; 
     },
     
     // Adicionar log ao sistema
@@ -663,101 +639,6 @@ function logToSystem(message, level = 'INFO', source = 'SYSTEM') {
     }
 }
 
-// ================== MANIPULAÇÃO DE EVENTOS DO CHROME ==================
-
-// Configurar receptor de mensagens para receber logs de outros scripts
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    // Processamento da mensagem de limpeza de logs
-    if (request.action === 'logsCleaned') {
-        // Definir a flag local
-        try {
-            localStorage.setItem('logsRecentlyCleared', request.timestamp.toString());
-            
-            // Se estamos na página de logs, atualizar a UI
-            if (window.IS_LOG_PAGE && LogSystem.initialized) {
-                LogSystem.logs = []; // Limpar os logs em memória
-                LogSystem.addLog('Logs foram limpos em outra instância', 'INFO', 'LogSystem');
-                LogSystem.updateUI();
-            }
-            
-            sendResponse({ success: true });
-        } catch (e) {
-            console.warn('[LogSystem] Erro ao processar mensagem de limpeza:', e);
-            sendResponse({ success: false, error: e.message });
-        }
-        return true;
-    }
-    
-    // Processamento simplificado de mensagens de log
-    if (request.action === 'logMessage' || request.action === 'addLog') {
-        const message = request.message || request.logMessage;
-        const level = request.level || request.logLevel || 'INFO';
-        const source = request.source || request.logSource || 'SYSTEM';
-        
-        // Validar mensagem
-        if (!message) {
-            sendResponse({ success: false, error: 'Mensagem de log vazia' });
-            return false;
-        }
-        
-        // Se estamos na página de logs e o LogSystem está inicializado
-        if (window.IS_LOG_PAGE && LogSystem.initialized) {
-            const success = LogSystem.addLog(message, level, source);
-            sendResponse({ success });
-            return false;
-        }
-        
-        // Caso contrário, salvar no storage
-        if (isExtensionContextValid()) {
-            try {
-                chrome.storage.local.get(['systemLogs'], (result) => {
-                    let logs = result.systemLogs || [];
-                    const now = new Date();
-                    
-                    // Verificar duplicidade
-                    const isDuplicate = logs.some(log => 
-                        log.message === message && 
-                        log.level === level && 
-                        log.source === source &&
-                        (now.getTime() - log.timestamp) < 10000
-                    );
-                    
-                    if (!isDuplicate) {
-                        // Adicionar novo log
-                        logs.push({
-                            message,
-                            level,
-                            source,
-                            date: now.toISOString(),
-                            timestamp: now.getTime()
-                        });
-                        
-                        // Limitar a quantidade de logs
-                        if (logs.length > LogSystem.maxLogs) {
-                            logs = logs.slice(-LogSystem.maxLogs);
-                        }
-                        
-                        // Salvar logs atualizados
-                        chrome.storage.local.set({ systemLogs: logs });
-                    }
-                    
-                    sendResponse({ success: true });
-                });
-                
-                return true; // Manter o canal aberto para resposta assíncrona
-            } catch (error) {
-                sendResponse({ success: false, error: error.message });
-                return false;
-            }
-        }
-        
-        sendResponse({ success: false, error: 'Contexto de extensão inválido' });
-        return false;
-    }
-    
-    return false;
-});
-
 // ================== INICIALIZAÇÃO ==================
 
 // Função para fechar a página de logs
@@ -914,93 +795,25 @@ function updateLogFilters() {
 
 // Função para atualizar o status de operação sem usar alerts
 function updateStatus(message, type = 'info', duration = 3000) {
-    // Tentar usar a função de atualização de status da página principal
     try {
-        // Se estamos em um iframe, enviar para o pai
-        if (window !== window.top) {
-            window.parent.postMessage({
-                action: 'updateStatus',
-                message: message,
-                type: type,
-                duration: duration
-            }, '*');
-            return true;
-        }
-        
-        // Se estamos na página principal, tentar usar a função global
-        if (typeof window.updateStatusUI === 'function') {
-            window.updateStatusUI(message, type, duration);
-            return true;
-        }
-        
-        // Alternativa: elemento de status na própria página
-        const statusEl = document.getElementById('status-processo');
-        if (statusEl) {
-            // Remover classes anteriores
-            statusEl.className = 'status-processo';
-            
-            // Adicionar classe de acordo com o tipo
-            statusEl.classList.add(type, 'visible');
-            statusEl.textContent = message;
-            
-            // Auto-ocultar após o tempo especificado
-            setTimeout(() => {
-                statusEl.classList.remove('visible');
-            }, duration);
-            
-            return true;
-        }
-        
-        // Se não encontrou o elemento padrão, criar um temporário
-        if (!document.getElementById('temp-status-message')) {
-            const tempStatus = document.createElement('div');
-            tempStatus.id = 'temp-status-message';
-            tempStatus.style.cssText = `
-                position: fixed;
-                bottom: 20px;
-                right: 20px;
-                padding: 10px 15px;
-                border-radius: 4px;
-                color: white;
-                font-weight: bold;
-                z-index: 9999;
-                opacity: 0;
-                transition: opacity 0.3s ease;
-            `;
-            
-            // Definir cor de acordo com o tipo
-            switch(type) {
-                case 'error': tempStatus.style.backgroundColor = '#f44336'; break;
-                case 'success': tempStatus.style.backgroundColor = '#4caf50'; break;
-                case 'warn': tempStatus.style.backgroundColor = '#ff9800'; break;
-                default: tempStatus.style.backgroundColor = '#2196f3'; // info
-            }
-            
-            tempStatus.textContent = message;
-            document.body.appendChild(tempStatus);
-            
-            // Exibir com fade
-            setTimeout(() => { tempStatus.style.opacity = '1'; }, 10);
-            
-            // Remover após o tempo especificado
-            setTimeout(() => {
-                tempStatus.style.opacity = '0';
-                setTimeout(() => {
-                    if (tempStatus.parentNode) {
-                        document.body.removeChild(tempStatus);
-                    }
-                }, 300);
-            }, duration);
-            
-            return true;
+        // Enviar mensagem para o background script retransmitir para a UI principal (index.js)
+        if (chrome && chrome.runtime && chrome.runtime.id) {
+            chrome.runtime.sendMessage({
+                action: 'PROXY_STATUS_UPDATE', // Nova action para o background lidar
+                statusPayload: { // Encapsular os dados do status
+                    message: message,
+                    type: type,
+                    duration: duration
+                }
+            });
+        } else {
+            // Fallback muito simples se o runtime não estiver disponível (raro no contexto de uma página da extensão)
+            console.warn(`[log-sys.js] Runtime indisponível. Status (fallback console): [${type}] ${message}`);
         }
     } catch (e) {
-        console.error('Erro ao atualizar status:', e);
+        console.error(`[log-sys.js] Erro ao enviar PROXY_STATUS_UPDATE: ${e.message}`);
     }
-    
-    // Fallback para console se não conseguir atualizar UI
-    console.log(`[STATUS][${type.toUpperCase()}] ${message}`);
-    return false;
+    // Não há mais necessidade de retornar true ou tentar outros métodos, pois a responsabilidade é do background.
 }
 
 // Função para verificar se uma mensagem deve ser ignorada

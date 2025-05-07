@@ -161,6 +161,73 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Remover o log que causa poluição no console
     // console.log('Mensagem recebida no background:', message);
     
+    // Handler para LOGS - NOVO
+    if (message.action === 'addLog') {
+        try {
+            const logMessage = message.logMessage || "Log sem mensagem";
+            const logLevel = message.level || "INFO";
+            const logSource = message.source || "UNKNOWN_SOURCE";
+            const newLogEntry = {
+                timestamp: new Date().toISOString(),
+                level: logLevel,
+                source: logSource,
+                message: logMessage
+            };
+
+            chrome.storage.local.get(['systemLogs'], function(result) {
+                if (chrome.runtime.lastError) {
+                    console.error(`[background.js] Erro ao ler systemLogs do storage: ${chrome.runtime.lastError.message}`);
+                    return;
+                }
+                let logs = result.systemLogs || [];
+                logs.push(newLogEntry);
+
+                // Limitar o número de logs armazenados (ex: 1000)
+                const MAX_LOGS = 1000;
+                if (logs.length > MAX_LOGS) {
+                    logs = logs.slice(logs.length - MAX_LOGS);
+                }
+
+                chrome.storage.local.set({ systemLogs: logs }, function() {
+                    if (chrome.runtime.lastError) {
+                        console.error(`[background.js] Erro ao salvar systemLogs no storage: ${chrome.runtime.lastError.message}`);
+                    }
+                });
+            });
+        } catch (e) {
+            console.error(`[background.js] Exceção no handler addLog: ${e.message}`);
+        }
+        // Resposta fire-and-forget para logs, não precisa de sendResponse e retorna false.
+        return false;
+    }
+    
+    // Handler para PROXY_STATUS_UPDATE (vindo de log-sys.js ou outras UIs auxiliares)
+    if (message.action === 'PROXY_STATUS_UPDATE' && message.statusPayload) {
+        try {
+            const { message: statusMsg, type: statusType, duration: statusDuration } = message.statusPayload;
+            // Obter todas as tabs ativas e enviar a mensagem para elas
+            // Reutilizando a lógica do handler 'updateStatus'
+            chrome.tabs.query({active: true}, (tabs) => {
+                tabs.forEach(tab => {
+                    if (tab.id) {
+                        chrome.tabs.sendMessage(tab.id, {
+                            action: 'updateStatus', // A action que index.js espera
+                            message: statusMsg,
+                            type: statusType || 'info',
+                            duration: statusDuration || 3000
+                        }).catch(err => {
+                            console.debug(`[background.js] Falha ao enviar updateStatus para tab ${tab.id} (PROXY): ${err.message}`);
+                        });
+                    }
+                });
+            });
+            // Não há necessidade de sendResponse aqui, pois é um proxy.
+        } catch (error) {
+            console.error(`[background.js] Erro ao processar PROXY_STATUS_UPDATE: ${error.message}`);
+        }
+        return false; // Fire-and-forget
+    }
+    
     // Handler para resultado de operações de trading
     if (message.type === 'TRADE_RESULT') {
         // Enviar sinal de notificação para o popup e outras páginas

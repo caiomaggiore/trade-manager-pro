@@ -39,6 +39,7 @@
         "src/content/trade-history.js",
         "src/content/content.js",
         "src/content/settings.js",
+        "src/content/automation.js",
         "src/content/index.js"
       ],
       "css": [

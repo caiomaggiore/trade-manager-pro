@@ -7,65 +7,51 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     // Verificar se o sistema de logs está disponível
     let logInitialized = false;
     
-    // Função para adicionar logs usando o sistema centralizado de logs
+    // Função para adicionar logs usando EXCLUSIVAMENTE chrome.runtime
     const addLog = (message, level = 'INFO') => {
-        // Verificar se a função global de log está disponível
-        if (typeof window.logToSystem === 'function') {
-            window.logToSystem(message, level, 'index.js');
-            return;
-        }
-        
-        // Fallback: apenas erros são exibidos no console
-        if (level.toUpperCase() === 'ERROR') {
-            console.error(`[${level}][index.js] ${message}`);
-        }
-        
         // Enviar para o sistema centralizado via mensagem
         try {
+            // Certifique-se que o background script espera por 'action: logMessage' ou ajuste o 'action'
             chrome.runtime.sendMessage({
-                action: 'logMessage',
-                message: message,
+                action: 'addLog', // PADRONIZADO para addLog
+                logMessage: `[index.js] ${message}`, // Usando logMessage
                 level: level,
-                source: 'index.js'
-            });
+                source: 'index.js' // 'source' já é explícito aqui, mas pode ser útil para o receptor
+            }); // Callback removido
         } catch (error) {
-            console.error('[index.js] Erro ao enviar log:', error);
+            console.warn('[index.js] Exceção ao tentar enviar log via runtime:', error);
         }
     };
     
     // Função para atualizar o status no UI e registrar um log
-    const updateStatus = (message, level = 'INFO') => {
-        // Registrar o log no sistema centralizado
-        addLog(`Status atualizado: ${message}`, level);
+    const updateStatus = (message, level = 'INFO', duration = 3000) => { // Adicionada duration aqui
+        addLog(`Status UI será atualizado: ${message}`, level); // addLog agora usa chrome.runtime
         
-        // Atualizar o elemento de status na UI se disponível
         const statusElement = document.getElementById('status-processo');
         if (statusElement) {
-            // Mapear nível para classe CSS
-            let statusClass = '';
-            switch (level.toUpperCase()) {
-                case 'ERROR':
-                    statusClass = 'status-error';
-                    break;
-                case 'WARN':
-                    statusClass = 'status-warning';
-                    break;
-                case 'SUCCESS':
-                    statusClass = 'status-success';
-                    break;
-                default:
-                    statusClass = 'status-info';
+            let statusClass = 'info'; // Default class
+            switch (String(level).toUpperCase()) { // Garantir que level seja string
+                case 'ERROR': statusClass = 'error'; break;
+                case 'WARN': statusClass = 'warn'; break;
+                case 'SUCCESS': statusClass = 'success'; break;
+                // default é 'info'
             }
             
-            // Limpar classes anteriores, mas manter a classe base 'status-processo'
-            statusElement.className = 'status-processo';
-            
-            // Adicionar nova classe e texto
+            statusElement.className = 'status-processo'; // Reset classes
             statusElement.classList.add(statusClass, 'visible');
             statusElement.textContent = message;
+
+            // Limpar status após a duração, se especificado e > 0
+            if (typeof duration === 'number' && duration > 0) {
+                setTimeout(() => {
+                    if (statusElement.textContent === message) { // Só limpa se ainda for a mesma mensagem
+                        statusElement.classList.remove('visible');
+                        // statusElement.textContent = 'Status: Ocioso'; // Opcional: resetar texto
+                    }
+                }, duration);
+            }
         } else {
-            // Log adicional se o elemento de status não existir, apenas se for erro
-            addLog('Elemento de status não encontrado na UI', 'WARN');
+            addLog('Elemento de status #status-processo não encontrado na UI', 'WARN');
         }
     };
     
@@ -1890,6 +1876,83 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             addLog('Painel de teste do Gale ocultado', 'DEBUG');
         }
     };
+
+    // Adicionar um listener para mensagens do chrome.runtime
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+            console.log('index.js: Mensagem recebida:', message); 
+
+            // Handler para o NOVO status de automação simulada
+            if (message.type === 'UPDATE_SIMULATED_AUTOMATION_STATUS') {
+                addLog(`index.js: Recebido UPDATE_SIMULATED_AUTOMATION_STATUS ('${message.text}') para o elemento '${message.targetElementId}'`, 'DEBUG');
+                const targetElement = message.targetElementId ? document.getElementById(message.targetElementId) : null;
+                if (targetElement) {
+                    targetElement.textContent = message.text;
+                    targetElement.className = 'status-processo'; // Reset class
+                    let statusClass = 'info';
+                    switch ((message.level || 'info').toLowerCase()) {
+                        case 'error': statusClass = 'error'; break;
+                        case 'warn': statusClass = 'warn'; break;
+                        case 'success': statusClass = 'success'; break;
+                    }
+                    targetElement.classList.add(statusClass, 'visible');
+                    sendResponse({ success: true, simulated_status_updated: true });
+                } else {
+                    addLog(`index.js: Elemento alvo '${message.targetElementId}' não encontrado para status simulado.`, 'ERROR');
+                    sendResponse({ success: false, error: `Target element ${message.targetElementId} not found` });
+                }
+                return false; // Resposta síncrona.
+            }
+
+            // Handler para o status global existente (usado por REQUEST_INDEX_DIRECT_UPDATE_STATUS)
+            if (message.type === 'REQUEST_INDEX_DIRECT_UPDATE_STATUS') {
+                console.log('index.js: Handler para REQUEST_INDEX_DIRECT_UPDATE_STATUS acionado.', message); 
+                addLog(`index.js: Recebido REQUEST_INDEX_DIRECT_UPDATE_STATUS ('${message.text}')`, 'DEBUG');
+                // Esta função já existe e deve ser usada para o status global
+                if (window.IndexUIFunctions && typeof window.IndexUIFunctions.updateStatus === 'function') {
+                    window.IndexUIFunctions.updateStatus(
+                        message.text,
+                        message.level || 'info',
+                        typeof message.duration === 'number' ? message.duration : 5000
+                    );
+                    sendResponse({ success: true, status_updated: true });
+                } else {
+                    addLog('index.js: window.IndexUIFunctions.updateStatus não disponível.', 'ERROR');
+                    sendResponse({ success: false, error: 'updateStatus function not found' });
+                }
+                return false; // Resposta síncrona.
+            }
+
+            // Manter outros handlers existentes (UPDATE_STATUS_MESSAGE, REQUEST_UI_AUTOMATION_STATUS_UPDATE, configUpdated)
+            if (message.action === 'updateStatus' || message.type === 'UPDATE_STATUS_MESSAGE') {
+                // ... (código existente)
+                if (sendResponse) sendResponse({ success: true, received: true });
+                return true; 
+            }
+
+            if (message.type === 'REQUEST_UI_AUTOMATION_STATUS_UPDATE') {
+                // ... (código existente)
+                if (sendResponse) sendResponse({ success: true, received: true });
+                return false; 
+            }
+
+            if (message && message.action === 'configUpdated' && message.settings) {
+                // ... (código existente)
+                if (sendResponse) {
+                        sendResponse({ success: true, received: true });
+                }
+                return false; 
+            }
+            
+            // Fallback se nenhuma mensagem foi explicitamente tratada e esperava uma resposta síncrona.
+            // Se um sender envia uma mensagem sem esperar callback, e nenhum handler retorna true,
+            // não há problema. Se um sender espera callback, um dos handlers DEVE retornar true ou chamar sendResponse.
+            // Para segurança, se não foi tratado, e pode haver um sender esperando, logar.
+            // console.warn('index.js: Mensagem não tratada por nenhum handler específico que retorna síncronamente.', message);
+            // sendResponse({success: false, error: 'Message not handled by index.js'}); // Opcional: responder que não foi tratado
+            return false; // Default para evitar port closed se nenhum outro handler retornou true.
+        });
+    }
 } else {
     console.log('Trade Manager Pro - Index Module já foi carregado anteriormente');
 }
