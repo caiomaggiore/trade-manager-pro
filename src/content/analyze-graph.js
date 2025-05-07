@@ -10,7 +10,7 @@ function logFromAnalyzer(message, level = 'INFO') {
         if (chrome && chrome.runtime && chrome.runtime.id) { // Verificar se o contexto da extensão é válido
             chrome.runtime.sendMessage({
                 action: 'addLog', // PADRONIZADO para addLog
-                logMessage: `[analyze-graph.js] ${message}`, // Usando logMessage
+                logMessage: message, // MODIFICADO: Remover prefixo
                 level: level,
                 source: 'analyze-graph.js' // Redundante se já prefixado, mas bom para o receptor
             }); // Callback removido

@@ -37,7 +37,7 @@ window.TradeManager.History = (function() {
         try {
             chrome.runtime.sendMessage({
                 action: 'addLog', // Padronizado
-                logMessage: `[trade-history.js] ${message}`,
+                logMessage: message,
                 level: level,
                 source: 'trade-history.js'
             });
@@ -273,7 +273,7 @@ window.TradeManager.History = (function() {
                             const logMsg = 'Observer já existe, não será criado novamente';
                             // console.warn(`${scriptName} Attempting to log: "${logMsg}", Runtime ID: ${localRuntimeId}`);
                             // if (localRuntimeId && localRuntimeId !== 'undefined') {
-                            chrome.runtime.sendMessage({ action: 'addLog', logMessage: `${scriptName} ${logMsg}`, level: 'DEBUG', source: 'trade-history.js-injected' });
+                            chrome.runtime.sendMessage({ action: 'addLog', logMessage: logMsg, level: 'DEBUG', source: 'trade-history.js-injected' });
                             //     console.warn(`${scriptName} Log message SENT for "Observer already exists".`);
                             // } else {
                             //     console.warn(`${scriptName} Log message NOT SENT for "Observer already exists" (invalid runtime).`);
@@ -364,7 +364,7 @@ window.TradeManager.History = (function() {
                                                 const logMsg = `Operação duplicada ignorada: ${result.symbol} ${result.status}`;
                                                 // console.warn(`${scriptName} Attempting to log: "${logMsg}", Runtime ID: ${localRuntimeId}`);
                                                 // if (localRuntimeId && localRuntimeId !== 'undefined') {
-                                                chrome.runtime.sendMessage({ action: 'addLog', logMessage: `${scriptName} ${logMsg}`, level: 'DEBUG', source: 'trade-history.js-injected' });
+                                                chrome.runtime.sendMessage({ action: 'addLog', logMessage: logMsg, level: 'DEBUG', source: 'trade-history.js-injected' });
                                                 //     console.warn(`${scriptName} Log message SENT for "Duplicate operation".`);
                                                 // } else {
                                                 //     console.warn(`${scriptName} Log message NOT SENT for "Duplicate operation" (invalid runtime).`);
@@ -375,7 +375,7 @@ window.TradeManager.History = (function() {
                                             const detectedLogMsg = `Operação detectada: ${JSON.stringify(result)}`;
                                             // console.warn(`${scriptName} Attempting to log: "${detectedLogMsg.substring(0,100)}...", Runtime ID: ${localRuntimeId}`);
                                             // if (localRuntimeId && localRuntimeId !== 'undefined') {
-                                            chrome.runtime.sendMessage({ action: 'addLog', logMessage: `${scriptName} ${detectedLogMsg}`, level: 'INFO', source: 'trade-history.js-injected' });      
+                                            chrome.runtime.sendMessage({ action: 'addLog', logMessage: detectedLogMsg, level: 'INFO', source: 'trade-history.js-injected' });      
                                             //     console.warn(`${scriptName} Log message SENT for "Operation detected".`);
                                             // } else {
                                             //     console.warn(`${scriptName} Log message NOT SENT for "Operation detected" (invalid runtime).`);
@@ -397,7 +397,7 @@ window.TradeManager.History = (function() {
                                                 const errorMsg = `Erro ao enviar operação: ${error.message}`;
                                                 // console.warn(`${scriptName} Attempting to log error: "${errorMsg}", Runtime ID: ${localRuntimeId}`);
                                                 // if (localRuntimeId && localRuntimeId !== 'undefined') {
-                                                chrome.runtime.sendMessage({ action: 'addLog', logMessage: `${scriptName} ${errorMsg}`, level: 'ERROR', source: 'trade-history.js-injected' });
+                                                chrome.runtime.sendMessage({ action: 'addLog', logMessage: errorMsg, level: 'ERROR', source: 'trade-history.js-injected' });
                                                 //     console.warn(`${scriptName} Error log message SENT.`);
                                                 // } else {
                                                 //     console.warn(`${scriptName} Error log message NOT SENT (invalid runtime).`);
@@ -421,7 +421,7 @@ window.TradeManager.History = (function() {
                         const startedLogMsg = 'Monitoramento de operações iniciado';
                         // console.warn(`${scriptName} Attempting to log: "${startedLogMsg}", Runtime ID: ${localRuntimeId}`);
                         // if (localRuntimeId && localRuntimeId !== 'undefined') {
-                        chrome.runtime.sendMessage({ action: 'addLog', logMessage: `${scriptName} ${startedLogMsg}`, level: 'INFO', source: 'trade-history.js-injected' });
+                        chrome.runtime.sendMessage({ action: 'addLog', logMessage: startedLogMsg, level: 'INFO', source: 'trade-history.js-injected' });
                         //     console.warn(`${scriptName} Log message SENT for "Monitoring started".`);
                         // } else {
                         //     console.warn(`${scriptName} Log message NOT SENT for "Monitoring started" (invalid runtime).`);
@@ -468,7 +468,7 @@ window.TradeManager.History = (function() {
                         const logMsg = 'Monitoramento de operações interrompido';
                         // console.warn(`${scriptName} Attempting to log: "${logMsg}", Runtime ID: ${localRuntimeId}`);
                         // if (localRuntimeId && localRuntimeId !== 'undefined') {
-                        chrome.runtime.sendMessage({ action: 'addLog', logMessage: `${scriptName} ${logMsg}`, level: 'INFO', source: 'trade-history.js-injected' });
+                        chrome.runtime.sendMessage({ action: 'addLog', logMessage: logMsg, level: 'INFO', source: 'trade-history.js-injected' });
                         //     console.warn(`${scriptName} Log message SENT for "Monitoring stopped".`);
                         // } else {
                         //     console.warn(`${scriptName} Log message NOT SENT for "Monitoring stopped" (invalid runtime).`);

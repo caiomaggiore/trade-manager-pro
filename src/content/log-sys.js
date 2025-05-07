@@ -102,7 +102,7 @@ function formatLogLevel(level) {
         case 'WARN': return '⚠️ AVISO';
         case 'ERROR': return '❌ ERRO';
         case 'SUCCESS': return '✅ SUCESSO';
-        case 'DEBUG': return '🔍 DEBUG';
+        case 'DEBUG': return '🐛 DEBUG';
         default: return 'ℹ️ INFO';
     }
 }
@@ -379,8 +379,9 @@ const LogSystem = {
             logElement.setAttribute('data-level', log.level);
             logElement.setAttribute('data-source', log.source);
             
-            // Construir o texto do log
-            logElement.textContent = `${log.timestampFormatted} ${formatLogLevel(log.level)} [${log.source}] ${log.message}`;
+            // Construir o texto do log no novo formato
+            // log.timestampFormatted já inclui os colchetes: [DD/MM/AAAA, HH:MM:SS]
+            logElement.textContent = `${log.timestampFormatted} [ ${log.source} ] - ${formatLogLevel(log.level)} - ${log.message}`;
             
             // Adicionar ao container
             this.container.appendChild(logElement);
@@ -532,7 +533,8 @@ const LogSystem = {
     // Obter logs formatados como texto para exportação
     getFormattedLogs() {
         return this.logs.map(log => 
-            `${log.timestampFormatted} ${formatLogLevel(log.level)} [${log.source}] ${log.message}`
+            // log.timestampFormatted já inclui os colchetes: [DD/MM/AAAA, HH:MM:SS]
+            `${log.timestampFormatted} [ ${log.source} ] - ${formatLogLevel(log.level)} - ${log.message}`
         ).join('\n');
     },
     

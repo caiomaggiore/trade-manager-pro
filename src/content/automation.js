@@ -1,34 +1,42 @@
-(function() {
-    const AUTOMATION_LOG_PREFIX = '[AutomationSim]';
+const AUTOMATION_LOG_PREFIX = '[AutomationSim]';
 
-    // Apenas console.log para depuração interna deste módulo.
-    // A comunicação de status visível ao usuário será via mensagem para index.js.
-    function log(message, level = 'INFO') {
-        console.log(`[${level}]${AUTOMATION_LOG_PREFIX} ${message}`);
-        // REMOVIDO: window.logToSystem
+// Nova função para enviar logs para o sistema centralizado (via background.js)
+function sendToLogSystem(message, level = 'INFO') {
+    try {
+        chrome.runtime.sendMessage({
+            action: 'addLog',
+            logMessage: message,
+            level: level,
+            source: 'automation.js' // Fonte explícita
+        });
+    } catch (error) {
+        // Fallback para console.warn APENAS se o envio da mensagem falhar
+        console.warn(`${AUTOMATION_LOG_PREFIX} Falha crítica ao enviar log para o sistema central: "${message}". Erro: ${error.message}`);
     }
+}
 
-    log('Módulo de Automação Simulada INICIANDO.', 'DEBUG');
+(function() {
+    sendToLogSystem('Módulo de Automação Simulada INICIANDO.', 'DEBUG');
 
     // Função para enviar status para o campo de status GLOBAL via index.js
     function updateUserVisibleStatus(text, level = 'info', duration = 5000) {
-        log(`Solicitando atualização de status GLOBAL para index.js: "${text}" (${level})`, 'DEBUG');
+        sendToLogSystem(`Solicitando atualização de status GLOBAL para index.js (via action:updateStatus): "${text}" (${level})`, 'DEBUG');
         chrome.runtime.sendMessage({
-            type: 'REQUEST_INDEX_DIRECT_UPDATE_STATUS', // Usando o tipo que index.js já trata
-            text: text,
-            level: level,
+            action: 'updateStatus', // Alterado de type: 'REQUEST_INDEX_DIRECT_UPDATE_STATUS'
+            message: text,       // Mapeado de text para message
+            type: level,         // Mapeado de level para type
             duration: duration
         }, response => {
             if (chrome.runtime.lastError) {
-                log(`Erro ao enviar status para index.js: ${chrome.runtime.lastError.message}`, 'ERROR');
+                sendToLogSystem(`Erro ao enviar status (action:updateStatus) para index.js: ${chrome.runtime.lastError.message}`, 'ERROR');
             } else if (response && !response.success) {
-                log(`index.js reportou falha ao processar atualização de status global.`, 'WARN');
+                sendToLogSystem(`index.js reportou falha ao processar atualização de status (action:updateStatus).`, 'WARN');
             }
         });
     }
 
     function handleSimulatedAutomationTest() {
-        log('Botão #test-simulated-automation-btn clicado.', 'INFO');
+        sendToLogSystem('Botão #test-simulated-automation-btn clicado.', 'INFO');
 
         const toggleAutoElement = document.getElementById('toggleAuto');
         let message = '';
@@ -38,31 +46,32 @@
             if (toggleAutoElement.checked) {
                 message = 'Simulação: Iniciado sistema automatico...';
                 level = 'success';
-                log('Toggle de automação (#toggleAuto) está ATIVADO.', 'INFO');
+                sendToLogSystem('Toggle de automação (#toggleAuto) está ATIVADO.', 'INFO');
             } else {
                 message = 'Simulação: Modo automatico está desativado!';
                 level = 'warn';
-                log('Toggle de automação (#toggleAuto) está DESATIVADO.', 'INFO');
+                sendToLogSystem('Toggle de automação (#toggleAuto) está DESATIVADO.', 'INFO');
             }
         } else {
             message = 'Simulação: Toggle #toggleAuto não encontrado!';
             level = 'error';
-            log('Toggle de automação (#toggleAuto) NÃO encontrado no DOM.', 'ERROR');
+            sendToLogSystem('Toggle de automação (#toggleAuto) NÃO encontrado no DOM.', 'ERROR');
         }
         updateUserVisibleStatus(message, level);
     }
 
     document.addEventListener('DOMContentLoaded', () => {
-        log('DOMContentLoaded disparado em automation.js (simulado).', 'DEBUG');
+        sendToLogSystem('DOMContentLoaded disparado em automation.js (simulado).', 'DEBUG');
         const testButton = document.getElementById('test-simulated-automation-btn');
         if (testButton) {
-            log('Botão #test-simulated-automation-btn encontrado. Adicionando listener.', 'DEBUG');
+            sendToLogSystem('Botão #test-simulated-automation-btn encontrado. Adicionando listener.', 'DEBUG');
             testButton.addEventListener('click', handleSimulatedAutomationTest);
         } else {
-            log('Botão #test-simulated-automation-btn NÃO encontrado.', 'WARN');
+            sendToLogSystem('Botão #test-simulated-automation-btn NÃO encontrado.', 'WARN');
         }
-        updateUserVisibleStatus('Automação Simulada Pronta (teste). Status global.', 'info', 3000); // Status inicial
+        // Removido o updateUserVisibleStatus daqui, pois pode ser muito cedo e causar "port closed"
+        // se index.js não estiver pronto. O botão de teste será a principal forma de interação inicial.
     });
 
-    log('Módulo de Automação Simulada carregado.', 'INFO');
+    sendToLogSystem('Módulo de Automação Simulada carregado.', 'INFO');
 })(); 

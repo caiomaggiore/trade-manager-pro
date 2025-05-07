@@ -19,7 +19,7 @@ const logFromSettings = (message, level = 'INFO') => {
         if (chrome && chrome.runtime && chrome.runtime.id) {
             chrome.runtime.sendMessage({
                 action: 'addLog',
-                logMessage: `[settings.js] ${message}`,
+                logMessage: message,
                 level: level,
                 source: 'settings.js'
             });

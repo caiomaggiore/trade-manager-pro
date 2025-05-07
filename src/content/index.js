@@ -14,7 +14,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             // Certifique-se que o background script espera por 'action: logMessage' ou ajuste o 'action'
             chrome.runtime.sendMessage({
                 action: 'addLog', // PADRONIZADO para addLog
-                logMessage: `[index.js] ${message}`, // Usando logMessage
+                logMessage: `${message}`, // Usando logMessage
                 level: level,
                 source: 'index.js' // 'source' já é explícito aqui, mas pode ser útil para o receptor
             }); // Callback removido
@@ -339,7 +339,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                             const timestamp = new Date().toLocaleString('pt-BR');
                             const tradeValue = tradeSettings.tradeValue || 'N/A';
                             const trustValue = result ? result.trust : 'N/A';
-                            logAndUpdateStatus(`OPERAÇÃO [${timestamp}] - ${action} - Confiança: ${trustValue}% - Valor: ${tradeValue}`, 'SUCCESS', 'trade-execution', false);
+                            logAndUpdateStatus(`OPERAÇÃO - ${action} - Confiança: ${trustValue}% - Valor: ${tradeValue} (Evento às ${new Date().toLocaleTimeString('pt-BR')})`, 'SUCCESS', 'trade-execution', false);
                         } else {
                             const errorMsg = response ? response.error : 'Sem resposta do background';
                             logAndUpdateStatus(`Falha na execução: ${errorMsg}`, 'ERROR', 'trade-execution', true);
@@ -1758,16 +1758,33 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     // Adicionar um listener para mensagens do chrome.runtime
     if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
         chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-            // Verificar se é uma mensagem de atualização de status
+            // Usar a função de log interna de index.js se disponível, ou console.log como fallback
+            const logFunction = typeof sendToLogSystem === 'function' ? sendToLogSystem : console.log;
+            logFunction(`Mensagem runtime recebida em index.js: action=${message.action}, type=${message.type}, source=${sender.id}`, 'DEBUG');
+
             if (message.action === 'updateStatus') {
+                logFunction(`Handler 'updateStatus' ativado por mensagem: ${message.message}`, 'DEBUG');
                 updateStatus(
                     message.message, 
                     message.type || 'info', 
                     message.duration || 3000
                 );
-                if (sendResponse) sendResponse({ success: true });
-            }
-            return true;
+                // Remetentes como automation.js e o proxy do background para log-sys.js podem ter callbacks.
+                sendResponse({ success: true, status_updated_by_action_updateStatus: true });
+                return false; // Resposta enviada, não precisa manter a porta aberta para este caso.
+            } 
+            // Adicione aqui outros 'else if (message.action === 'ALGUMA_OUTRA_ACTION')' que index.js deva tratar
+            // e para os quais deva enviar uma resposta.
+            // Se algum desses handlers for assíncrono, ele deve retornar true e chamar sendResponse mais tarde.
+
+            // Para mensagens não explicitamente tratadas acima (ex: 'logsCleaned' que é recebida mas não tem um handler específico aqui):
+            // Não indicar uma resposta assíncrona, pois não vamos enviar uma.
+            // Isso evita o erro "A listener indicated an asynchronous response by returning true, 
+            // but the message channel closed before a response was received" para essas mensagens.
+            // Se o remetente original da mensagem não tratada tinha um callback, ele receberá um erro de port closed,
+            // o que é esperado se este listener não foi feito para responder a essa mensagem específica.
+            // No caso de 'logsCleaned', o emissor original (log-sys.js) não tem callback, então está tudo bem.
+            return false; 
         });
     }
     
