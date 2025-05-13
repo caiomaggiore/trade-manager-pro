@@ -1899,28 +1899,6 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             console.log('index.js: Mensagem recebida:', message); 
 
-            // Handler para o NOVO status de automação simulada
-            if (message.type === 'UPDATE_SIMULATED_AUTOMATION_STATUS') {
-                addLog(`index.js: Recebido UPDATE_SIMULATED_AUTOMATION_STATUS ('${message.text}') para o elemento '${message.targetElementId}'`, 'DEBUG');
-                const targetElement = message.targetElementId ? document.getElementById(message.targetElementId) : null;
-                if (targetElement) {
-                    targetElement.textContent = message.text;
-                    targetElement.className = 'status-processo'; // Reset class
-                    let statusClass = 'info';
-                    switch ((message.level || 'info').toLowerCase()) {
-                        case 'error': statusClass = 'error'; break;
-                        case 'warn': statusClass = 'warn'; break;
-                        case 'success': statusClass = 'success'; break;
-                    }
-                    targetElement.classList.add(statusClass, 'visible');
-                    sendResponse({ success: true, simulated_status_updated: true });
-                } else {
-                    addLog(`index.js: Elemento alvo '${message.targetElementId}' não encontrado para status simulado.`, 'ERROR');
-                    sendResponse({ success: false, error: `Target element ${message.targetElementId} not found` });
-                }
-                return false; // Resposta síncrona.
-            }
-
             // Handler para o status global existente (usado por REQUEST_INDEX_DIRECT_UPDATE_STATUS)
             if (message.type === 'REQUEST_INDEX_DIRECT_UPDATE_STATUS') {
                 console.log('index.js: Handler para REQUEST_INDEX_DIRECT_UPDATE_STATUS acionado.', message); 
