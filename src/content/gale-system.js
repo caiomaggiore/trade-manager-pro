@@ -26,6 +26,281 @@
         }
     }
 
+    // Função para enviar atualização de status para o index.js
+    function updateStatusInIndex(message, type = 'info', duration = 3000) {
+        try {
+            log(`Enviando atualização de status: ${message} (${type})`, 'DEBUG');
+            chrome.runtime.sendMessage({
+                action: 'updateStatus', 
+                message: message,
+                type: type,
+                duration: duration
+            }, response => {
+                if (chrome.runtime.lastError) {
+                    log(`Erro ao enviar status para index.js: ${chrome.runtime.lastError.message}`, 'ERROR');
+                } else if (response && response.success) {
+                    log('Status atualizado com sucesso no index.js', 'DEBUG');
+                }
+            });
+        } catch (error) {
+            log(`Erro ao enviar status: ${error.message}`, 'ERROR');
+        }
+    }
+
+    // Nova função para explorar a árvore DOM e buscar elementos
+    function exploreDOMTree() {
+        log('Iniciando exploração da árvore DOM', 'INFO');
+        updateStatusInIndex('Analisando estrutura do DOM...', 'info');
+        
+        try {
+            // Obter a aba ativa
+            chrome.tabs.query({active: true, currentWindow: true}, async (tabs) => {
+                if (!tabs || !tabs.length) {
+                    log('Nenhuma aba ativa encontrada', 'ERROR');
+                    updateStatusInIndex('Erro: Nenhuma aba ativa encontrada', 'error');
+                    return;
+                }
+                
+                // Injetar script para explorar a DOM na página principal
+                try {
+                    chrome.scripting.executeScript({
+                        target: {tabId: tabs[0].id},
+                        func: () => {
+                            // Função que será executada no contexto da página web
+                            function findPayoutElement() {
+                                console.log('== DOM Explorer iniciado ==');
+                                
+                                // Métodos de busca
+                                const searchMethods = [
+                                    // 1. Buscar pela classe específica em qualquer lugar
+                                    () => {
+                                        const direct = document.querySelector('.value__val-start');
+                                        if (direct) return { 
+                                            method: 'Classe direta', 
+                                            element: direct,
+                                            text: direct.textContent || direct.innerText,
+                                            path: getPathTo(direct)
+                                        };
+                                        return null;
+                                    },
+                                    
+                                    // 2. Buscar pela classe control-wrap e então encontrar o filho
+                                    () => {
+                                        const controlWrap = document.querySelector('.control-wrap');
+                                        if (!controlWrap) return null;
+                                        
+                                        console.log('control-wrap encontrado:', controlWrap);
+                                        
+                                        // Buscar dentro do control-wrap
+                                        const valueElement = controlWrap.querySelector('[class*="value"]');
+                                        if (valueElement) return {
+                                            method: 'Via control-wrap',
+                                            element: valueElement,
+                                            text: valueElement.textContent || valueElement.innerText,
+                                            path: getPathTo(valueElement)
+                                        };
+                                        return null;
+                                    },
+                                    
+                                    // 3. Buscar por elementos que contêm '%'
+                                    () => {
+                                        const elements = Array.from(document.querySelectorAll('*')).filter(el => {
+                                            const text = el.textContent || el.innerText || '';
+                                            return text.includes('%') && text.length < 20; // Textos curtos com % são candidatos
+                                        });
+                                        
+                                        if (elements.length > 0) {
+                                            const element = elements[0]; // Pegar o primeiro encontrado
+                                            return {
+                                                method: 'Contém %',
+                                                element: element,
+                                                text: element.textContent || element.innerText,
+                                                path: getPathTo(element),
+                                                allElements: elements.map(e => ({
+                                                    text: e.textContent || e.innerText,
+                                                    path: getPathTo(e)
+                                                }))
+                                            };
+                                        }
+                                        return null;
+                                    },
+                                    
+                                    // 4. Buscar em painéis de controle comuns
+                                    () => {
+                                        const panels = document.querySelectorAll('.panel, .control-panel, .trade-panel');
+                                        if (panels.length === 0) return null;
+                                        
+                                        for (const panel of panels) {
+                                            console.log('Painel encontrado:', panel);
+                                            // Buscar elementos com percentual
+                                            const elements = Array.from(panel.querySelectorAll('*')).filter(el => {
+                                                const text = el.textContent || el.innerText || '';
+                                                return text.includes('%');
+                                            });
+                                            
+                                            if (elements.length > 0) {
+                                                const element = elements[0];
+                                                return {
+                                                    method: 'Via painel de controle',
+                                                    element: element,
+                                                    text: element.textContent || element.innerText,
+                                                    path: getPathTo(element)
+                                                };
+                                            }
+                                        }
+                                        return null;
+                                    }
+                                ];
+                                
+                                // Executar todos os métodos de busca
+                                let results = [];
+                                for (const method of searchMethods) {
+                                    const result = method();
+                                    if (result) {
+                                        results.push(result);
+                                    }
+                                }
+                                
+                                // Fazer uma varredura geral para depuração
+                                console.log('== Resumo dos elementos encontrados ==');
+                                
+                                // Lista todas as classes que contêm "value" em qualquer lugar da página
+                                const valueClasses = new Set();
+                                document.querySelectorAll('*[class*="value"]').forEach(el => {
+                                    el.className.split(' ').forEach(cls => {
+                                        if (cls.includes('value')) valueClasses.add(cls);
+                                    });
+                                });
+                                
+                                console.log('Classes que contêm "value":', Array.from(valueClasses));
+                                
+                                // Função para obter o caminho do DOM até o elemento
+                                function getPathTo(element) {
+                                    if (element.id) return `#${element.id}`;
+                                    
+                                    if (element === document.body) return 'body';
+                                    
+                                    let path = '';
+                                    for (let parent = element; parent && parent !== document.body; parent = parent.parentNode) {
+                                        let tag = parent.tagName.toLowerCase();
+                                        
+                                        if (parent.className) {
+                                            tag += `.${parent.className.replace(/\s+/g, '.')}`;
+                                        }
+                                        
+                                        path = `${tag} > ${path}`;
+                                        
+                                        // Limitar o tamanho do caminho
+                                        if (path.length > 200) {
+                                            path = '... ' + path.substring(path.length - 200);
+                                            break;
+                                        }
+                                    }
+                                    
+                                    return `body > ${path}`.trim();
+                                }
+                                
+                                return {
+                                    results: results,
+                                    valueClasses: Array.from(valueClasses),
+                                    documentStructure: {
+                                        // Informações resumidas sobre o document
+                                        body: document.body ? true : false,
+                                        iframes: document.querySelectorAll('iframe').length,
+                                        valueElements: document.querySelectorAll('[class*="value"]').length,
+                                        percentElements: Array.from(document.querySelectorAll('*')).filter(el => 
+                                            (el.textContent || '').includes('%')
+                                        ).length
+                                    }
+                                };
+                            }
+                            
+                            return findPayoutElement();
+                        }
+                    }, (results) => {
+                        if (chrome.runtime.lastError) {
+                            log(`Erro na injeção de script: ${chrome.runtime.lastError.message}`, 'ERROR');
+                            updateStatusInIndex(`Erro: ${chrome.runtime.lastError.message}`, 'error');
+                            return;
+                        }
+                        
+                        const result = results[0].result;
+                        log(`Resultado da exploração DOM: ${JSON.stringify(result)}`, 'INFO');
+                        
+                        if (result.results && result.results.length > 0) {
+                            // Encontramos elementos candidatos!
+                            const firstMatch = result.results[0];
+                            log(`Elemento encontrado via ${firstMatch.method}: "${firstMatch.text}"`, 'SUCCESS');
+                            updateStatusInIndex(`Payout encontrado: ${firstMatch.text}`, 'success');
+                            
+                            // Atualizar elemento de resultado na interface
+                            const resultElement = document.getElementById('payout-result');
+                            if (resultElement) {
+                                resultElement.innerHTML = `
+                                    <div>Resultado: "${firstMatch.text}"</div>
+                                    <div>Método: ${firstMatch.method}</div>
+                                    <div>Caminho: ${firstMatch.path.substring(0, 50)}...</div>
+                                `;
+                                resultElement.style.backgroundColor = '#ddffdd';
+                            }
+                            
+                            // Armazenar as informações sobre o caminho encontrado
+                            window.payoutElementPath = firstMatch.path;
+                            log(`Caminho do elemento de payout armazenado: ${firstMatch.path}`, 'INFO');
+                        } else {
+                            log('Nenhum elemento de payout encontrado na exploração', 'WARN');
+                            updateStatusInIndex('Elemento não encontrado', 'warn');
+                            
+                            // Mostrar informações sobre a estrutura da página
+                            const resultElement = document.getElementById('payout-result');
+                            if (resultElement) {
+                                resultElement.innerHTML = `
+                                    <div>Nenhum elemento encontrado</div>
+                                    <div>Elementos com classe "value": ${result.valueClasses.length}</div>
+                                    <div>Classes encontradas: ${result.valueClasses.join(', ')}</div>
+                                    <div>iFrames na página: ${result.documentStructure.iframes}</div>
+                                `;
+                                resultElement.style.backgroundColor = '#ffdddd';
+                            }
+                        }
+                    });
+                } catch (error) {
+                    log(`Erro ao executar script na página: ${error.message}`, 'ERROR');
+                    updateStatusInIndex(`Erro na inspeção: ${error.message}`, 'error');
+                }
+            });
+        } catch (error) {
+            log(`Erro na exploração DOM: ${error.message}`, 'ERROR');
+            updateStatusInIndex(`Erro: ${error.message}`, 'error');
+        }
+    }
+
+    // Nova função para capturar o payout diretamente do DOM
+    function capturePayoutFromDOM() {
+        try {
+            log('Iniciando teste de captura de payout', 'INFO');
+            updateStatusInIndex('Buscando payout...', 'info');
+            
+            // Agora vamos executar a exploração DOM para encontrar o elemento
+            exploreDOMTree();
+            
+            return { success: true, message: 'Análise iniciada' };
+        } catch (error) {
+            const errorMsg = `Erro ao capturar payout: ${error.message}`;
+            log(errorMsg, 'ERROR');
+            updateStatusInIndex(errorMsg, 'error');
+            
+            // Atualizar elemento de resultado na interface
+            const resultElement = document.getElementById('payout-result');
+            if (resultElement) {
+                resultElement.textContent = `Erro: ${error.message}`;
+                resultElement.style.backgroundColor = '#ffdddd';
+            }
+            
+            return null;
+        }
+    }
+
     const GALE_ACTIONS = {
         APPLY: 'APPLY_GALE',
         RESET: 'RESET_GALE',
@@ -69,6 +344,46 @@
             isActive = false; // Garantir que isActive seja false em caso de erro
         }
         setupMessageListener(); // Mover para o final de initialize
+        setupDOMListeners(); // Configurar listeners do DOM
+    }
+    
+    // Nova função para configurar os listeners do DOM
+    function setupDOMListeners() {
+        try {
+            // Aguardar o DOM estar completamente carregado
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', attachButtonListeners);
+            } else {
+                // Se o DOM já estiver carregado, configurar imediatamente
+                attachButtonListeners();
+            }
+        } catch (error) {
+            log(`Erro ao configurar listeners do DOM: ${error.message}`, 'ERROR');
+        }
+    }
+    
+    // Função para anexar os listeners aos botões
+    function attachButtonListeners() {
+        try {
+            log('Configurando listeners para botões do sistema de Gale', 'DEBUG');
+            
+            // Botão de teste de captura de payout
+            const capturePayoutBtn = document.getElementById('test-capture-payout');
+            if (capturePayoutBtn) {
+                log('Botão de teste de payout encontrado, configurando listener', 'DEBUG');
+                
+                capturePayoutBtn.addEventListener('click', () => {
+                    log('Botão de teste de payout clicado', 'INFO');
+                    capturePayoutFromDOM();
+                });
+                
+                log('Listener para botão de teste de payout configurado com sucesso', 'SUCCESS');
+            } else {
+                log('Botão de teste de payout não encontrado no DOM', 'WARN');
+            }
+        } catch (error) {
+            log(`Erro ao anexar listeners aos botões: ${error.message}`, 'ERROR');
+        }
     }
     
     function handleConfigUpdate(config) {
@@ -430,7 +745,9 @@
         window.GaleSystem = {
             simulateGale: simulateGaleForTesting,
             simulateReset: simulateResetForTesting,
-            getStatus: getStatusForTesting
+            getStatus: getStatusForTesting,
+            // Adicionar a nova função para captura de payout
+            capturePayout: capturePayoutFromDOM
         };
         log('API window.GaleSystem exposta para botões de teste com wrappers de mensagem.', 'DEBUG');
     }
