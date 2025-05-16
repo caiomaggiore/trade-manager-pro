@@ -314,38 +314,92 @@
     let originalValue = 0;
     let galeMultiplier = 1.2;
     
-    function initialize() {
-        log('Inicializando sistema de gale...', 'INFO');
+    // Novas variáveis para a estratégia de Gale baseada em payout
+    let galeLosses = []; // Histórico de valores perdidos no ciclo atual
+    let desiredProfitPercentage = 0.2; // Valor padrão de 20%
+    let currentPayout = 1.9; // Valor padrão para payout de 90% (multiplicador 1.9)
+    
+    // Função para capturar e processar o payout para uso nos cálculos
+    function getPayoutMultiplier() {
         try {
-            if (window.StateManager) {
-                const config = window.StateManager.getConfig();
-                log(`Initialize: Configuração recebida do StateManager: ${config ? JSON.stringify(config) : 'N/A'}`, 'DEBUG');
-                isActive = config?.gale?.active || false;
-                originalValue = config?.value || 10;
-                galeCount = 0; // Resetar galeCount na inicialização
-                if (config?.gale?.level) {
-                    galeMultiplier = parseFloat(config.gale.level.replace('x', '')) || 1.2;
-                }
-                log(`Initialize: isActive definido como: ${isActive}. Valor original: ${originalValue}. Multiplicador: ${galeMultiplier}.`, 'DEBUG');
+            log('Obtendo multiplicador de payout para cálculos de Gale', 'DEBUG');
+            
+            // Tenta usar o valor armazenado da última captura, caso exista
+            const payoutResult = document.getElementById('payout-result');
+            if (payoutResult) {
+                const resultText = payoutResult.textContent || '';
+                // Extrair o percentual do texto
+                const percentMatch = resultText.match(/(\d+\.?\d*)%/);
                 
-                window.StateManager.subscribe((notification) => {
-                    if (notification.type === 'config') {
-                        handleConfigUpdate(notification.state.config);
+                if (percentMatch && percentMatch[1]) {
+                    const percentValue = parseFloat(percentMatch[1]);
+                    if (!isNaN(percentValue) && percentValue > 0) {
+                        // Converter percentual para multiplicador (ex: 90% = 1.90)
+                        const multiplier = 1 + (percentValue / 100);
+                        log(`Payout encontrado: ${percentValue}%, multiplicador: ${multiplier.toFixed(2)}`, 'SUCCESS');
+                        currentPayout = multiplier;
+                        return multiplier;
                     }
-                });
-                log('Sistema de Gale inicializado e StateManager listener configurado.', 'SUCCESS');
-                log(`Gale ${isActive ? 'ativado' : 'desativado'}, multiplicador: ${galeMultiplier}x`, 'INFO');
-            } else {
-                log('StateManager não encontrado. O sistema de gale não funcionará corretamente.', 'ERROR');
-                 isActive = false; // Garantir que isActive seja false se o StateManager não estiver lá
+                }
             }
+            
+            // Se não conseguiu extrair do elemento, tentar capturar novamente
+            log('Não foi possível extrair payout da última captura, iniciando nova captura', 'DEBUG');
+            // Aqui poderíamos chamar a captura, mas isso tornaria a função assíncrona
+            // Vamos manter o valor atual por enquanto
+            
+            log(`Usando valor de payout atual: ${currentPayout}`, 'INFO');
+            return currentPayout;
         } catch (error) {
-            log(`Erro ao inicializar: ${error.message}`, 'ERROR');
-            isActive = false; // Garantir que isActive seja false em caso de erro
+            log(`Erro ao obter multiplicador de payout: ${error.message}`, 'ERROR');
+            return currentPayout; // Usar valor padrão em caso de erro
         }
-        setupMessageListener(); // Mover para o final de initialize
-        setupDOMListeners(); // Configurar listeners do DOM
     }
+    
+    function initialize() {
+    log('Inicializando sistema de gale...', 'INFO');
+    try {
+        if (window.StateManager) {
+            const config = window.StateManager.getConfig();
+            log(`Initialize: Configuração recebida do StateManager: ${config ? JSON.stringify(config) : 'N/A'}`, 'DEBUG');
+            isActive = config?.gale?.active || false;
+            // Garantir que o valor original seja capturado do StateManager
+            originalValue = config?.value || 10;
+            galeCount = 0; // Resetar galeCount na inicialização
+            galeLosses = []; // Resetar histórico de perdas
+            
+            // Obter multiplicador do gale (agora é a % de lucro desejado)
+            if (config?.gale?.level) {
+                // Converter formato "Xx%" para decimal (exemplo: "20%" para 0.2)
+                const levelMatch = config.gale.level.match(/(\d+)%?/);
+                if (levelMatch && levelMatch[1]) {
+                    desiredProfitPercentage = parseFloat(levelMatch[1]) / 100;
+                    log(`Percentual de lucro desejado: ${desiredProfitPercentage * 100}%`, 'INFO');
+                } else {
+                    desiredProfitPercentage = parseFloat(config.gale.level.replace('x', '')) / 100 || 0.2;
+                }
+            }
+            
+            log(`Initialize: isActive definido como: ${isActive}. Valor original: ${originalValue}. Lucro desejado: ${desiredProfitPercentage * 100}%.`, 'DEBUG');
+            
+            window.StateManager.subscribe((notification) => {
+                if (notification.type === 'config') {
+                    handleConfigUpdate(notification.state.config);
+                }
+            });
+            log('Sistema de Gale inicializado e StateManager listener configurado.', 'SUCCESS');
+            log(`Gale ${isActive ? 'ativado' : 'desativado'}, lucro desejado: ${desiredProfitPercentage * 100}%`, 'INFO');
+        } else {
+            log('StateManager não encontrado. O sistema de gale não funcionará corretamente.', 'ERROR');
+             isActive = false; // Garantir que isActive seja false se o StateManager não estiver lá
+        }
+    } catch (error) {
+        log(`Erro ao inicializar: ${error.message}`, 'ERROR');
+        isActive = false; // Garantir que isActive seja false em caso de erro
+    }
+    setupMessageListener(); // Mover para o final de initialize
+    setupDOMListeners(); // Configurar listeners do DOM
+}
     
     // Nova função para configurar os listeners do DOM
     function setupDOMListeners() {
@@ -393,21 +447,33 @@
         }
         try {
             const oldIsActive = isActive;
-            const oldMultiplier = galeMultiplier;
+            const oldProfitPercentage = desiredProfitPercentage;
             const oldOriginalValue = originalValue;
 
             log(`handleConfigUpdate: Configuração recebida: ${JSON.stringify(config)}`, 'DEBUG');
             isActive = config.gale?.active || false;
+            
+            // Atualizar percentual de lucro desejado
             if (config.gale?.level) {
-                galeMultiplier = parseFloat(config.gale.level.replace('x', '')) || 1.2;
+                // Converter formato "Xx%" para decimal (exemplo: "20%" para 0.2)
+                const levelMatch = config.gale.level.match(/(\d+)%?/);
+                if (levelMatch && levelMatch[1]) {
+                    desiredProfitPercentage = parseFloat(levelMatch[1]) / 100;
+                } else {
+                    desiredProfitPercentage = parseFloat(config.gale.level.replace('x', '')) / 100 || 0.2;
+                }
             }
+            
             if (galeCount === 0) { // Só atualiza o valor base se não estiver em um ciclo de gale
                 originalValue = config.value || 10;
+                log(`Valor original atualizado para: ${originalValue} (não está em ciclo de gale)`, 'DEBUG');
+            } else {
+                log(`Mantendo valor original: ${originalValue} (está em ciclo de gale: nível ${galeCount})`, 'DEBUG');
             }
-            log(`handleConfigUpdate: isActive atualizado para: ${isActive}, valor base (se aplicável): ${originalValue}, multiplicador: ${galeMultiplier}`, 'DEBUG');
+            log(`handleConfigUpdate: isActive atualizado para: ${isActive}, valor base (se aplicável): ${originalValue}, lucro desejado: ${desiredProfitPercentage * 100}%`, 'DEBUG');
 
-            if (oldIsActive !== isActive || oldMultiplier !== galeMultiplier || (galeCount === 0 && oldOriginalValue !== originalValue)) {
-                log(`Configurações de Gale efetivamente atualizadas: ativo=${isActive}, valor base=${originalValue}, multiplicador=${galeMultiplier}`, 'INFO');
+            if (oldIsActive !== isActive || oldProfitPercentage !== desiredProfitPercentage || (galeCount === 0 && oldOriginalValue !== originalValue)) {
+                log(`Configurações de Gale efetivamente atualizadas: ativo=${isActive}, valor base=${originalValue}, lucro desejado=${desiredProfitPercentage * 100}%`, 'INFO');
             }
         } catch (error) {
             log(`Erro ao processar atualização de config: ${error.message}`, 'ERROR');
@@ -517,6 +583,7 @@
                 return { success: false, message: 'Operação muito antiga para aplicar gale' };
             }
             
+            // Obter valor atual da entrada
             let currentEntryValue = 0;
             if (window.StateManager) {
                 currentEntryValue = parseFloat(window.StateManager.getConfig().value || 0);
@@ -526,61 +593,105 @@
                 currentEntryValue = originalValue;
             }
             
-            if (galeCount === 0) {
-                galeCount = 1;
-                // Atualiza o valor original base APENAS no primeiro gale do ciclo, se o StateManager estiver disponível.
-                if (window.StateManager) { 
-                    originalValue = parseFloat(window.StateManager.getConfig().value || 10); // Pega o valor configurado como base
-                    log(`Valor original base para este ciclo de gale: ${originalValue}`, 'DEBUG');
-                } else {
-                    // Se StateManager não estiver lá, originalValue já foi definido em initialize() ou é o padrão.
-                    log(`StateManager não disponível, usando valor original base já definido: ${originalValue}`, 'WARN');
+                // Inicializar ou incrementar o contador de gale
+    if (galeCount === 0) {
+        galeCount = 1;
+        // Atualiza o valor original base APENAS no primeiro gale do ciclo
+        if (window.StateManager) { 
+            // Aqui é o ponto crucial: capturar o valor original das configurações
+            originalValue = parseFloat(window.StateManager.getConfig().value || 10);
+            log(`Valor original base para este ciclo de gale: ${originalValue}`, 'DEBUG');
+        }
+        // Inicia o histórico de perdas com o valor original
+        galeLosses = [originalValue];
+        log(`Inicializando histórico de perdas com valor original: ${originalValue}`, 'DEBUG');
+    } else {
+        galeCount++;
+        // Adicionar o valor atual perdido ao histórico
+        galeLosses.push(currentEntryValue);
+        log(`Adicionado ao histórico de perdas: ${currentEntryValue}. Total: ${galeLosses.join(' + ')} = ${galeLosses.reduce((a, b) => a + b, 0)}`, 'DEBUG');
+    }
+            
+            // Obter o multiplicador de payout atual
+            const payoutMultiplier = getPayoutMultiplier();
+            log(`Usando payout: ${payoutMultiplier.toFixed(2)} (${((payoutMultiplier-1)*100).toFixed(0)}%)`, 'INFO');
+            
+            // Calcular soma total das perdas
+            const totalLosses = galeLosses.reduce((a, b) => a + b, 0);
+            
+            log(`Implementando cálculo direto para Gale com base no payout`, 'INFO');
+            log(`Perdas totais: ${totalLosses.toFixed(2)}`, 'INFO');
+            
+            // A porcentagem de lucro desejada
+            const lucroDesejadoPct = desiredProfitPercentage;
+            log(`Percentual de lucro desejado: ${(lucroDesejadoPct * 100).toFixed(0)}%`, 'INFO');
+            
+            // Calcular o valor necessário para zerar as perdas usando a fórmula direta
+            const payoutRate = payoutMultiplier - 1; // Taxa líquida (ex: 1.28 - 1 = 0.28 = 28%)
+            
+            if (payoutRate <= 0) {
+                log(`ERRO: Taxa de payout (${payoutRate}) inválida para cálculos. Deve ser maior que 0.`, 'ERROR');
+                return { success: false, message: 'Taxa de payout inválida para cálculos' };
+            }
+            
+            // Ponto de partida: valor que zera as perdas + lucro desejado
+            const valorBaseParaZerarPerdas = totalLosses / payoutRate;
+            const lucroDesejadoValor = valorBaseParaZerarPerdas * lucroDesejadoPct;
+            let valorEstimado = valorBaseParaZerarPerdas + lucroDesejadoValor;
+            
+            log(`Valor inicial calculado: ${valorEstimado.toFixed(2)}`, 'INFO');
+            log(`Verificando se atende à condição: lucro líquido > perdas...`, 'INFO');
+            
+            // Incremento para ajustar a estimativa (10% do valor original)
+            const incremento = originalValue * 0.1;
+            // Número máximo de iterações para evitar loop infinito
+            const maxIteracoes = 50;
+            let iteracao = 0;
+            
+            // Loop para verificar e ajustar o valor até atender à condição
+            while (iteracao < maxIteracoes) {
+                // Calcular retorno potencial com o payout
+                const retornoPotencial = valorEstimado * payoutMultiplier;
+                
+                // Calcular lucro líquido: (retorno - entrada - perdas)
+                const lucroLiquido = retornoPotencial - valorEstimado - totalLosses;
+                
+                // Verificar a condição: lucro líquido deve ser maior que as perdas
+                if (lucroLiquido > totalLosses) {
+                    log(`Iteração ${iteracao}: Valor ${valorEstimado.toFixed(2)} → Retorno ${retornoPotencial.toFixed(2)} → Lucro ${lucroLiquido.toFixed(2)} > Perdas ${totalLosses.toFixed(2)} ✓`, 'DEBUG');
+                    break; // Encontramos o valor ideal
                 }
-            } else {
-                galeCount++;
+                
+                // Condição não atendida, aumentar a estimativa
+                log(`Iteração ${iteracao}: Valor ${valorEstimado.toFixed(2)} → Retorno ${retornoPotencial.toFixed(2)} → Lucro ${lucroLiquido.toFixed(2)} < Perdas ${totalLosses.toFixed(2)} ✗`, 'DEBUG');
+                valorEstimado += incremento;
+                iteracao++;
             }
-            log(`Aplicando Gale nível ${galeCount}. Multiplicador: ${galeMultiplier}. Valor base para cálculo neste gale: ${currentEntryValue}`, 'INFO');
             
-            // O cálculo do novo valor para o gale deve ser sempre sobre o 'originalValue' do ciclo, não o 'currentEntryValue' que já pode ser um valor de gale.
-            // Mas a prática comum é aplicar o multiplicador ao valor da *última entrada perdida*.
-            // Vamos manter a lógica atual: novo valor é (valor da última entrada + (valor da última entrada * multiplicador))
-            // Isso pode ser um ponto de revisão da estratégia de Gale.
-            // Se currentEntryValue é o valor que acabou de perder, então:
-            const multipliedPortion = parseFloat((currentEntryValue * galeMultiplier).toFixed(2)); // Esta é a lógica que estava antes: currentEntryValue * (1 + multiplicador)
-            // A lógica anterior somava currentEntryValue + (currentEntryValue * galeMultiplier), que é currentEntryValue * (1 + galeMultiplier)
-            // A nova lógica no seu código original do index.js (que vou replicar aqui) é:
-            // const multipliedPortion = parseFloat((currentEntryValue * galeMultiplier).toFixed(2));
-            // const newValue = parseFloat((currentEntryValue + multipliedPortion).toFixed(2));
-            // Isso parece ser um aumento de (currentEntryValue * galeMultiplier) SOBRE o currentEntryValue.
-            // Ex: valor 10, mult 1.2 => 10 * 1.2 = 12. Novo valor = 10 + 12 = 22. (Se for essa a intenção)
-            // Ou, se o multiplicador é o valor total: 10 * 1.2 = 12. (Gale nível 1 = 12).
-            // Vamos seguir a lógica que estava no seu index.js: soma do valor atual + (valor atual * multiplicador)
-            // No entanto, a descrição comum de martingale é VALOR_ENTRADA * MULTIPLICADOR_GALE.
-            // Se o multiplicador for 2x, e a entrada 10, o gale é 20.
-            // Se o multiplicador for 1.2x, e a entrada 10, o gale é 12.
-            // A sua config `galeMultiplier` parece ser o fator direto.
+            // Arredondar para 2 casas decimais
+            const newValue = parseFloat(valorEstimado.toFixed(2));
             
-            // Correção da lógica de cálculo do Gale para ser mais tradicional:
-            // O primeiro gale é originalValue * multiplicador.
-            // O segundo gale é (originalValue * multiplicador) * multiplicador, e assim por diante.
-            // Ou, se for sobre o valor perdido: ultimo_valor_perdido * multiplicador.
-            // Vamos assumir que 'currentEntryValue' é o valor que acabou de perder.
-            // E 'originalValue' é o valor da entrada inicial do ciclo (antes de qualquer gale).
-
-            let newValue;
-            if (galeCount === 1) {
-                newValue = parseFloat((originalValue * galeMultiplier).toFixed(2));
-                log(`Primeiro gale: novo valor = originalValue (${originalValue}) * multiplicador (${galeMultiplier}) = ${newValue}`, 'DEBUG');
-            } else {
-                // Para gales subsequentes, multiplicamos o valor do *gale anterior*.
-                // Precisamos saber qual foi o valor do gale anterior.
-                // Se 'currentEntryValue' é o valor que acabou de perder (que era o valor do gale anterior), então:
-                newValue = parseFloat((currentEntryValue * galeMultiplier).toFixed(2));
-                log(`Gale subsequente (nível ${galeCount}): novo valor = ultimoValorPerdido (${currentEntryValue}) * multiplicador (${galeMultiplier}) = ${newValue}`, 'DEBUG');
+            // Verificação final
+            const retornoEsperado = newValue * payoutMultiplier;
+            const lucroFinal = retornoEsperado - newValue - totalLosses;
+            
+            log(`Cálculo final do Gale:`, 'INFO');
+            log(`Valor base para zerar perdas: ${valorBaseParaZerarPerdas.toFixed(2)}`, 'INFO');
+            log(`Valor inicial com lucro desejado: ${(valorBaseParaZerarPerdas + lucroDesejadoValor).toFixed(2)}`, 'INFO');
+            log(`Valor final após verificações: ${newValue.toFixed(2)}`, 'INFO');
+            log(`Retorno esperado (${payoutMultiplier.toFixed(2)}): ${retornoEsperado.toFixed(2)}`, 'INFO');
+            log(`Lucro líquido esperado: ${lucroFinal.toFixed(2)}`, 'INFO');
+            log(`Relação lucro/perdas: ${lucroFinal.toFixed(2)} / ${totalLosses.toFixed(2)} = ${(totalLosses > 0 ? lucroFinal/totalLosses : 0).toFixed(2)}`, 'INFO');
+            
+            if (iteracao >= maxIteracoes) {
+                log(`AVISO: Atingido número máximo de iterações (${maxIteracoes})`, 'WARN');
             }
-
-
-            log(`Novo valor calculado para o gale: ${newValue}`, 'INFO');
+            
+            if (lucroFinal <= totalLosses) {
+                log(`AVISO: O lucro final (${lucroFinal.toFixed(2)}) não é maior que as perdas (${totalLosses.toFixed(2)})`, 'WARN');
+            }
+            
+            log(`Aplicando Gale nível ${galeCount} com estratégia baseada em payout (cálculo direto)`, 'INFO');
 
             if (window.StateManager) {
                 const config = window.StateManager.getConfig();
@@ -588,9 +699,11 @@
                 window.StateManager.saveConfig(updatedConfig)
                     .then(() => {
                         log(`Valor de entrada atualizado para: ${newValue} no StateManager.`, 'SUCCESS');
-                        // showFeedback agora é responsabilidade do index.js
-                        // showFeedback(`Gale nível ${galeCount} aplicado`, `Novo valor: $${newValue}`, 'warning');
-                        chrome.runtime.sendMessage({action: 'SHOW_FEEDBACK', type: 'warning', message: `Gale nível ${galeCount} aplicado. Novo valor: $${newValue}`});
+                        chrome.runtime.sendMessage({
+                            action: 'SHOW_FEEDBACK', 
+                            type: 'warning', 
+                            message: `Gale nível ${galeCount} aplicado. Novo valor: $${newValue}`
+                        });
 
                         // Acionar nova análise após sucesso na aplicação do gale e salvamento da config
                         setTimeout(triggerNewAnalysis, 500);
@@ -603,8 +716,24 @@
                 return { success: false, message: 'StateManager não disponível para salvar novo valor' };
             }
             
-            notify(GALE_ACTIONS.UPDATED, { level: galeCount, newValue: newValue, originalValue: originalValue, multiplier: galeMultiplier });
-            return { success: true, level: galeCount, newValue: newValue, originalValue: originalValue, message: `Gale nível ${galeCount} aplicado. Novo valor: ${newValue}` };
+            notify(GALE_ACTIONS.UPDATED, { 
+                level: galeCount, 
+                newValue: newValue, 
+                originalValue: originalValue, 
+                payout: payoutMultiplier,
+                profit: desiredProfitPercentage * 100,
+                losses: totalLosses
+            });
+            
+            return { 
+                success: true, 
+                level: galeCount, 
+                newValue: newValue, 
+                originalValue: originalValue, 
+                message: `Gale nível ${galeCount} aplicado. Novo valor: ${newValue}`,
+                payout: payoutMultiplier,
+                totalLosses: totalLosses
+            };
         } catch (error) {
             log(`Erro ao aplicar gale: ${error.message}`, 'ERROR');
             return { success: false, message: `Erro: ${error.message}` };
@@ -629,34 +758,50 @@
                  return { success: false, message: 'Operação muito antiga para resetar gale' };
             }
             
-            const previousLevel = galeCount;
-            galeCount = 0; // Reseta o contador
-            log(`Gale resetado do nível ${previousLevel}. Restaurando valor original: ${originalValue}`, 'INFO');
+                const previousLevel = galeCount;
+    const totalLosses = galeLosses.reduce((a, b) => a + b, 0);
+    
+    // Resetar contador e histórico de perdas
+    galeCount = 0;
+    galeLosses = [];
+    
+    log(`Gale resetado do nível ${previousLevel}. Total de perdas: ${totalLosses}. Restaurando valor original: ${originalValue}`, 'INFO');
+    
+    if (window.StateManager && originalValue > 0) {
+        const config = window.StateManager.getConfig();
+        // Apenas atualiza o valor se ele for diferente do originalValue, para evitar escritas desnecessárias
+        if (config.value !== originalValue) {
+            const updatedConfig = { ...config, value: originalValue };
+            window.StateManager.saveConfig(updatedConfig)
+                .then(() => {
+                    log(`Valor original (${originalValue}) restaurado no StateManager.`, 'SUCCESS');
+                    chrome.runtime.sendMessage({action: 'SHOW_FEEDBACK', type: 'success', message: `Gale resetado. Valor restaurado: $${originalValue}`});
+                })
+                .catch(error => {
+                    log(`Erro ao restaurar valor original no StateManager: ${error.message}`, 'ERROR');
+                });
+        } else {
+             log(`Valor no StateManager (${config.value}) já é o original (${originalValue}). Nenhuma atualização necessária.`, 'DEBUG');
+             chrome.runtime.sendMessage({action: 'SHOW_FEEDBACK', type: 'info', message: `Gale resetado. Valor original: $${originalValue}`});
+        }
+    } else {
+        log('StateManager não disponível ou originalValue inválido. Não foi possível restaurar o valor de entrada.', 'ERROR');
+         return { success: false, message: 'StateManager não disponível ou originalValue inválido para resetar valor' };
+    }
             
-            if (window.StateManager && originalValue > 0) {
-                const config = window.StateManager.getConfig();
-                // Apenas atualiza o valor se ele for diferente do originalValue, para evitar escritas desnecessárias
-                if (config.value !== originalValue) {
-                    const updatedConfig = { ...config, value: originalValue };
-                    window.StateManager.saveConfig(updatedConfig)
-                        .then(() => {
-                            log(`Valor original (${originalValue}) restaurado no StateManager.`, 'SUCCESS');
-                            chrome.runtime.sendMessage({action: 'SHOW_FEEDBACK', type: 'success', message: `Gale resetado. Valor restaurado: $${originalValue}`});
-                        })
-                        .catch(error => {
-                            log(`Erro ao restaurar valor original no StateManager: ${error.message}`, 'ERROR');
-                        });
-                } else {
-                     log(`Valor no StateManager (${config.value}) já é o original (${originalValue}). Nenhuma atualização necessária.`, 'DEBUG');
-                     chrome.runtime.sendMessage({action: 'SHOW_FEEDBACK', type: 'info', message: `Gale resetado. Valor original: $${originalValue}`});
-                }
-            } else {
-                log('StateManager não disponível ou originalValue inválido. Não foi possível restaurar o valor de entrada.', 'ERROR');
-                 return { success: false, message: 'StateManager não disponível ou originalValue inválido para resetar valor' };
-            }
+            notify(GALE_ACTIONS.RESET_DONE, { 
+                level: previousLevel, 
+                originalValue: originalValue,
+                totalLosses: totalLosses
+            });
             
-            notify(GALE_ACTIONS.RESET_DONE, { level: previousLevel, originalValue: originalValue });
-            return { success: true, level: previousLevel, originalValue: originalValue, message: `Gale resetado. Nível anterior: ${previousLevel}. Valor restaurado para ${originalValue}` };
+            return { 
+                success: true, 
+                level: previousLevel, 
+                originalValue: originalValue, 
+                message: `Gale resetado. Nível anterior: ${previousLevel}. Valor restaurado para ${originalValue}`,
+                totalLosses: totalLosses
+            };
         } catch (error) {
             log(`Erro ao resetar gale: ${error.message}`, 'ERROR');
             return { success: false, message: `Erro: ${error.message}` };
@@ -688,9 +833,6 @@
         const result = applyGale(dataToSend); // Chamada direta
         log(`Resultado de applyGale (simulado diretamente): ${JSON.stringify(result)}`, 'DEBUG');
         
-        // O index.js usará este retorno para atualizar sua UI.
-        // Se precisar de feedback adicional para o index.js de forma assíncrona, pode-se usar:
-        // chrome.runtime.sendMessage({ action: 'SHOW_FEEDBACK', type: result.success ? 'success' : 'error', message: result.message });
         return result;
     }
 
@@ -707,36 +849,49 @@
         const result = resetGale(dataToSend); // Chamada direta
         log(`Resultado de resetGale (simulado diretamente): ${JSON.stringify(result)}`, 'DEBUG');
 
-        // O index.js usará este retorno para atualizar sua UI.
         return result;
     }
     
     function getStatusForTesting() {
         log('getStatusForTesting chamado.', 'DEBUG');
+        
+        // Obter payout atual
+        const payoutMultiplier = getPayoutMultiplier();
+        
+        // Calcular soma das perdas se houver
+        const totalLosses = galeLosses.length > 0 ? galeLosses.reduce((a, b) => a + b, 0) : 0;
+        
+        // Calcular próximo valor caso haja perda
         let currentVal = originalValue;
-        let nextVal = originalValue; 
+        let nextVal = originalValue;
+        
         if (window.StateManager) {
             const currentConfigValue = window.StateManager.getConfig().value;
             currentVal = currentConfigValue || originalValue;
         }
 
-        if (isActive && galeCount > 0) {
-            // Se estamos em um ciclo de gale, currentVal é o valor do gale atual.
-            // O próximo valor seria currentVal * multiplicador.
-            nextVal = parseFloat((currentVal * galeMultiplier).toFixed(2));
-        } else if (isActive && galeCount === 0) {
-            // Se o gale está ativo mas não estamos em um ciclo, o próximo valor (se houver uma perda) seria originalValue * multiplicador.
-            nextVal = parseFloat((originalValue * galeMultiplier).toFixed(2));
+        if (isActive) {
+            if (galeCount > 0) {
+                // Se estamos em um ciclo de gale, calcular próximo valor usando a fórmula
+                const desiredProfit = originalValue * desiredProfitPercentage;
+                nextVal = parseFloat(((totalLosses + currentVal + desiredProfit) / payoutMultiplier).toFixed(2));
+            } else {
+                // Primeiro nível de gale (primeira perda)
+                const desiredProfit = originalValue * desiredProfitPercentage;
+                nextVal = parseFloat(((originalValue + desiredProfit) / payoutMultiplier).toFixed(2));
+            }
         }
-        // Se o gale não está ativo, o próximo valor é apenas o valor original.
 
         return {
             active: isActive,
             level: galeCount,
             originalValue: originalValue,
             currentValue: currentVal,
-            nextValue: nextVal, 
-            multiplier: galeMultiplier
+            nextValue: nextVal,
+            desiredProfitPercentage: desiredProfitPercentage * 100, // Em percentual
+            payoutMultiplier: payoutMultiplier,
+            totalLosses: totalLosses,
+            lossHistory: galeLosses
         };
     }
 

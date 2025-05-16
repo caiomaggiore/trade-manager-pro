@@ -510,13 +510,38 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
 
     // ================== NOVAS FUNÇÕES PARA AUTOMAÇÃO ==================
     const updateAutomationStatus = (isActive) => {
-        isAutomationRunning = isActive ? true: false;
-        indexUI.automationStatus.value = isActive ? true : false;
-        indexUI.automationStatus.textContent = `Automação: ${isActive ? 'Ativa' : 'Inativa'}`;
-        indexUI.automationStatus.className = `automation-status ${isActive ? 'active' : 'inactive'}`;
-        
-        // Registrar no log a mudança de status da automação
-        addLog(`Status da automação alterado para: ${isActive ? 'Ativa' : 'Inativa'}`, isActive ? 'SUCCESS' : 'INFO');
+        try {
+            // Certifique-se de que temos o elemento
+            const automationStatusElement = document.querySelector('#automation-status');
+            
+            if (!automationStatusElement) {
+                addLog('Elemento #automation-status não encontrado no DOM', 'ERROR');
+                return;
+            }
+            
+            // Atualizar variável global
+            isAutomationRunning = isActive ? true : false;
+            
+            // Atualizar texto e classe do elemento
+            automationStatusElement.textContent = `Automação: ${isActive ? 'Ativa' : 'Inativa'}`;
+            automationStatusElement.className = 'automation-status';
+            automationStatusElement.classList.add(isActive ? 'active' : 'inactive');
+            
+            // Atualizar também o indexUI para futura referência
+            if (indexUI.automationStatus) {
+                indexUI.automationStatus.textContent = `Automação: ${isActive ? 'Ativa' : 'Inativa'}`;
+                indexUI.automationStatus.className = 'automation-status';
+                indexUI.automationStatus.classList.add(isActive ? 'active' : 'inactive');
+            } else {
+                // Se indexUI.automationStatus não existir, atualizá-lo
+                indexUI.automationStatus = automationStatusElement;
+            }
+            
+            // Registrar no log a mudança de status da automação
+            addLog(`Status da automação alterado para: ${isActive ? 'Ativa' : 'Inativa'}`, isActive ? 'SUCCESS' : 'INFO');
+        } catch (error) {
+            addLog(`Erro ao atualizar status da automação: ${error.message}`, 'ERROR');
+        }
     };
 
     // Função para atualizar os elementos de UI com as configurações atuais
@@ -589,7 +614,17 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             if (indexUI.toggleAuto && typeof settings.autoActive !== 'undefined') {
                 indexUI.toggleAuto.checked = settings.autoActive;
                 addLog(`toggleAuto atualizado para: ${settings.autoActive}`, 'DEBUG');
-                updateAutomationStatus(settings.autoActive);
+                
+                // Forçar atualização do elemento DOM
+                try {
+                    // Atualizar diretamente usando a função dedicada
+                    updateAutomationStatus(settings.autoActive);
+                    
+                    // Log adicional para depuração
+                    addLog(`Status de automação atualizado pelo updateCurrentSettings: ${settings.autoActive}`, 'DEBUG');
+                } catch (err) {
+                    addLog(`Erro ao atualizar automationStatus: ${err.message}`, 'ERROR');
+                }
             }
             
             // Salvar as configurações globalmente para acesso fácil
@@ -973,6 +1008,9 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     .then(config => {
                         addLog('Configurações carregadas via StateManager', 'SUCCESS');
                         
+                        // Log específico para status de automação
+                        addLog(`Status de automação carregado: ${config.automation}`, 'DEBUG');
+                        
                         // Atualizar campos da página principal
                         updateCurrentSettings({
                             galeEnabled: config.gale.active,
@@ -986,6 +1024,11 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         
                         // Atualizar visibilidade do painel de teste do Gale
                         updateGaleTestPanelVisibility(config.devMode);
+                        
+                        // Forçar atualização direta do status de automação
+                        setTimeout(() => {
+                            updateAutomationStatus(config.automation);
+                        }, 300);
                         
                         updateStatus('Configurações carregadas com sucesso', 'success');
                         resolve(config);
