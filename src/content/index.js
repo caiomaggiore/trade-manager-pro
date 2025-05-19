@@ -718,14 +718,6 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     automationStatusElement.className = 'automation-status';
                     automationStatusElement.classList.add(automationStatus ? 'active' : 'inactive');
                     
-                    if (automationStatus) {
-                        automationStatusElement.style.color = '#4CAF50';
-                        automationStatusElement.style.fontWeight = 'bold';
-                    } else {
-                        automationStatusElement.style.color = '#F44336';
-                        automationStatusElement.style.fontWeight = 'normal';
-                    }
-                    
                     addLog(`UI de status de automação atualizada via postMessage: ${automationStatus ? 'Ativo' : 'Inativo'}`, 'DEBUG');
                 }
                 
@@ -756,107 +748,6 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     });
 
     // ================== NOVAS FUNÇÕES PARA AUTOMAÇÃO ==================
-    const updateAutomationStatus = (isActive, fromStateManager = false) => {
-        try {
-            // Certifique-se de que temos o elemento
-            let automationStatusElement = document.querySelector('#automation-status');
-            
-            // Log detalhado para depuração
-            addLog(`updateAutomationStatus chamado com isActive=${isActive}, fromStateManager=${fromStateManager}`, 'DEBUG');
-            
-            if (!automationStatusElement) {
-                addLog('Elemento #automation-status não encontrado inicialmente no DOM, tentando novamente...', 'WARN');
-                
-                // Tentar localizar com getElementById também, como fallback
-                automationStatusElement = document.getElementById('automation-status');
-                
-                if (!automationStatusElement) {
-                    // Se ainda não encontrou, criar um fallback dinâmico
-                    addLog('Ainda não encontrou o elemento, verificando se está dentro de um iframe ou shadow DOM', 'WARN');
-                    
-                    // Tentar localizar em todos os frames
-                    const frames = document.querySelectorAll('iframe');
-                    for (let i = 0; i < frames.length; i++) {
-                        try {
-                            const frameDoc = frames[i].contentDocument || frames[i].contentWindow.document;
-                            automationStatusElement = frameDoc.querySelector('#automation-status');
-                            if (automationStatusElement) {
-                                addLog('Elemento encontrado em iframe!', 'SUCCESS');
-                                break;
-                            }
-                        } catch (frameErr) {
-                            // Erro de segurança cross-origin
-                            addLog(`Erro ao acessar iframe ${i}: ${frameErr.message}`, 'DEBUG');
-                        }
-                    }
-                    
-                    if (!automationStatusElement) {
-                        addLog('Elemento #automation-status não encontrado em nenhum lugar. Criando log para debug.', 'ERROR');
-                        
-                        // Criar um log detalhado de todos IDs encontrados na página para debug
-                        const allIds = [];
-                        document.querySelectorAll('[id]').forEach(el => {
-                            allIds.push(el.id);
-                        });
-                        
-                        addLog(`IDs encontrados na página: ${allIds.join(', ')}`, 'DEBUG');
-                        return;
-                    }
-                }
-            }
-            
-            // Atualizar variável global
-            isAutomationRunning = isActive ? true : false;
-            
-            // Atualizar texto e classe do elemento
-            automationStatusElement.textContent = `Automação: ${isActive ? 'Ativa' : 'Inativa'}`;
-            automationStatusElement.className = 'automation-status';
-            automationStatusElement.classList.add(isActive ? 'active' : 'inactive');
-            
-            // Garantir que a estilização seja aplicada diretamente no elemento
-            if (isActive) {
-                automationStatusElement.style.color = '#4CAF50'; // Verde para ativo
-                automationStatusElement.style.fontWeight = 'bold';
-            } else {
-                automationStatusElement.style.color = '#F44336'; // Vermelho para inativo
-                automationStatusElement.style.fontWeight = 'normal';
-            }
-            
-            // Atualizar também o indexUI para futura referência
-            if (indexUI.automationStatus) {
-                indexUI.automationStatus.textContent = `Automação: ${isActive ? 'Ativa' : 'Inativa'}`;
-                indexUI.automationStatus.className = 'automation-status';
-                indexUI.automationStatus.classList.add(isActive ? 'active' : 'inactive');
-                
-                // Aplicar estilos diretamente também ao elemento no indexUI
-                if (isActive) {
-                    indexUI.automationStatus.style.color = '#4CAF50';
-                    indexUI.automationStatus.style.fontWeight = 'bold';
-                } else {
-                    indexUI.automationStatus.style.color = '#F44336';
-                    indexUI.automationStatus.style.fontWeight = 'normal';
-                }
-            } else {
-                // Se indexUI.automationStatus não existir, atualizá-lo
-                indexUI.automationStatus = automationStatusElement;
-            }
-            
-            // Registrar no log a mudança de status da automação
-            addLog(`Status da automação alterado para: ${isActive ? 'Ativa' : 'Inativa'}`, isActive ? 'SUCCESS' : 'INFO');
-            
-            // Enviar notificação para o StateManager se disponível (para garantir sincronização)
-            // SOMENTE se a chamada não veio do próprio StateManager (previne loop infinito)
-            if (!fromStateManager && window.StateManager && typeof window.StateManager.updateAutomationState === 'function') {
-                addLog('Enviando atualização para o StateManager', 'DEBUG');
-                window.StateManager.updateAutomationState(isActive);
-                addLog('Estado de automação sincronizado com o StateManager', 'DEBUG');
-            }
-        } catch (error) {
-            addLog(`Erro ao atualizar status da automação: ${error.message}`, 'ERROR');
-            console.error('Erro completo:', error);
-        }
-    };
-
     // Função para atualizar os elementos de UI com as configurações atuais
     const updateCurrentSettings = (settings) => {
         // Verificar se temos as configurações e elementos da UI
@@ -911,7 +802,6 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             if (indexUI.galeSelect && typeof settings.galeLevel !== 'undefined') {
                 indexUI.galeSelect.value = settings.galeLevel;
                 if (indexUI.currentGale) {
-                    // Atualizar texto e classe do indicador de Gale
                     if (settings.galeEnabled) {
                         indexUI.currentGale.textContent = `Gale: ${settings.galeLevel}`;
                         indexUI.currentGale.className = 'gale-status active';
@@ -919,41 +809,12 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         indexUI.currentGale.textContent = 'Gale: Desativado';
                         indexUI.currentGale.className = 'gale-status inactive';
                     }
-                    addLog(`currentGale atualizado para: ${settings.galeEnabled ? settings.galeLevel : 'Desativado'}`, 'DEBUG');
                 }
             }
             
-            // Atualizar status de automação
-            if (indexUI.toggleAuto && typeof settings.autoActive !== 'undefined') {
-                indexUI.toggleAuto.checked = settings.autoActive;
-                addLog(`toggleAuto atualizado para: ${settings.autoActive}`, 'DEBUG');
-                
-                // Atualizar apenas a UI sem modificar o estado
-                try {
-                    // Obter o elemento de status
-                    const automationStatusElement = document.querySelector('#automation-status');
-                    if (automationStatusElement) {
-                        // Atualizar texto e classe
-                        automationStatusElement.textContent = `Automação: ${settings.autoActive ? 'Ativa' : 'Inativa'}`;
-                        automationStatusElement.className = 'automation-status';
-                        automationStatusElement.classList.add(settings.autoActive ? 'active' : 'inactive');
-                        
-                        // Atualizar estilo
-                        if (settings.autoActive) {
-                            automationStatusElement.style.color = '#4CAF50';
-                            automationStatusElement.style.fontWeight = 'bold';
-                        } else {
-                            automationStatusElement.style.color = '#F44336';
-                            automationStatusElement.style.fontWeight = 'normal';
-                        }
-                        
-                        addLog(`UI de status de automação atualizada: ${settings.autoActive ? 'Ativo' : 'Inativo'}`, 'DEBUG');
-                    } else {
-                        addLog('Elemento #automation-status não encontrado', 'WARN');
-                    }
-                } catch (err) {
-                    addLog(`Erro ao atualizar UI de status: ${err.message}`, 'ERROR');
-                }
+            // Atualizar status de automação (padronizado)
+            if (indexUI.automationStatus && typeof settings.autoActive !== 'undefined') {
+                setAutomationStatusUI(settings.autoActive);
             }
             
             // Salvar as configurações globalmente para acesso fácil
@@ -1258,115 +1119,6 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         // Inicializar módulo de histórico
         initHistoryModule();
         
-        // Verificar e atualizar a visibilidade do painel de teste do Gale
-        if (window.StateManager) {
-            const config = window.StateManager.getConfig();
-            if (config) {
-                updateGaleTestPanelVisibility(config.devMode);
-                
-                // Inicializar explicitamente o status de automação
-                addLog(`Inicializando status de automação: ${config.automation ? 'Ativo' : 'Inativo'}`, 'DEBUG');
-                
-                // Forçar um pequeno atraso para garantir que o DOM esteja pronto
-                setTimeout(() => {
-                    // Não atualizar o status, apenas atualizar a UI para refletir o estado atual
-                    // Durante a inicialização, obter direto do StateManager, então passar true como fromStateManager
-                    // para não causar loops de atualização
-                    const automationStatus = config.automation || false;
-                    addLog(`Status de automação na inicialização: ${automationStatus ? 'Ativo' : 'Inativo'}`, 'DEBUG');
-                    
-                    // Apenas atualizar a UI sem modificar o estado
-                    const automationStatusElement = document.querySelector('#automation-status');
-                    if (automationStatusElement) {
-                        automationStatusElement.textContent = `Automação: ${automationStatus ? 'Ativa' : 'Inativa'}`;
-                        automationStatusElement.className = 'automation-status';
-                        automationStatusElement.classList.add(automationStatus ? 'active' : 'inactive');
-                        
-                        // Aplicar estilos diretamente
-                        if (automationStatus) {
-                            automationStatusElement.style.color = '#4CAF50';
-                            automationStatusElement.style.fontWeight = 'bold';
-                        } else {
-                            automationStatusElement.style.color = '#F44336';
-                            automationStatusElement.style.fontWeight = 'normal';
-                        }
-                        
-                        addLog(`Status de automação inicializado com sucesso: ${automationStatusElement.textContent}`, 'SUCCESS');
-                    } else {
-                        addLog('Elemento #automation-status ainda não encontrado após inicialização', 'ERROR');
-                    }
-                }, 500);
-            } else {
-                // Se não houver configurações, ocultar o painel por padrão
-                updateGaleTestPanelVisibility(false);
-                
-                // Verificar se existe uma configuração no storage
-                if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
-                    chrome.storage.sync.get(['userConfig'], (result) => {
-                        if (result && result.userConfig) {
-                            // Existem configurações, atualizar a UI com base nelas
-                            const automationStatus = result.userConfig.automation || false;
-                            
-                            // Atualizar apenas a UI
-                            const automationStatusElement = document.querySelector('#automation-status');
-                            if (automationStatusElement) {
-                                automationStatusElement.textContent = `Automação: ${automationStatus ? 'Ativa' : 'Inativa'}`;
-                                automationStatusElement.className = 'automation-status';
-                                automationStatusElement.classList.add(automationStatus ? 'active' : 'inactive');
-                                
-                                if (automationStatus) {
-                                    automationStatusElement.style.color = '#4CAF50';
-                                    automationStatusElement.style.fontWeight = 'bold';
-                                } else {
-                                    automationStatusElement.style.color = '#F44336';
-                                    automationStatusElement.style.fontWeight = 'normal';
-                                }
-                            }
-                            
-                            addLog(`Status de automação carregado do storage: ${automationStatus ? 'Ativo' : 'Inativo'}`, 'INFO');
-                        } else {
-                            // Não há configurações, mas também não vamos forçar
-                            addLog('Nenhuma configuração encontrada no storage', 'INFO');
-                        }
-                    });
-                }
-            }
-        } else {
-            // Se não houver StateManager, ocultar o painel por padrão
-            updateGaleTestPanelVisibility(false);
-            
-            // Verificar se existe uma configuração no storage
-            if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
-                chrome.storage.sync.get(['userConfig'], (result) => {
-                    if (result && result.userConfig) {
-                        // Existem configurações, atualizar a UI com base nelas
-                        const automationStatus = result.userConfig.automation || false;
-                        
-                        // Atualizar apenas a UI
-                        const automationStatusElement = document.querySelector('#automation-status');
-                        if (automationStatusElement) {
-                            automationStatusElement.textContent = `Automação: ${automationStatus ? 'Ativa' : 'Inativa'}`;
-                            automationStatusElement.className = 'automation-status';
-                            automationStatusElement.classList.add(automationStatus ? 'active' : 'inactive');
-                            
-                            if (automationStatus) {
-                                automationStatusElement.style.color = '#4CAF50';
-                                automationStatusElement.style.fontWeight = 'bold';
-                            } else {
-                                automationStatusElement.style.color = '#F44336';
-                                automationStatusElement.style.fontWeight = 'normal';
-                            }
-                        }
-                        
-                        addLog(`Status de automação carregado do storage: ${automationStatus ? 'Ativo' : 'Inativo'}`, 'INFO');
-                    } else {
-                        // Não há configurações, mas também não vamos forçar
-                        addLog('Nenhuma configuração encontrada no storage', 'INFO');
-                    }
-                });
-            }
-        }
-        
         // Configurar event listeners
         addEventListeners();
         addLog('Event listeners configurados com sucesso', 'DEBUG');
@@ -1394,26 +1146,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     tradeTime: config.period,
                     autoActive: config.automation
                 });
-                
-                // Atualizar apenas a UI de status de automação, sem alterar o estado
-                const automationStatus = config.automation || false;
-                const automationStatusElement = document.querySelector('#automation-status');
-                if (automationStatusElement) {
-                    automationStatusElement.textContent = `Automação: ${automationStatus ? 'Ativa' : 'Inativa'}`;
-                    automationStatusElement.className = 'automation-status';
-                    automationStatusElement.classList.add(automationStatus ? 'active' : 'inactive');
-                    
-                    if (automationStatus) {
-                        automationStatusElement.style.color = '#4CAF50';
-                        automationStatusElement.style.fontWeight = 'bold';
-                    } else {
-                        automationStatusElement.style.color = '#F44336';
-                        automationStatusElement.style.fontWeight = 'normal';
-                    }
-                    
-                    addLog(`UI de status de automação atualizada via postMessage: ${automationStatus ? 'Ativo' : 'Inativo'}`, 'DEBUG');
-                }
-                
+                                
                 updateStatus('Configurações atualizadas via mensagem direta', 'success', 2000);
                 addLog('Configurações atualizadas com sucesso via postMessage', 'SUCCESS');
             }
@@ -1610,24 +1343,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         
                         // Atualizar visibilidade do painel de teste do Gale baseado no modo desenvolvedor
                         updateGaleTestPanelVisibility(config.devMode);
-                        
-                        // Atualizar apenas a UI sem modificar o estado
-                        const automationStatus = config.automation || false;
-                        const automationStatusElement = document.querySelector('#automation-status');
-                        if (automationStatusElement) {
-                            automationStatusElement.textContent = `Automação: ${automationStatus ? 'Ativa' : 'Inativa'}`;
-                            automationStatusElement.className = 'automation-status';
-                            automationStatusElement.classList.add(automationStatus ? 'active' : 'inactive');
-                            
-                            if (automationStatus) {
-                                automationStatusElement.style.color = '#4CAF50';
-                                automationStatusElement.style.fontWeight = 'bold';
-                            } else {
-                                automationStatusElement.style.color = '#F44336';
-                                automationStatusElement.style.fontWeight = 'normal';
-                            }
-                        }
-                        
+                                              
                         updateStatus('Configurações atualizadas', 'success', 2000);
                     }
                 } 
@@ -1644,14 +1360,6 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                             automationStatusElement.textContent = `Automação: ${isRunning ? 'Ativa' : 'Inativa'}`;
                             automationStatusElement.className = 'automation-status';
                             automationStatusElement.classList.add(isRunning ? 'active' : 'inactive');
-                            
-                            if (isRunning) {
-                                automationStatusElement.style.color = '#4CAF50';
-                                automationStatusElement.style.fontWeight = 'bold';
-                            } else {
-                                automationStatusElement.style.color = '#F44336';
-                                automationStatusElement.style.fontWeight = 'normal';
-                            }
                         }
                         
                         // Log adicional para depuração
@@ -2629,6 +2337,15 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             addLog('Operação cancelada manualmente pelo usuário', 'INFO');
         }
     };
+
+    // Função para atualizar status de automação (padronizada, sem estilos inline)
+    function setAutomationStatusUI(isActive) {
+        const automationStatusElement = document.querySelector('#automation-status');
+        if (automationStatusElement) {
+            automationStatusElement.textContent = `Automação: ${isActive ? 'Ativa' : 'Inativa'}`;
+            automationStatusElement.className = 'automation-status ' + (isActive ? 'active' : 'inactive');
+        }
+    }
 } else {
     console.log('Trade Manager Pro - Index Module já foi carregado anteriormente');
 }
