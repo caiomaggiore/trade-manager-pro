@@ -227,6 +227,55 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         const infoIcon = document.getElementById('info-icon');
         const executeButton = document.getElementById('execute-action');
         const cancelButton = document.getElementById('cancel-action');
+        const waitButton = document.getElementById('wait-action');
+        const waitTextElement = document.getElementById('wait-text');
+        
+        // Função para cancelar a contagem de espera
+        const cancelWaitCountdown = () => {
+            if (waitCountdownInterval) {
+                clearInterval(waitCountdownInterval);
+                waitCountdownInterval = null;
+                updateStatus('Contagem de espera cancelada pelo usuário', 'info', 3000);
+                addLog('Contagem de espera para nova análise cancelada pelo usuário', 'INFO', 'automation');
+                
+                // Remover o botão de cancelamento
+                const cancelWaitBtn = document.getElementById('cancel-wait-btn');
+                if (cancelWaitBtn) {
+                    cancelWaitBtn.remove();
+                }
+            }
+        };
+        
+        // Função para criar um botão de cancelamento da espera
+        const createCancelWaitButton = () => {
+            // Verificar se já existe um botão
+            if (document.getElementById('cancel-wait-btn')) {
+                return;
+            }
+            
+            // Criar botão flutuante para cancelar a contagem
+            const cancelWaitBtn = document.createElement('button');
+            cancelWaitBtn.id = 'cancel-wait-btn';
+            cancelWaitBtn.className = 'floating-cancel-btn';
+            cancelWaitBtn.innerHTML = '<i class="fas fa-times"></i> Cancelar Espera';
+            cancelWaitBtn.style.position = 'fixed';
+            cancelWaitBtn.style.bottom = '20px';
+            cancelWaitBtn.style.right = '20px';
+            cancelWaitBtn.style.padding = '10px 15px';
+            cancelWaitBtn.style.backgroundColor = '#f44336';
+            cancelWaitBtn.style.color = 'white';
+            cancelWaitBtn.style.border = 'none';
+            cancelWaitBtn.style.borderRadius = '4px';
+            cancelWaitBtn.style.cursor = 'pointer';
+            cancelWaitBtn.style.zIndex = '1000';
+            cancelWaitBtn.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
+            
+            // Adicionar evento ao botão
+            cancelWaitBtn.addEventListener('click', cancelWaitCountdown);
+            
+            // Adicionar à página
+            document.body.appendChild(cancelWaitBtn);
+        };
 
         // Atualiza o conteúdo do modal
         actionElement.textContent = result.action;
@@ -246,6 +295,37 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             }
         }
 
+        // Verificar o status de automação para decidir o comportamento
+        let isAutomationActive = false;
+        
+        // Verificar o estado da automação diretamente do StateManager
+        if (window.StateManager && typeof window.StateManager.getConfig === 'function') {
+            const config = window.StateManager.getConfig();
+            isAutomationActive = config && config.automation === true;
+        } else {
+            // Fallback: verificar variável global
+            isAutomationActive = isAutomationRunning;
+        }
+        
+        addLog(`Status de automação inicial: ${isAutomationActive ? 'Ativado' : 'Desativado'}`, 'DEBUG', 'automation');
+        
+        // Configurar visibilidade dos botões baseado na ação
+        if (result.action === 'WAIT') {
+            // Para ação WAIT, mostrar o botão de aguardar e esconder os outros
+            executeButton.style.display = 'none';
+            waitButton.style.display = 'inline-block';
+            
+            // Manter o botão de cancelar visível
+            cancelButton.style.display = 'inline-block';
+            
+            addLog(`Ação WAIT detectada, configurando modal para modo de espera`, 'INFO', 'ui');
+        } else {
+            // Para ações BUY ou SELL, mostrar o botão de executar e esconder o de aguardar
+            executeButton.style.display = 'inline-block';
+            waitButton.style.display = 'none';
+            cancelButton.style.display = 'inline-block';
+        }
+
         // Mostra o modal
         modal.style.display = 'block';
         addLog(`Modal de análise aberto: ${result.action}`, 'INFO', 'ui');
@@ -254,6 +334,62 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         let countdown = 15;
         let countdownInterval = null;
         let autoExecutionEnabled = true; // Flag para controlar a execução automática
+        
+        // Função para aguardar e executar nova análise (usado para WAIT)
+        let waitCountdown = 30;
+        let waitCountdownInterval = null;
+        
+        // Definir a função que será usada também no botão Aguardar
+        const waitForNextAnalysis = () => {
+            // Atualizar status para mostrar a contagem
+            updateStatus(`Aguardando próxima análise: ${waitCountdown}s...`, 'info', 0);
+            
+            // Garantir que o botão de cancelamento exista
+            createCancelWaitButton();
+            
+            if (waitCountdown <= 0) {
+                clearInterval(waitCountdownInterval);
+                waitCountdownInterval = null;
+                updateStatus('Iniciando nova análise...', 'info');
+                
+                // Remover o botão de cancelamento
+                const cancelWaitBtn = document.getElementById('cancel-wait-btn');
+                if (cancelWaitBtn) {
+                    cancelWaitBtn.remove();
+                }
+                
+                // Verificar novamente o status da automação antes de iniciar a análise
+                let automationStillEnabled = false;
+                
+                // Verificar o estado da automação diretamente do StateManager
+                if (window.StateManager && typeof window.StateManager.getConfig === 'function') {
+                    const config = window.StateManager.getConfig();
+                    automationStillEnabled = config && config.automation === true;
+                } else {
+                    // Fallback: verificar variável global
+                    automationStillEnabled = isAutomationRunning;
+                }
+                
+                if (!automationStillEnabled) {
+                    addLog('Automação foi desativada durante a contagem, cancelando nova análise', 'WARN', 'automation');
+                    updateStatus('Análise cancelada - Automação desativada', 'warn', 3000);
+                    return;
+                }
+                
+                // Pequeno atraso para garantir que a UI seja atualizada
+                setTimeout(() => {
+                    runAnalysis()
+                        .then(result => {
+                            addLog(`Nova análise realizada com sucesso após espera`, 'SUCCESS', 'automation');
+                        })
+                        .catch(error => {
+                            addLog(`Erro ao realizar nova análise após espera: ${error.message}`, 'ERROR', 'automation');
+                            updateStatus(`Erro na análise: ${error.message}`, 'error', 5000);
+                        });
+                }, 500);
+            }
+            waitCountdown--;
+        };
 
         const updateCountdown = () => {
             countdownElement.textContent = `Janela fecha em ${countdown}s`;
@@ -264,7 +400,35 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 // Executa a operação automaticamente se a execução automática estiver habilitada
                 if (autoExecutionEnabled) {
                     addLog(`Executando operação automaticamente após fechamento do modal`, 'INFO', 'trade-execution');
-                    executeOperation(result.action);
+                    // Se for WAIT e automação estiver ativa, iniciar o contador de espera
+                    if (result.action === 'WAIT') {
+                        // Consultar o estado real da automação do StateManager
+                        let automationEnabled = false;
+                        
+                        // Verificar o estado da automação diretamente do StateManager
+                        if (window.StateManager && typeof window.StateManager.getConfig === 'function') {
+                            const config = window.StateManager.getConfig();
+                            automationEnabled = config && config.automation === true;
+                        } else {
+                            // Fallback: verificar variável global
+                            automationEnabled = isAutomationRunning;
+                        }
+                        
+                        addLog(`Status de automação verificado: ${automationEnabled ? 'Ativado' : 'Desativado'}`, 'INFO', 'automation');
+                        
+                        if (automationEnabled) {
+                            addLog(`Iniciando contador de espera para nova análise (${waitCountdown}s)`, 'INFO', 'automation');
+                            waitCountdownInterval = setInterval(waitForNextAnalysis, 1000);
+                            waitForNextAnalysis(); // Chamar imediatamente para atualizar o status
+                        } else {
+                            // WAIT sem automação ativa - apenas fechar o modal
+                            addLog(`Ação WAIT ignorada, automação não está ativa`, 'INFO', 'automation');
+                            updateStatus('Análise aguardando - Automação desativada', 'info', 3000);
+                        }
+                    } else if (result.action !== 'WAIT') {
+                        // Para BUY ou SELL, executar a operação normal
+                        executeOperation(result.action);
+                    }
                 }
             }
             countdown--;
@@ -385,9 +549,55 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             logAndUpdateStatus('Operação executada manualmente pelo usuário', 'INFO', 'trade-execution', true);
         };
         
+        // Evento para aguardar (botão WAIT)
+        waitButton.onclick = () => {
+            clearInterval(countdownInterval);
+            modal.style.display = 'none';
+            autoExecutionEnabled = false; // Desativa a execução automática
+            
+            // Consultar o estado real da automação do StateManager
+            let automationEnabled = false;
+            
+            // Verificar o estado da automação diretamente do StateManager
+            if (window.StateManager && typeof window.StateManager.getConfig === 'function') {
+                const config = window.StateManager.getConfig();
+                automationEnabled = config && config.automation === true;
+            } else {
+                // Fallback: verificar variável global
+                automationEnabled = isAutomationRunning;
+            }
+            
+            addLog(`Status de automação verificado: ${automationEnabled ? 'Ativado' : 'Desativado'}`, 'INFO', 'automation');
+            
+            if (automationEnabled) {
+                // Se automação estiver ativa, iniciar contagem para nova análise
+                addLog(`Iniciando contador de espera para nova análise (${waitCountdown}s)`, 'INFO', 'automation');
+                
+                // Usar a função waitForNextAnalysis já definida
+                waitCountdownInterval = setInterval(waitForNextAnalysis, 1000);
+                waitForNextAnalysis(); // Chamar imediatamente para atualizar o status
+            } else {
+                // Se automação estiver inativa, apenas fechar o modal
+                addLog(`Botão Aguardar clicado, modal fechado (automação desativada)`, 'INFO', 'ui');
+                updateStatus('Análise aguardando - Automação desativada', 'info', 3000);
+            }
+        };
+        
         // Evento para cancelar a operação
         cancelButton.onclick = () => {
             clearInterval(countdownInterval);
+            // Também limpar o intervalo de espera se existir
+            if (waitCountdownInterval) {
+                clearInterval(waitCountdownInterval);
+                waitCountdownInterval = null;
+            }
+            
+            // Remover o botão de cancelamento se existir
+            const cancelWaitBtn = document.getElementById('cancel-wait-btn');
+            if (cancelWaitBtn) {
+                cancelWaitBtn.remove();
+            }
+            
             modal.style.display = 'none';
             autoExecutionEnabled = false; // Desativa a execução automática
             logAndUpdateStatus('Operação cancelada pelo usuário', 'INFO', 'trade-execution', true);
@@ -396,6 +606,18 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         // Evento para fechar o modal
         closeButton.onclick = () => {
             clearInterval(countdownInterval);
+            // Também limpar o intervalo de espera se existir
+            if (waitCountdownInterval) {
+                clearInterval(waitCountdownInterval);
+                waitCountdownInterval = null;
+            }
+            
+            // Remover o botão de cancelamento se existir
+            const cancelWaitBtn = document.getElementById('cancel-wait-btn');
+            if (cancelWaitBtn) {
+                cancelWaitBtn.remove();
+            }
+            
             modal.style.display = 'none';
             autoExecutionEnabled = false; // Desativa a execução automática
             logAndUpdateStatus('Modal fechado pelo usuário (operação cancelada)', 'INFO', 'ui', true);
@@ -414,6 +636,18 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         window.onclick = (event) => {
             if (event.target === modal) {
                 clearInterval(countdownInterval);
+                // Também limpar o intervalo de espera se existir
+                if (waitCountdownInterval) {
+                    clearInterval(waitCountdownInterval);
+                    waitCountdownInterval = null;
+                }
+                
+                // Remover o botão de cancelamento se existir
+                const cancelWaitBtn = document.getElementById('cancel-wait-btn');
+                if (cancelWaitBtn) {
+                    cancelWaitBtn.remove();
+                }
+                
                 modal.style.display = 'none';
                 autoExecutionEnabled = false; // Desativa a execução automática
                 logAndUpdateStatus('Modal fechado ao clicar fora (operação cancelada)', 'INFO', 'ui', true);
@@ -482,7 +716,26 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     autoActive: config.automation
                 });
                 
-                updateStatus('Configurações atualizadas via mensagem direta', 'success');
+                // Atualizar apenas a UI de status de automação, sem alterar o estado
+                const automationStatus = config.automation || false;
+                const automationStatusElement = document.querySelector('#automation-status');
+                if (automationStatusElement) {
+                    automationStatusElement.textContent = `Automação: ${automationStatus ? 'Ativa' : 'Inativa'}`;
+                    automationStatusElement.className = 'automation-status';
+                    automationStatusElement.classList.add(automationStatus ? 'active' : 'inactive');
+                    
+                    if (automationStatus) {
+                        automationStatusElement.style.color = '#4CAF50';
+                        automationStatusElement.style.fontWeight = 'bold';
+                    } else {
+                        automationStatusElement.style.color = '#F44336';
+                        automationStatusElement.style.fontWeight = 'normal';
+                    }
+                    
+                    addLog(`UI de status de automação atualizada via postMessage: ${automationStatus ? 'Ativo' : 'Inativo'}`, 'DEBUG');
+                }
+                
+                updateStatus('Configurações atualizadas via mensagem direta', 'success', 2000);
                 addLog('Configurações atualizadas com sucesso via postMessage', 'SUCCESS');
             }
         });
@@ -509,14 +762,53 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     });
 
     // ================== NOVAS FUNÇÕES PARA AUTOMAÇÃO ==================
-    const updateAutomationStatus = (isActive) => {
+    const updateAutomationStatus = (isActive, fromStateManager = false) => {
         try {
             // Certifique-se de que temos o elemento
-            const automationStatusElement = document.querySelector('#automation-status');
+            let automationStatusElement = document.querySelector('#automation-status');
+            
+            // Log detalhado para depuração
+            addLog(`updateAutomationStatus chamado com isActive=${isActive}, fromStateManager=${fromStateManager}`, 'DEBUG');
             
             if (!automationStatusElement) {
-                addLog('Elemento #automation-status não encontrado no DOM', 'ERROR');
-                return;
+                addLog('Elemento #automation-status não encontrado inicialmente no DOM, tentando novamente...', 'WARN');
+                
+                // Tentar localizar com getElementById também, como fallback
+                automationStatusElement = document.getElementById('automation-status');
+                
+                if (!automationStatusElement) {
+                    // Se ainda não encontrou, criar um fallback dinâmico
+                    addLog('Ainda não encontrou o elemento, verificando se está dentro de um iframe ou shadow DOM', 'WARN');
+                    
+                    // Tentar localizar em todos os frames
+                    const frames = document.querySelectorAll('iframe');
+                    for (let i = 0; i < frames.length; i++) {
+                        try {
+                            const frameDoc = frames[i].contentDocument || frames[i].contentWindow.document;
+                            automationStatusElement = frameDoc.querySelector('#automation-status');
+                            if (automationStatusElement) {
+                                addLog('Elemento encontrado em iframe!', 'SUCCESS');
+                                break;
+                            }
+                        } catch (frameErr) {
+                            // Erro de segurança cross-origin
+                            addLog(`Erro ao acessar iframe ${i}: ${frameErr.message}`, 'DEBUG');
+                        }
+                    }
+                    
+                    if (!automationStatusElement) {
+                        addLog('Elemento #automation-status não encontrado em nenhum lugar. Criando log para debug.', 'ERROR');
+                        
+                        // Criar um log detalhado de todos IDs encontrados na página para debug
+                        const allIds = [];
+                        document.querySelectorAll('[id]').forEach(el => {
+                            allIds.push(el.id);
+                        });
+                        
+                        addLog(`IDs encontrados na página: ${allIds.join(', ')}`, 'DEBUG');
+                        return;
+                    }
+                }
             }
             
             // Atualizar variável global
@@ -527,11 +819,29 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             automationStatusElement.className = 'automation-status';
             automationStatusElement.classList.add(isActive ? 'active' : 'inactive');
             
+            // Garantir que a estilização seja aplicada diretamente no elemento
+            if (isActive) {
+                automationStatusElement.style.color = '#4CAF50'; // Verde para ativo
+                automationStatusElement.style.fontWeight = 'bold';
+            } else {
+                automationStatusElement.style.color = '#F44336'; // Vermelho para inativo
+                automationStatusElement.style.fontWeight = 'normal';
+            }
+            
             // Atualizar também o indexUI para futura referência
             if (indexUI.automationStatus) {
                 indexUI.automationStatus.textContent = `Automação: ${isActive ? 'Ativa' : 'Inativa'}`;
                 indexUI.automationStatus.className = 'automation-status';
                 indexUI.automationStatus.classList.add(isActive ? 'active' : 'inactive');
+                
+                // Aplicar estilos diretamente também ao elemento no indexUI
+                if (isActive) {
+                    indexUI.automationStatus.style.color = '#4CAF50';
+                    indexUI.automationStatus.style.fontWeight = 'bold';
+                } else {
+                    indexUI.automationStatus.style.color = '#F44336';
+                    indexUI.automationStatus.style.fontWeight = 'normal';
+                }
             } else {
                 // Se indexUI.automationStatus não existir, atualizá-lo
                 indexUI.automationStatus = automationStatusElement;
@@ -539,8 +849,17 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             
             // Registrar no log a mudança de status da automação
             addLog(`Status da automação alterado para: ${isActive ? 'Ativa' : 'Inativa'}`, isActive ? 'SUCCESS' : 'INFO');
+            
+            // Enviar notificação para o StateManager se disponível (para garantir sincronização)
+            // SOMENTE se a chamada não veio do próprio StateManager (previne loop infinito)
+            if (!fromStateManager && window.StateManager && typeof window.StateManager.updateAutomationState === 'function') {
+                addLog('Enviando atualização para o StateManager', 'DEBUG');
+                window.StateManager.updateAutomationState(isActive);
+                addLog('Estado de automação sincronizado com o StateManager', 'DEBUG');
+            }
         } catch (error) {
             addLog(`Erro ao atualizar status da automação: ${error.message}`, 'ERROR');
+            console.error('Erro completo:', error);
         }
     };
 
@@ -615,15 +934,31 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 indexUI.toggleAuto.checked = settings.autoActive;
                 addLog(`toggleAuto atualizado para: ${settings.autoActive}`, 'DEBUG');
                 
-                // Forçar atualização do elemento DOM
+                // Atualizar apenas a UI sem modificar o estado
                 try {
-                    // Atualizar diretamente usando a função dedicada
-                    updateAutomationStatus(settings.autoActive);
-                    
-                    // Log adicional para depuração
-                    addLog(`Status de automação atualizado pelo updateCurrentSettings: ${settings.autoActive}`, 'DEBUG');
+                    // Obter o elemento de status
+                    const automationStatusElement = document.querySelector('#automation-status');
+                    if (automationStatusElement) {
+                        // Atualizar texto e classe
+                        automationStatusElement.textContent = `Automação: ${settings.autoActive ? 'Ativa' : 'Inativa'}`;
+                        automationStatusElement.className = 'automation-status';
+                        automationStatusElement.classList.add(settings.autoActive ? 'active' : 'inactive');
+                        
+                        // Atualizar estilo
+                        if (settings.autoActive) {
+                            automationStatusElement.style.color = '#4CAF50';
+                            automationStatusElement.style.fontWeight = 'bold';
+                        } else {
+                            automationStatusElement.style.color = '#F44336';
+                            automationStatusElement.style.fontWeight = 'normal';
+                        }
+                        
+                        addLog(`UI de status de automação atualizada: ${settings.autoActive ? 'Ativo' : 'Inativo'}`, 'DEBUG');
+                    } else {
+                        addLog('Elemento #automation-status não encontrado', 'WARN');
+                    }
                 } catch (err) {
-                    addLog(`Erro ao atualizar automationStatus: ${err.message}`, 'ERROR');
+                    addLog(`Erro ao atualizar UI de status: ${err.message}`, 'ERROR');
                 }
             }
             
@@ -736,7 +1071,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         }
 
         isAutomationRunning = true;
-        updateAutomationStatus(true);
+        updateAutomationStatus(true, false);
         updateTradeCountdown();
         
         addLog('Contador de automação iniciado', 'INFO');
@@ -748,7 +1083,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             if (tradeTime <= 0) {
                 clearInterval(interval);
                 isAutomationRunning = false;
-                updateAutomationStatus(false);
+                updateAutomationStatus(false, false);
                 updateStatus('Automação concluída', 'success');
                 addLog('Automação concluída: contador chegou a zero', 'SUCCESS');
             }
@@ -763,7 +1098,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             addLog('Temporizador de automação cancelado', 'INFO');
         }
         isAutomationRunning = false;
-        updateAutomationStatus(false);
+        updateAutomationStatus(false, false);
         updateStatus('Operação cancelada pelo usuário', 'info');
         addLog('Operação cancelada manualmente pelo usuário', 'INFO');
     };
@@ -799,40 +1134,78 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
 
         if (elements.startOperation) {
             elements.startOperation.addEventListener('click', () => {
-                if (window.TradeManager?.History) {
-                    addLog('Iniciando monitoramento de operações...', 'INFO');
-                    window.TradeManager.History.startMonitoring()
-                        .then(() => {
-                            isAutomationRunning = true;
-                            updateAutomationStatus(true);
-                            updateStatus('Monitoramento de operações iniciado com sucesso', 'success');
-                        })
-                        .catch(error => {
-                            addLog(`Erro ao iniciar monitoramento: ${error.message}`, 'ERROR');
-                            updateStatus('Falha ao iniciar monitoramento', 'error');
-                        });
+                // Verificar o estado atual da automação no StateManager
+                if (window.StateManager && typeof window.StateManager.getConfig === 'function') {
+                    const currentConfig = window.StateManager.getConfig() || {};
+                    const isAutomationActive = currentConfig.automation === true;
+                    
+                    // Verificar se o módulo História está disponível
+                    if (window.TradeManager?.History) {
+                        if (isAutomationActive) {
+                            // Se a automação já estiver ativa, apenas iniciar o monitoramento
+                            addLog('Iniciando monitoramento de operações...', 'INFO');
+                            window.TradeManager.History.startMonitoring()
+                                .then(() => {
+                                    updateStatus('Monitoramento de operações iniciado com sucesso', 'success');
+                                })
+                                .catch(error => {
+                                    addLog(`Erro ao iniciar monitoramento: ${error.message}`, 'ERROR');
+                                    updateStatus('Falha ao iniciar monitoramento', 'error');
+                                });
+                        } else {
+                            // Se não estiver ativa, apenas mostrar uma mensagem
+                            addLog('Tentativa de iniciar monitoramento com automação desativada', 'WARN');
+                            updateStatus('A automação está desativada. Ative-a nas configurações.', 'warn');
+                        }
+                    } else {
+                        // Fallback para mensagem de erro
+                        addLog('Módulo de histórico não disponível', 'ERROR');
+                        updateStatus('Módulo de histórico não disponível', 'error');
+                    }
                 } else {
-                    // Fallback para a função antiga se o módulo não estiver disponível
-                    startTradeMonitoring();
+                    // Se não conseguir acessar o estado via StateManager
+                    updateStatus('Não foi possível verificar o status da automação', 'error');
                 }
             });
         }
         
         if (elements.cancelOperation) {
             elements.cancelOperation.addEventListener('click', () => {
-                if (window.TradeManager?.History) {
-                    window.TradeManager.History.stopMonitoring()
-                        .then(() => {
-                            isAutomationRunning = false;
-                            updateAutomationStatus(false);
-                            updateStatus('Monitoramento interrompido', 'info');
-                        })
-                        .catch(error => {
-                            addLog(`Erro ao interromper monitoramento: ${error.message}`, 'ERROR');
-                        });
+                // Verificar o estado atual da automação no StateManager
+                if (window.StateManager && typeof window.StateManager.getConfig === 'function') {
+                    const currentConfig = window.StateManager.getConfig() || {};
+                    const isAutomationActive = currentConfig.automation === true;
+                    
+                    if (window.TradeManager?.History) {
+                        if (isAutomationActive) {
+                            // Se a automação estiver ativa, apenas interromper o monitoramento sem alterar configuração
+                            addLog('Interrompendo monitoramento de operações...', 'INFO');
+                            window.TradeManager.History.stopMonitoring()
+                                .then(() => {
+                                    updateStatus('Monitoramento interrompido', 'info');
+                                })
+                                .catch(error => {
+                                    addLog(`Erro ao interromper monitoramento: ${error.message}`, 'ERROR');
+                                    updateStatus('Falha ao interromper monitoramento', 'error');
+                                });
+                        } else {
+                            // Se não estiver ativa, apenas mostrar uma mensagem
+                            addLog('Tentativa de interromper monitoramento com automação já desativada', 'WARN');
+                            updateStatus('A automação já está desativada', 'info');
+                        }
+                    } else {
+                        // Fallback para função anterior sem alterar configuração
+                        addLog('Cancelando operação via método fallback...', 'INFO');
+                        if (automationTimeout) {
+                            clearTimeout(automationTimeout);
+                            automationTimeout = null;
+                            addLog('Temporizador de automação cancelado', 'INFO');
+                        }
+                        updateStatus('Operação cancelada pelo usuário', 'info');
+                    }
                 } else {
-                    // Fallback para a função antiga
-                    cancelAutoClose();
+                    // Se não conseguir acessar o estado via StateManager
+                    updateStatus('Não foi possível verificar o status da automação', 'error');
                 }
             });
         }
@@ -896,13 +1269,108 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             const config = window.StateManager.getConfig();
             if (config) {
                 updateGaleTestPanelVisibility(config.devMode);
+                
+                // Inicializar explicitamente o status de automação
+                addLog(`Inicializando status de automação: ${config.automation ? 'Ativo' : 'Inativo'}`, 'DEBUG');
+                
+                // Forçar um pequeno atraso para garantir que o DOM esteja pronto
+                setTimeout(() => {
+                    // Não atualizar o status, apenas atualizar a UI para refletir o estado atual
+                    // Durante a inicialização, obter direto do StateManager, então passar true como fromStateManager
+                    // para não causar loops de atualização
+                    const automationStatus = config.automation || false;
+                    addLog(`Status de automação na inicialização: ${automationStatus ? 'Ativo' : 'Inativo'}`, 'DEBUG');
+                    
+                    // Apenas atualizar a UI sem modificar o estado
+                    const automationStatusElement = document.querySelector('#automation-status');
+                    if (automationStatusElement) {
+                        automationStatusElement.textContent = `Automação: ${automationStatus ? 'Ativa' : 'Inativa'}`;
+                        automationStatusElement.className = 'automation-status';
+                        automationStatusElement.classList.add(automationStatus ? 'active' : 'inactive');
+                        
+                        // Aplicar estilos diretamente
+                        if (automationStatus) {
+                            automationStatusElement.style.color = '#4CAF50';
+                            automationStatusElement.style.fontWeight = 'bold';
+                        } else {
+                            automationStatusElement.style.color = '#F44336';
+                            automationStatusElement.style.fontWeight = 'normal';
+                        }
+                        
+                        addLog(`Status de automação inicializado com sucesso: ${automationStatusElement.textContent}`, 'SUCCESS');
+                    } else {
+                        addLog('Elemento #automation-status ainda não encontrado após inicialização', 'ERROR');
+                    }
+                }, 500);
             } else {
                 // Se não houver configurações, ocultar o painel por padrão
                 updateGaleTestPanelVisibility(false);
+                
+                // Verificar se existe uma configuração no storage
+                if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
+                    chrome.storage.sync.get(['userConfig'], (result) => {
+                        if (result && result.userConfig) {
+                            // Existem configurações, atualizar a UI com base nelas
+                            const automationStatus = result.userConfig.automation || false;
+                            
+                            // Atualizar apenas a UI
+                            const automationStatusElement = document.querySelector('#automation-status');
+                            if (automationStatusElement) {
+                                automationStatusElement.textContent = `Automação: ${automationStatus ? 'Ativa' : 'Inativa'}`;
+                                automationStatusElement.className = 'automation-status';
+                                automationStatusElement.classList.add(automationStatus ? 'active' : 'inactive');
+                                
+                                if (automationStatus) {
+                                    automationStatusElement.style.color = '#4CAF50';
+                                    automationStatusElement.style.fontWeight = 'bold';
+                                } else {
+                                    automationStatusElement.style.color = '#F44336';
+                                    automationStatusElement.style.fontWeight = 'normal';
+                                }
+                            }
+                            
+                            addLog(`Status de automação carregado do storage: ${automationStatus ? 'Ativo' : 'Inativo'}`, 'INFO');
+                        } else {
+                            // Não há configurações, mas também não vamos forçar
+                            addLog('Nenhuma configuração encontrada no storage', 'INFO');
+                        }
+                    });
+                }
             }
         } else {
             // Se não houver StateManager, ocultar o painel por padrão
             updateGaleTestPanelVisibility(false);
+            
+            // Verificar se existe uma configuração no storage
+            if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
+                chrome.storage.sync.get(['userConfig'], (result) => {
+                    if (result && result.userConfig) {
+                        // Existem configurações, atualizar a UI com base nelas
+                        const automationStatus = result.userConfig.automation || false;
+                        
+                        // Atualizar apenas a UI
+                        const automationStatusElement = document.querySelector('#automation-status');
+                        if (automationStatusElement) {
+                            automationStatusElement.textContent = `Automação: ${automationStatus ? 'Ativa' : 'Inativa'}`;
+                            automationStatusElement.className = 'automation-status';
+                            automationStatusElement.classList.add(automationStatus ? 'active' : 'inactive');
+                            
+                            if (automationStatus) {
+                                automationStatusElement.style.color = '#4CAF50';
+                                automationStatusElement.style.fontWeight = 'bold';
+                            } else {
+                                automationStatusElement.style.color = '#F44336';
+                                automationStatusElement.style.fontWeight = 'normal';
+                            }
+                        }
+                        
+                        addLog(`Status de automação carregado do storage: ${automationStatus ? 'Ativo' : 'Inativo'}`, 'INFO');
+                    } else {
+                        // Não há configurações, mas também não vamos forçar
+                        addLog('Nenhuma configuração encontrada no storage', 'INFO');
+                    }
+                });
+            }
         }
         
         // Configurar event listeners
@@ -933,6 +1401,25 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     autoActive: config.automation
                 });
                 
+                // Atualizar apenas a UI de status de automação, sem alterar o estado
+                const automationStatus = config.automation || false;
+                const automationStatusElement = document.querySelector('#automation-status');
+                if (automationStatusElement) {
+                    automationStatusElement.textContent = `Automação: ${automationStatus ? 'Ativa' : 'Inativa'}`;
+                    automationStatusElement.className = 'automation-status';
+                    automationStatusElement.classList.add(automationStatus ? 'active' : 'inactive');
+                    
+                    if (automationStatus) {
+                        automationStatusElement.style.color = '#4CAF50';
+                        automationStatusElement.style.fontWeight = 'bold';
+                    } else {
+                        automationStatusElement.style.color = '#F44336';
+                        automationStatusElement.style.fontWeight = 'normal';
+                    }
+                    
+                    addLog(`UI de status de automação atualizada via postMessage: ${automationStatus ? 'Ativo' : 'Inativo'}`, 'DEBUG');
+                }
+                
                 updateStatus('Configurações atualizadas via mensagem direta', 'success', 2000);
                 addLog('Configurações atualizadas com sucesso via postMessage', 'SUCCESS');
             }
@@ -956,16 +1443,6 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             })
             .catch(err => {
                 addLog(`Erro ao testar conexão com API: ${err.message}`, 'ERROR');
-            });
-        
-        // Carregar configurações
-        loadConfig()
-            .then(config => {
-                addLog('Configurações carregadas com sucesso', 'SUCCESS');
-            })
-            .catch(error => {
-                addLog(`Erro ao carregar configurações: ${error.message}`, 'ERROR');
-                updateStatus('Erro ao carregar configurações', 'error');
             });
     }
 
@@ -1024,11 +1501,6 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         
                         // Atualizar visibilidade do painel de teste do Gale
                         updateGaleTestPanelVisibility(config.devMode);
-                        
-                        // Forçar atualização direta do status de automação
-                        setTimeout(() => {
-                            updateAutomationStatus(config.automation);
-                        }, 300);
                         
                         updateStatus('Configurações carregadas com sucesso', 'success');
                         resolve(config);
@@ -1145,7 +1617,56 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         // Atualizar visibilidade do painel de teste do Gale baseado no modo desenvolvedor
                         updateGaleTestPanelVisibility(config.devMode);
                         
+                        // Atualizar apenas a UI sem modificar o estado
+                        const automationStatus = config.automation || false;
+                        const automationStatusElement = document.querySelector('#automation-status');
+                        if (automationStatusElement) {
+                            automationStatusElement.textContent = `Automação: ${automationStatus ? 'Ativa' : 'Inativa'}`;
+                            automationStatusElement.className = 'automation-status';
+                            automationStatusElement.classList.add(automationStatus ? 'active' : 'inactive');
+                            
+                            if (automationStatus) {
+                                automationStatusElement.style.color = '#4CAF50';
+                                automationStatusElement.style.fontWeight = 'bold';
+                            } else {
+                                automationStatusElement.style.color = '#F44336';
+                                automationStatusElement.style.fontWeight = 'normal';
+                            }
+                        }
+                        
                         updateStatus('Configurações atualizadas', 'success', 2000);
+                    }
+                } 
+                else if (type === 'automation') {
+                    // Tratar atualizações específicas do estado de automação
+                    addLog(`Recebida atualização de estado de AUTOMAÇÃO (${new Date(timestamp).toLocaleTimeString()})`, 'WARN');
+                    
+                    const automationState = state.automation;
+                    if (automationState) {
+                        // Atualizar apenas a UI, sem modificar o estado
+                        const isRunning = automationState.isRunning || false;
+                        const automationStatusElement = document.querySelector('#automation-status');
+                        if (automationStatusElement) {
+                            automationStatusElement.textContent = `Automação: ${isRunning ? 'Ativa' : 'Inativa'}`;
+                            automationStatusElement.className = 'automation-status';
+                            automationStatusElement.classList.add(isRunning ? 'active' : 'inactive');
+                            
+                            if (isRunning) {
+                                automationStatusElement.style.color = '#4CAF50';
+                                automationStatusElement.style.fontWeight = 'bold';
+                            } else {
+                                automationStatusElement.style.color = '#F44336';
+                                automationStatusElement.style.fontWeight = 'normal';
+                            }
+                        }
+                        
+                        // Log adicional para depuração
+                        addLog(`Estado de automação atualizado na UI: isRunning=${isRunning}`, 'WARN');
+                        
+                        // Se houver uma operação atual, podemos mostrar informações adicionais
+                        if (automationState.currentOperation) {
+                            addLog(`Operação atual: ${JSON.stringify(automationState.currentOperation)}`, 'DEBUG');
+                        }
                     }
                 }
             });
@@ -1969,8 +2490,32 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             }
 
             if (message.type === 'REQUEST_UI_AUTOMATION_STATUS_UPDATE') {
-                // ... (código existente)
-                if (sendResponse) sendResponse({ success: true, received: true });
+                // Atualizar status de automação quando solicitado externamente
+                try {
+                    const isActive = message.data?.isActive === true;
+                    
+                    // Atualizar apenas a UI
+                    const automationStatusElement = document.querySelector('#automation-status');
+                    if (automationStatusElement) {
+                        automationStatusElement.textContent = `Automação: ${isActive ? 'Ativa' : 'Inativa'}`;
+                        automationStatusElement.className = 'automation-status';
+                        automationStatusElement.classList.add(isActive ? 'active' : 'inactive');
+                        
+                        if (isActive) {
+                            automationStatusElement.style.color = '#4CAF50';
+                            automationStatusElement.style.fontWeight = 'bold';
+                        } else {
+                            automationStatusElement.style.color = '#F44336';
+                            automationStatusElement.style.fontWeight = 'normal';
+                        }
+                        
+                        addLog(`UI de status de automação atualizada via mensagem: ${isActive ? 'Ativo' : 'Inativo'}`, 'DEBUG');
+                    }
+                    
+                    if (sendResponse) sendResponse({ success: true, updated: true });
+                } catch (err) {
+                    if (sendResponse) sendResponse({ success: false, error: err.message });
+                }
                 return false; 
             }
 
@@ -1991,6 +2536,93 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             return false; // Default para evitar port closed se nenhum outro handler retornou true.
         });
     }
+
+    // Função para iniciar o monitoramento (usado como fallback)
+    const startTradeMonitoring = () => {
+        addLog('Iniciando monitoramento via método fallback...', 'INFO');
+        
+        // Atualizar o status de automação no StateManager primeiro, se disponível
+        if (window.StateManager && typeof window.StateManager.saveConfig === 'function') {
+            // Obter configuração atual
+            const currentConfig = window.StateManager.getConfig() || {};
+            
+            // Ativar automação na configuração
+            currentConfig.automation = true;
+            
+            // Salvar no StateManager (que notificará os listeners)
+            window.StateManager.saveConfig(currentConfig)
+                .then(() => {
+                    addLog('Status de automação atualizado com sucesso no StateManager (fallback)', 'SUCCESS');
+                    // Continuar com o startup da operação
+                    startAutomationProcess();
+                })
+                .catch(error => {
+                    addLog(`Erro ao atualizar configuração: ${error.message}`, 'ERROR');
+                    updateStatus('Falha ao iniciar automação', 'error');
+                });
+        } else {
+            // Caso não tenha StateManager, atualizar diretamente
+            isAutomationRunning = true;
+            updateAutomationStatus(true, false);
+            startAutomationProcess();
+        }
+    };
+    
+    // Função para realmente iniciar o processo de automação após configuração atualizada
+    const startAutomationProcess = () => {
+        // Verificar o estado atual da automação no StateManager
+        if (window.StateManager && typeof window.StateManager.getConfig === 'function') {
+            const currentConfig = window.StateManager.getConfig() || {};
+            const isAutomationActive = currentConfig.automation === true;
+            
+            if (isAutomationActive) {
+                // Se a automação já estiver ativa, apenas informar
+                updateStatus('Sistema de automação já está ativo', 'info');
+            } else {
+                // Informar que a automação está desativada
+                updateStatus('A automação está desativada. Ative-a nas configurações.', 'warn');
+            }
+        } else {
+            // Se não conseguir verificar o status via StateManager
+            updateStatus('Não foi possível verificar o status da automação', 'error');
+        }
+    };
+    
+    // Função para cancelar o monitoramento (usado como fallback)
+    const cancelAutomationFallback = () => {
+        addLog('Cancelando automação via método fallback...', 'INFO');
+        
+        // Atualizar o status de automação no StateManager primeiro, se disponível
+        if (window.StateManager && typeof window.StateManager.saveConfig === 'function') {
+            // Obter configuração atual
+            const currentConfig = window.StateManager.getConfig() || {};
+            
+            // Desativar automação na configuração
+            currentConfig.automation = false;
+            
+            // Salvar no StateManager (que notificará os listeners)
+            window.StateManager.saveConfig(currentConfig)
+                .then(() => {
+                    addLog('Status de automação (desativado) atualizado com sucesso no StateManager (fallback)', 'SUCCESS');
+                    updateStatus('Automação desativada', 'info');
+                })
+                .catch(error => {
+                    addLog(`Erro ao atualizar configuração: ${error.message}`, 'ERROR');
+                    updateStatus('Falha ao desativar automação', 'error');
+                });
+        } else {
+            // Caso não tenha StateManager, atualizar diretamente
+            if (automationTimeout) {
+                clearTimeout(automationTimeout);
+                automationTimeout = null;
+                addLog('Temporizador de automação cancelado', 'INFO');
+            }
+            isAutomationRunning = false;
+            updateAutomationStatus(false, false);
+            updateStatus('Operação cancelada pelo usuário', 'info');
+            addLog('Operação cancelada manualmente pelo usuário', 'INFO');
+        }
+    };
 } else {
     console.log('Trade Manager Pro - Index Module já foi carregado anteriormente');
 }
