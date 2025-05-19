@@ -26,6 +26,18 @@
         }
     }
 
+    // Função padronizada para enviar status para o index
+    function toUpdateStatus(message, type = 'info', duration = 3000) {
+        if (chrome && chrome.runtime && chrome.runtime.id) {
+            chrome.runtime.sendMessage({
+                action: 'updateStatus',
+                message: message,
+                type: type,
+                duration: duration
+            });
+        }
+    }
+
     // Função para enviar atualização de status para o index.js
     function updateStatusInIndex(message, type = 'info', duration = 3000) {
         try {
@@ -50,14 +62,14 @@
     // Nova função para explorar a árvore DOM e buscar elementos
     function exploreDOMTree() {
         log('Iniciando exploração da árvore DOM', 'INFO');
-        updateStatusInIndex('Analisando estrutura do DOM...', 'info');
+        toUpdateStatus('Analisando estrutura do DOM...', 'info');
         
         try {
             // Obter a aba ativa
             chrome.tabs.query({active: true, currentWindow: true}, async (tabs) => {
                 if (!tabs || !tabs.length) {
                     log('Nenhuma aba ativa encontrada', 'ERROR');
-                    updateStatusInIndex('Erro: Nenhuma aba ativa encontrada', 'error');
+                    toUpdateStatus('Erro: Nenhuma aba ativa encontrada', 'error');
                     return;
                 }
                 
@@ -220,7 +232,7 @@
                     }, (results) => {
                         if (chrome.runtime.lastError) {
                             log(`Erro na injeção de script: ${chrome.runtime.lastError.message}`, 'ERROR');
-                            updateStatusInIndex(`Erro: ${chrome.runtime.lastError.message}`, 'error');
+                            toUpdateStatus(`Erro: ${chrome.runtime.lastError.message}`, 'error');
                             return;
                         }
                         
@@ -231,7 +243,7 @@
                             // Encontramos elementos candidatos!
                             const firstMatch = result.results[0];
                             log(`Elemento encontrado via ${firstMatch.method}: "${firstMatch.text}"`, 'SUCCESS');
-                            updateStatusInIndex(`Payout encontrado: ${firstMatch.text}`, 'success');
+                            toUpdateStatus(`Payout encontrado: ${firstMatch.text}`, 'success');
                             
                             // Atualizar elemento de resultado na interface
                             const resultElement = document.getElementById('payout-result');
@@ -249,7 +261,7 @@
                             log(`Caminho do elemento de payout armazenado: ${firstMatch.path}`, 'INFO');
                         } else {
                             log('Nenhum elemento de payout encontrado na exploração', 'WARN');
-                            updateStatusInIndex('Elemento não encontrado', 'warn');
+                            toUpdateStatus('Elemento não encontrado', 'warn');
                             
                             // Mostrar informações sobre a estrutura da página
                             const resultElement = document.getElementById('payout-result');
@@ -266,12 +278,12 @@
                     });
                 } catch (error) {
                     log(`Erro ao executar script na página: ${error.message}`, 'ERROR');
-                    updateStatusInIndex(`Erro na inspeção: ${error.message}`, 'error');
+                    toUpdateStatus(`Erro na inspeção: ${error.message}`, 'error');
                 }
             });
         } catch (error) {
             log(`Erro na exploração DOM: ${error.message}`, 'ERROR');
-            updateStatusInIndex(`Erro: ${error.message}`, 'error');
+            toUpdateStatus(`Erro: ${error.message}`, 'error');
         }
     }
 
@@ -279,7 +291,7 @@
     function capturePayoutFromDOM() {
         try {
             log('Iniciando teste de captura de payout', 'INFO');
-            updateStatusInIndex('Buscando payout...', 'info');
+            toUpdateStatus('Buscando payout...', 'info');
             
             // Agora vamos executar a exploração DOM para encontrar o elemento
             exploreDOMTree();
@@ -288,7 +300,7 @@
         } catch (error) {
             const errorMsg = `Erro ao capturar payout: ${error.message}`;
             log(errorMsg, 'ERROR');
-            updateStatusInIndex(errorMsg, 'error');
+            toUpdateStatus(errorMsg, 'error');
             
             // Atualizar elemento de resultado na interface
             const resultElement = document.getElementById('payout-result');
@@ -370,9 +382,9 @@
             
             // Obter multiplicador do gale (agora é a % de lucro desejado)
             if (config?.gale?.level) {
-                // Converter formato "Xx%" para decimal (exemplo: "20%" para 0.2)
+                // Converter formato "Xx%" para decimal (exemplo: "20%" para 0.2, "0%" para 0, "5%" para 0.05)
                 const levelMatch = config.gale.level.match(/(\d+)%?/);
-                if (levelMatch && levelMatch[1]) {
+                if (levelMatch && levelMatch[1] !== undefined) {
                     desiredProfitPercentage = parseFloat(levelMatch[1]) / 100;
                     log(`Percentual de lucro desejado: ${desiredProfitPercentage * 100}%`, 'INFO');
                 } else {
@@ -455,9 +467,9 @@
             
             // Atualizar percentual de lucro desejado
             if (config.gale?.level) {
-                // Converter formato "Xx%" para decimal (exemplo: "20%" para 0.2)
+                // Converter formato "Xx%" para decimal (exemplo: "20%" para 0.2, "0%" para 0, "5%" para 0.05)
                 const levelMatch = config.gale.level.match(/(\d+)%?/);
-                if (levelMatch && levelMatch[1]) {
+                if (levelMatch && levelMatch[1] !== undefined) {
                     desiredProfitPercentage = parseFloat(levelMatch[1]) / 100;
                 } else {
                     desiredProfitPercentage = parseFloat(config.gale.level.replace('x', '')) / 100 || 0.2;
@@ -642,8 +654,8 @@
             log(`Valor inicial calculado: ${valorEstimado.toFixed(2)}`, 'INFO');
             log(`Verificando se atende à condição: lucro líquido > perdas...`, 'INFO');
             
-            // Incremento para ajustar a estimativa (10% do valor original)
-            const incremento = originalValue * 0.1;
+            // Incremento para ajustar a estimativa (1% do valor original)
+            const incremento = originalValue * 0.01;
             // Número máximo de iterações para evitar loop infinito
             const maxIteracoes = 50;
             let iteracao = 0;

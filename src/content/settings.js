@@ -271,6 +271,18 @@ const notifyMainPage = (config) => {
     return notified;
 };
 
+// Função padronizada para enviar status para o index
+function toUpdateStatus(message, type = 'info', duration = 3000) {
+    if (chrome && chrome.runtime && chrome.runtime.id) {
+        chrome.runtime.sendMessage({
+            action: 'updateStatus',
+            message: message,
+            type: type,
+            duration: duration
+        });
+    }
+}
+
 // Exportar funções para uso em outros scripts
 window.settingsModule = {
     loadSettingsToUI,

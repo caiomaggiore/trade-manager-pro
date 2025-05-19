@@ -516,7 +516,7 @@ const LogSystem = {
         URL.revokeObjectURL(url);
         
         // Atualizar status em vez de mostrar alert
-        updateStatus('Logs salvos como arquivo', 'success');
+        toUpdateStatus('Logs salvos como arquivo', 'success');
     },
     
     // Copiar logs para a área de transferência
@@ -526,7 +526,7 @@ const LogSystem = {
         // Usar apenas o método seguro - via background script
         try {
             if (isExtensionContextValid()) {
-                updateStatus('Copiando logs...', 'info');
+                toUpdateStatus('Copiando logs...', 'info');
                 
                 // Enviar para o background script, que injetará na página principal
                 chrome.runtime.sendMessage({
@@ -534,20 +534,20 @@ const LogSystem = {
                     text: content
                 }, response => {
                     if (response && response.success) {
-                        updateStatus('Logs copiados para a área de transferência', 'success');
+                        toUpdateStatus('Logs copiados para a área de transferência', 'success');
                     } else {
                         const errorMsg = response ? response.error : 'Erro desconhecido';
-                        updateStatus('Não foi possível copiar: ' + errorMsg, 'error');
+                        toUpdateStatus('Não foi possível copiar: ' + errorMsg, 'error');
                         this.offerDownloadAlternative();
                     }
                 });
             } else {
-                updateStatus('Conexão com a extensão perdida', 'error');
+                toUpdateStatus('Conexão com a extensão perdida', 'error');
                 this.offerDownloadAlternative();
             }
         } catch (err) {
             console.error('Erro ao solicitar cópia:', err);
-            updateStatus('Erro ao copiar logs', 'error');
+            toUpdateStatus('Erro ao copiar logs', 'error');
             this.offerDownloadAlternative();
         }
     },
@@ -555,7 +555,7 @@ const LogSystem = {
     // Sugerir alternativa de download
     offerDownloadAlternative() {
         setTimeout(() => {
-            updateStatus('Tente usar o botão "Salvar como arquivo"', 'info');
+            toUpdateStatus('Tente usar o botão "Salvar como arquivo"', 'info');
         }, 2000);
     }
 };
@@ -759,27 +759,16 @@ function updateLogFilters() {
     updateLogCounters();
 }
 
-// Função para atualizar o status de operação sem usar alerts
-function updateStatus(message, type = 'info', duration = 3000) {
-    try {
-        // Enviar mensagem para o background script retransmitir para a UI principal (index.js)
-        if (chrome && chrome.runtime && chrome.runtime.id) {
-            chrome.runtime.sendMessage({
-                action: 'PROXY_STATUS_UPDATE', // Nova action para o background lidar
-                statusPayload: { // Encapsular os dados do status
-                    message: message,
-                    type: type,
-                    duration: duration
-                }
-            });
-        } else {
-            // Fallback muito simples se o runtime não estiver disponível (raro no contexto de uma página da extensão)
-            console.warn(`[log-sys.js] Runtime indisponível. Status (fallback console): [${type}] ${message}`);
-        }
-    } catch (e) {
-        console.error(`[log-sys.js] Erro ao enviar PROXY_STATUS_UPDATE: ${e.message}`);
+// Função padronizada para enviar status para o index
+function toUpdateStatus(message, type = 'info', duration = 3000) {
+    if (chrome && chrome.runtime && chrome.runtime.id) {
+        chrome.runtime.sendMessage({
+            action: 'updateStatus',
+            message: message,
+            type: type,
+            duration: duration
+        });
     }
-    // Não há mais necessidade de retornar true ou tentar outros métodos, pois a responsabilidade é do background.
 }
 
 // Função para verificar se uma mensagem deve ser ignorada

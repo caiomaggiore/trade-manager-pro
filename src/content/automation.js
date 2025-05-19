@@ -15,6 +15,18 @@ function sendToLogSystem(message, level = 'INFO') {
     }
 }
 
+// Função padronizada para enviar status para o index
+function toUpdateStatus(message, type = 'info', duration = 5000) {
+    if (chrome && chrome.runtime && chrome.runtime.id) {
+        chrome.runtime.sendMessage({
+            action: 'updateStatus',
+            message: message,
+            type: type,
+            duration: duration
+        });
+    }
+}
+
 (function() {
     sendToLogSystem('Módulo de Automação INICIANDO.', 'DEBUG');
 
@@ -41,14 +53,14 @@ function sendToLogSystem(message, level = 'INFO') {
     // Função principal do ciclo de automação (reutilizável)
     function runAutomationCheck() {
         sendToLogSystem('runAutomationCheck: Iniciando ciclo de verificação.', 'INFO');
-        updateUserVisibleStatus('Automação: Verificando configurações e lucro...', 'info', 0); // 0 para não desaparecer
+        toUpdateStatus('Automação: Verificando configurações e lucro...', 'info', 0); // 0 para não desaparecer
 
         // 1. Obter configuração
         chrome.storage.sync.get(['userConfig'], (storageResult) => {
             if (chrome.runtime.lastError) {
                 const errorMsg = `Falha ao ler userConfig do storage sync: ${chrome.runtime.lastError.message}`;
                 sendToLogSystem(errorMsg, 'ERROR');
-                updateUserVisibleStatus(errorMsg, 'error');
+                toUpdateStatus(errorMsg, 'error');
                 return;
             }
 
@@ -59,7 +71,7 @@ function sendToLogSystem(message, level = 'INFO') {
             if (!config.automation) {
                 const msg = "Modo automatico desativado.";
                 sendToLogSystem(msg, 'WARN');
-                updateUserVisibleStatus(msg, 'warn');
+                toUpdateStatus(msg, 'warn');
                 return; // Interrompe se desligada
             }
 
@@ -86,7 +98,7 @@ function sendToLogSystem(message, level = 'INFO') {
             } catch (e) {
                 const errorMsg = `Erro ao calcular lucro: ${e.message}`;
                 sendToLogSystem(errorMsg, 'ERROR');
-                updateUserVisibleStatus(errorMsg, 'error');
+                toUpdateStatus(errorMsg, 'error');
                 return;
             }
 
@@ -95,14 +107,14 @@ function sendToLogSystem(message, level = 'INFO') {
             if (isNaN(currentProfit) || isNaN(dailyProfitTarget)) {
                  const errorMsg = 'Valores de lucro inválidos.';
                  sendToLogSystem(errorMsg, 'ERROR');
-                 updateUserVisibleStatus(errorMsg, 'error');
+                 toUpdateStatus(errorMsg, 'error');
                  return;
              }
 
             if (currentProfit < dailyProfitTarget) {
                 const conditionMsg = `Automação: Condição atendida (${currentProfit} < ${dailyProfitTarget}). Iniciando análise...`;
                 sendToLogSystem(conditionMsg, 'INFO');
-                updateUserVisibleStatus('Automação: Iniciando análise...', 'info');
+                toUpdateStatus('Automação: Iniciando análise...', 'info');
                 
                 // Tentar clicar no botão de análise DIRETAMENTE
                 try {
@@ -114,17 +126,17 @@ function sendToLogSystem(message, level = 'INFO') {
                     } else {
                         const errorMsg = 'Botão #analyzeBtn NÃO encontrado (referência não estabelecida).';
                         sendToLogSystem(errorMsg, 'ERROR');
-                        updateUserVisibleStatus(errorMsg, 'error');
+                        toUpdateStatus(errorMsg, 'error');
                     }
                 } catch (error) {
                     const errorMsg = `Erro ao clicar em #analyzeBtn DIRETAMENTE: ${error.message}`;
                     sendToLogSystem(errorMsg, 'ERROR');
-                    updateUserVisibleStatus(errorMsg, 'error');
+                    toUpdateStatus(errorMsg, 'error');
                 }
             } else {
                 const resultMsg = `Automação: Meta de lucro atingida ou superada (${currentProfit} >= ${dailyProfitTarget}). Nenhuma análise necessária.`;
                 sendToLogSystem(resultMsg, 'INFO');
-                updateUserVisibleStatus(resultMsg, 'success');
+                toUpdateStatus(resultMsg, 'success');
             }
         }); // Fim callback storage.sync.get
     }

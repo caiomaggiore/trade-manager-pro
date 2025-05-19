@@ -733,4 +733,16 @@ if (document.readyState === 'loading') {
             window.TradeManager.History.init();
         }
     }
+}
+
+// Função padronizada para enviar status para o index
+function toUpdateStatus(message, type = 'info', duration = 3000) {
+    if (chrome && chrome.runtime && chrome.runtime.id) {
+        chrome.runtime.sendMessage({
+            action: 'updateStatus',
+            message: message,
+            type: type,
+            duration: duration
+        });
+    }
 } 

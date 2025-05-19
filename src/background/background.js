@@ -287,25 +287,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             // Obter todas as tabs ativas e enviar a mensagem para elas
             chrome.tabs.query({active: true}, (tabs) => {
                 tabs.forEach(tab => {
-                    chrome.tabs.sendMessage(tab.id, {
-                        action: 'updateStatus',
-                        message: message.message,
-                        type: message.type || 'info',
-                        duration: message.duration || 3000
-                    }).catch(err => {
-                        // Silenciar erros de comunicação
-                        console.debug('Tab não disponível para update de status');
-                    });
+                    // Verificar se a tab ainda está ativa antes de enviar
+                    if (tab.id && tab.status === 'complete') {
+                        chrome.tabs.sendMessage(tab.id, {
+                            action: 'updateStatus',
+                            message: message.message,
+                            type: message.type || 'info',
+                            duration: message.duration || 3000
+                        }).catch(err => {
+                            // Silenciar erros de comunicação
+                            console.debug('Tab não disponível para update de status');
+                        });
+                    }
                 });
             });
             
-            // Responde com sucesso
+            // Responde com sucesso imediatamente
             if (sendResponse) sendResponse({ success: true });
         } catch (error) {
             console.error('Erro ao repassar status:', error);
             if (sendResponse) sendResponse({ success: false, error: error.message });
         }
-        return true; // Manter canal aberto
+        return false; // Não manter canal aberto
     }
     
     // Handler para mostrar notificações

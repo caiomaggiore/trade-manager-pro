@@ -24,9 +24,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     };
     
     // Função para atualizar o status no UI e registrar um log
-    const updateStatus = (message, level = 'INFO', duration = 3000) => { // Adicionada duration aqui
-        addLog(`Status UI será atualizado: ${message}`, level); // addLog agora usa chrome.runtime
-        
+    const updateStatus = (message, level = 'INFO', duration = 3000) => {
         const statusElement = document.getElementById('status-processo');
         if (statusElement) {
             let statusClass = 'info'; // Default class
@@ -40,18 +38,18 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             statusElement.className = 'status-processo'; // Reset classes
             statusElement.classList.add(statusClass, 'visible');
             statusElement.textContent = message;
-
+            
             // Limpar status após a duração, se especificado e > 0
             if (typeof duration === 'number' && duration > 0) {
                 setTimeout(() => {
                     if (statusElement.textContent === message) { // Só limpa se ainda for a mesma mensagem
                         statusElement.classList.remove('visible');
-                        // statusElement.textContent = 'Status: Ocioso'; // Opcional: resetar texto
                     }
                 }, duration);
             }
         } else {
-            addLog('Elemento de status #status-processo não encontrado na UI', 'WARN');
+            // Apenas logar no console se o elemento não for encontrado
+            console.warn('Elemento de status #status-processo não encontrado na UI');
         }
     };
     
@@ -340,43 +338,39 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         let waitCountdownInterval = null;
         
         // Definir a função que será usada também no botão Aguardar
+        let waitLogSent = false; // Novo controle para log único
         const waitForNextAnalysis = () => {
             // Atualizar status para mostrar a contagem
             updateStatus(`Aguardando próxima análise: ${waitCountdown}s...`, 'info', 0);
-            
             // Garantir que o botão de cancelamento exista
             createCancelWaitButton();
-            
+            // Registrar no log apenas UMA vez
+            if (!waitLogSent) {
+                addLog('Aguardando tempo para nova análise!', 'INFO', 'automation');
+                waitLogSent = true;
+            }
             if (waitCountdown <= 0) {
                 clearInterval(waitCountdownInterval);
                 waitCountdownInterval = null;
                 updateStatus('Iniciando nova análise...', 'info');
-                
                 // Remover o botão de cancelamento
                 const cancelWaitBtn = document.getElementById('cancel-wait-btn');
                 if (cancelWaitBtn) {
                     cancelWaitBtn.remove();
                 }
-                
                 // Verificar novamente o status da automação antes de iniciar a análise
                 let automationStillEnabled = false;
-                
-                // Verificar o estado da automação diretamente do StateManager
                 if (window.StateManager && typeof window.StateManager.getConfig === 'function') {
                     const config = window.StateManager.getConfig();
                     automationStillEnabled = config && config.automation === true;
                 } else {
-                    // Fallback: verificar variável global
                     automationStillEnabled = isAutomationRunning;
                 }
-                
                 if (!automationStillEnabled) {
                     addLog('Automação foi desativada durante a contagem, cancelando nova análise', 'WARN', 'automation');
                     updateStatus('Análise cancelada - Automação desativada', 'warn', 3000);
                     return;
                 }
-                
-                // Pequeno atraso para garantir que a UI seja atualizada
                 setTimeout(() => {
                     runAnalysis()
                         .then(result => {
@@ -2326,17 +2320,29 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             const logFunction = typeof sendToLogSystem === 'function' ? sendToLogSystem : console.log;
             logFunction(`Mensagem runtime recebida em index.js: action=${message.action}, type=${message.type}, source=${sender.id}`, 'DEBUG');
 
+            // Verificar se estamos no contexto da extensão
+            const isExtensionContext = () => {
+                return window.location.href.includes('chrome-extension://');
+            };
+
+            // Handler para mensagens de status
             if (message.action === 'updateStatus') {
-                logFunction(`Handler 'updateStatus' ativado por mensagem: ${message.message}`, 'DEBUG');
-                updateStatus(
-                    message.message, 
-                    message.type || 'info', 
-                    message.duration || 3000
-                );
-                // Remetentes como automation.js e o proxy do background para log-sys.js podem ter callbacks.
-                sendResponse({ success: true, status_updated_by_action_updateStatus: true });
-                return false; // Resposta enviada, não precisa manter a porta aberta para este caso.
-            } 
+                // Só processa se estiver no contexto da extensão
+                if (isExtensionContext()) {
+                    logFunction(`Handler 'updateStatus' ativado por mensagem: ${message.message}`, 'DEBUG');
+                    updateStatus(
+                        message.message,
+                        message.type || 'info',
+                        message.duration || 3000
+                    );
+                    sendResponse({ success: true, status_updated_by_action_updateStatus: true });
+                } else {
+                    // Se não estiver no contexto da extensão, apenas responde com sucesso
+                    sendResponse({ success: true, status_ignored_not_extension_context: true });
+                }
+                return true;
+            }
+
             // Adicione aqui outros 'else if (message.action === 'ALGUMA_OUTRA_ACTION')' que index.js deva tratar
             // e para os quais deva enviar uma resposta.
             // Se algum desses handlers for assíncrono, ele deve retornar true e chamar sendResponse mais tarde.

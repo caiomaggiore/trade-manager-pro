@@ -41,63 +41,15 @@ function graphAddLog(message, level = 'INFO', source = 'analyze-graph.js') {
     logFromAnalyzer(message, level); 
 }
 
-/**
- * Atualiza o status na interface
- * @param {string} message - Mensagem de status
- * @param {string} type - Tipo de status: 'info', 'success', 'warning', 'error'
- * @param {number} duration - Duração em ms (0 para não desaparecer)
- */
-function graphUpdateStatus(message, type = 'info', duration = 3000) {
-    // Log a mensagem de status
-    graphAddLog(message, type.toUpperCase(), 'STATUS');
-    
-    try {
-        // Verificar se o contexto da extensão ainda é válido
-        if (chrome && chrome.runtime && chrome.runtime.id) {
-            // Enviar para o background para atualizar a UI
-            chrome.runtime.sendMessage({ 
-                action: 'UPDATE_STATUS',
-                message,
-                type,
-                duration
-            }, response => {
-                // Silenciar erros do callback
-                if (chrome.runtime.lastError) {
-                    console.log(`Erro ao atualizar status (ignorando): ${chrome.runtime.lastError.message}`);
-                    
-                    // Tentativa de atualizar diretamente o DOM como fallback
-                    try {
-                        const statusElement = document.getElementById('status-processo');
-                        if (statusElement) {
-                            statusElement.textContent = message;
-                            statusElement.className = `status-${type}`;
-                        }
-                    } catch (domError) {
-                        // Silenciar erros de manipulação do DOM
-                    }
-                }
-            });
-        } else {
-            // Tentar atualizar diretamente o DOM como fallback
-            const statusElement = document.getElementById('status-processo');
-            if (statusElement) {
-                statusElement.textContent = message;
-                statusElement.className = `status-${type}`;
-            }
-        }
-    } catch (error) {
-        console.log(`Não foi possível atualizar status. Continuando execução...`);
-        
-        // Tentar atualizar diretamente o DOM como último recurso
-        try {
-            const statusElement = document.getElementById('status-processo');
-            if (statusElement) {
-                statusElement.textContent = message;
-                statusElement.className = `status-${type}`;
-            }
-        } catch (domError) {
-            // Silenciar erros de manipulação do DOM
-        }
+// Função padronizada para enviar status para o index
+function toUpdateStatus(message, type = 'info', duration = 3000) {
+    if (chrome && chrome.runtime && chrome.runtime.id) {
+        chrome.runtime.sendMessage({
+            action: 'updateStatus',
+            message: message,
+            type: type,
+            duration: duration
+        });
     }
 }
 
