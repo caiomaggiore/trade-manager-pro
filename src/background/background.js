@@ -157,6 +157,17 @@ const executeAnalysis = (tabId, sendResponse, metadata = {}) => {
 };
 
 // ================== EVENT LISTENERS ==================
+// Função para formatar o timestamp no padrão desejado
+function formatTimestamp(date = new Date()) {
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const seconds = date.getSeconds().toString().padStart(2, '0');
+    return `[${day}/${month}/${year}, ${hours}:${minutes}:${seconds}]`;
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Remover o log que causa poluição no console
     // console.log('Mensagem recebida no background:', message);
@@ -165,34 +176,47 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'addLog') {
         try {
             const logMessage = message.logMessage || "Log sem mensagem";
-            const logLevel = message.level || "INFO";
-            const logSource = message.source || "UNKNOWN_SOURCE";
-            const newLogEntry = {
-                timestamp: new Date().toISOString(),
+            const logLevel = message.logLevel || message.level || "INFO";
+            const logSource = message.logSource || message.source || "UNKNOWN_SOURCE";
+            const now = new Date();
+            const formattedTimestamp = formatTimestamp(now);
+            const logEntry = {
+                message: logMessage,
                 level: logLevel,
                 source: logSource,
-                message: logMessage
+                timestampFormatted: formattedTimestamp
             };
-
             chrome.storage.local.get(['systemLogs'], function(result) {
                 if (chrome.runtime.lastError) {
                     console.error(`[background.js] Erro ao ler systemLogs do storage: ${chrome.runtime.lastError.message}`);
                     return;
                 }
                 let logs = result.systemLogs || [];
-                logs.push(newLogEntry);
-
+                logs.push(logEntry);
                 // Limitar o número de logs armazenados (ex: 1000)
                 const MAX_LOGS = 1000;
                 if (logs.length > MAX_LOGS) {
                     logs = logs.slice(logs.length - MAX_LOGS);
                 }
-
                 chrome.storage.local.set({ systemLogs: logs }, function() {
                     if (chrome.runtime.lastError) {
                         console.error(`[background.js] Erro ao salvar systemLogs no storage: ${chrome.runtime.lastError.message}`);
                     }
                 });
+            });
+            // Broadcast para todas as abas (logs em tempo real)
+            chrome.tabs.query({}, (tabs) => {
+                for (const tab of tabs) {
+                    // Só envie para abas que estão na página de logs da extensão
+                    if (tab.url && tab.url.includes('logs.html')) {
+                        chrome.tabs.sendMessage(tab.id, { action: 'newLog', log: logEntry }, () => {
+                            // Silenciar o erro se não houver receiver
+                            if (chrome.runtime.lastError) {
+                                // Apenas ignore, não faça nada
+                            }
+                        });
+                    }
+                }
             });
         } catch (e) {
             console.error(`[background.js] Exceção no handler addLog: ${e.message}`);

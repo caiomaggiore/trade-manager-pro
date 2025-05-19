@@ -204,20 +204,17 @@ const LogSystem = {
                         return null;
                     }
                     
-                    // Criar um timestamp baseado na data armazenada ou usar a atual como fallback
-                    const logDate = log.date ? new Date(log.date) : new Date();
-                    
+                    // Usar apenas o campo timestampFormatted salvo
                     return {
                         message: message,
                         level: log.level || 'INFO',
                         source: log.source || 'SYSTEM',
-                        timestamp: logDate,
-                        timestampFormatted: formatTimestamp(logDate)
+                        timestampFormatted: log.timestampFormatted || ''
                     };
                 }).filter(log => log !== null); // Remover logs inválidos
                 
                 // Ordenar logs cronologicamente
-                this.logs.sort((a, b) => a.timestamp - b.timestamp);
+                this.logs.sort((a, b) => a.timestampFormatted.localeCompare(b.timestampFormatted));
                 
                 // Limitar ao número máximo de logs
                 if (this.logs.length > this.maxLogs) {
@@ -243,7 +240,7 @@ const LogSystem = {
             
             // Se já existe um log com esta chave, só mantém o mais recente
             if (!uniqueMap.has(key) || 
-                (uniqueMap.get(key).timestamp < (log.timestamp || 0))) {
+                (uniqueMap.get(key).timestampFormatted < (log.timestampFormatted || ''))) {
                 uniqueMap.set(key, log);
             }
         });
@@ -260,50 +257,26 @@ const LogSystem = {
     
     // Adicionar log ao sistema
     addLog(message, level = 'INFO', source = 'SYSTEM') {
-        // Validar entrada
-        if (!message) return false; // Não registrar logs vazios ou undefined
-        
-        // Normalizar parâmetros
+        if (!message) return false;
         const normalizedLevel = (level || 'INFO').toUpperCase();
         const normalizedSource = source || 'SYSTEM';
-        
-        // Verificar duplicidade
-        if (this.isDuplicateLog(message, normalizedLevel, normalizedSource)) {
-            return false;
-        }
-        
-        // Criar dados do log
+        // Sempre gerar o timestamp formatado no momento do registro
         const now = new Date();
         const formattedTimestamp = formatTimestamp(now);
-        
-        // Objeto de log interno
         const logEntry = {
             message: message,
             level: normalizedLevel,
             source: normalizedSource,
-            timestamp: now,
             timestampFormatted: formattedTimestamp
         };
-        
-        // Adicionar ao array de logs
         this.logs.push(logEntry);
-        
-        // Limitar o número de logs armazenados
         if (this.logs.length > this.maxLogs) {
             this.logs.shift();
         }
-        
-        // Salvar no storage para persistência
         this.saveLogToStorage(logEntry);
-        
-        // Atualizar a UI se o container existir
-        this.updateUI();
-        
-        // Log no console apenas para erros
-        if (normalizedLevel === 'ERROR') {
-            console.error(`[${normalizedLevel}][${normalizedSource}] ${message}`);
+        if (this.container && window.IS_LOG_PAGE) {
+            this.updateUI();
         }
-        
         return true;
     },
     
@@ -356,12 +329,10 @@ const LogSystem = {
     updateUI() {
         if (!this.container) return;
         
-        // Limpar o container mantendo apenas a mensagem de carregamento
-        const loadingMsg = document.querySelector('.log-entry:first-child');
+        // Limpar o container
         this.container.innerHTML = '';
         
         if (this.logs.length === 0) {
-            // Mostrar mensagem "Nenhum log encontrado"
             const emptyMsg = document.createElement('div');
             emptyMsg.className = 'log-entry log-info';
             emptyMsg.textContent = 'Nenhum log encontrado.';
@@ -371,19 +342,12 @@ const LogSystem = {
         
         // Adicionar cada log ao container
         this.logs.forEach(log => {
-            // Criar elemento do log
             const logElement = document.createElement('div');
             logElement.className = `log-entry log-${log.level.toLowerCase()}`;
             
-            // Adicionar atributos para filtragem futura
-            logElement.setAttribute('data-level', log.level);
-            logElement.setAttribute('data-source', log.source);
-            
-            // Construir o texto do log no novo formato
-            // log.timestampFormatted já inclui os colchetes: [DD/MM/AAAA, HH:MM:SS]
+            // Usar o timestamp formatado original do log
             logElement.textContent = `${log.timestampFormatted} [ ${log.source} ] - ${formatLogLevel(log.level)} - ${log.message}`;
             
-            // Adicionar ao container
             this.container.appendChild(logElement);
         });
         
@@ -826,4 +790,18 @@ function shouldIgnoreMessage(message) {
     return IGNORED_MESSAGES.some(ignored => 
         message.includes(ignored) || message === ignored
     );
+}
+
+// Listener para logs em tempo real vindos do background
+if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.action === 'newLog' && request.log) {
+            if (window.LogSystem && window.LogSystem.logs) {
+                window.LogSystem.logs.push(request.log);
+                if (window.IS_LOG_PAGE) {
+                    window.LogSystem.updateUI();
+                }
+            }
+        }
+    });
 } 

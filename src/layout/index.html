@@ -175,6 +175,9 @@
                  <button id="cancel-action" class="btn secondary">
                      <i class="fas fa-times"></i> Cancelar
                  </button>
+                 <button id="wait-action" class="btn wait-btn" style="display: none; background-color: #ff9800;">
+                     <i class="fas fa-clock"></i> <span id="wait-text">Aguardar</span>
+                 </button>
              </div>
          </div>
      </div>
@@ -225,6 +228,27 @@
     
     #check-gale-status {
         background-color: #339af0;
+    }
+    
+    /* Estilos para o botão WAIT */
+    .wait-btn {
+        background-color: #ff9800;
+        color: white;
+        font-weight: bold;
+        transition: background-color 0.3s;
+    }
+    
+    .wait-btn:hover {
+        background-color: #f57c00;
+    }
+    
+    /* Estilos para a ação WAIT no modal */
+    .result-action.wait {
+        background-color: #ff9800;
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-weight: bold;
     }
    </style>
 </body>
