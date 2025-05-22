@@ -27,6 +27,12 @@ function toUpdateStatus(message, type = 'info', duration = 5000) {
     }
 }
 
+// Função para obter o payout atual (exemplo, ajuste conforme sua lógica real)
+function getCurrentPayout() {
+    // Substitua por sua lógica real de obtenção do payout
+    return window.currentPayout || 100; // Exemplo: valor fictício
+}
+
 (function() {
     sendToLogSystem('Módulo de Automação INICIANDO.', 'DEBUG');
 
@@ -110,6 +116,21 @@ function toUpdateStatus(message, type = 'info', duration = 5000) {
                  toUpdateStatus(errorMsg, 'error');
                  return;
              }
+
+            const minPayout = parseFloat(config.minPayout) || 80;
+            const currentPayout = getCurrentPayout();
+            if (currentPayout < minPayout) {
+                sendToLogSystem(`Payout atual (${currentPayout}%) está abaixo do mínimo configurado (${minPayout}%). Forçando WAIT.`, 'WARN');
+                toUpdateStatus(`Aguardando payout subir para o mínimo configurado (${minPayout}%).`, 'warn');
+                // Chamar modal de análise forçado com ação WAIT e mensagem personalizada
+                if (chrome && chrome.runtime && chrome.runtime.id) {
+                    chrome.runtime.sendMessage({
+                        action: 'forceWaitModal',
+                        reason: `O payout atual (${currentPayout}%) está abaixo do mínimo configurado (${minPayout}%). Aguarde ou troque de moeda.`
+                    });
+                }
+                return;
+            }
 
             if (currentProfit < dailyProfitTarget) {
                 const conditionMsg = `Automação: Condição atendida (${currentProfit} < ${dailyProfitTarget}). Iniciando análise...`;

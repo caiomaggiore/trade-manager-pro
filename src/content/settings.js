@@ -10,7 +10,8 @@ const settingsUI = {
     tradeValue: document.getElementById('trade-value'),
     tradeTime: document.getElementById('trade-time'),
     toggleTestMode: document.getElementById('toggleTestMode'),
-    toggleDevMode: document.getElementById('toggleDevMode')
+    toggleDevMode: document.getElementById('toggleDevMode'),
+    minPayout: document.getElementById('min-payout-select')
 };
 
 // Função simplificada para enviar logs ao sistema centralizado
@@ -58,7 +59,8 @@ const loadSettingsToUI = (config) => {
                     stopLoss: 0,
                     automation: false,
                     value: 10,
-                    period: 5
+                    period: 5,
+                    minPayout: 80
                 });
             });
         return;
@@ -82,6 +84,27 @@ const applySettingsToUI = (config) => {
     settingsUI.toggleTestMode.checked = config.testMode || false;
     settingsUI.toggleDevMode.checked = config.devMode || false;
 
+    // Configurar o payout mínimo (verificando se o elemento existe)
+    if (settingsUI.minPayout) {
+        // Obter o valor do payout mínimo (com valor padrão 80%)
+        const payoutValue = config.minPayout || 80;
+        
+        // Tentar selecionar o valor exato
+        if (Array.from(settingsUI.minPayout.options).some(option => parseInt(option.value) === payoutValue)) {
+            settingsUI.minPayout.value = payoutValue.toString();
+        } else {
+            // Se não encontrar o valor exato, encontrar o mais próximo
+            const options = Array.from(settingsUI.minPayout.options);
+            const optionValues = options.map(option => parseInt(option.value));
+            const closestValue = optionValues.reduce((prev, curr) => {
+                return (Math.abs(curr - payoutValue) < Math.abs(prev - payoutValue) ? curr : prev);
+            });
+            settingsUI.minPayout.value = closestValue.toString();
+        }
+        
+        logFromSettings(`Payout mínimo configurado na UI: ${settingsUI.minPayout.value}%`, 'DEBUG');
+    }
+
     // Atualiza o estado do select de gale
     settingsUI.galeSelect.disabled = !settingsUI.toggleGale.checked;
     
@@ -101,8 +124,12 @@ const getSettingsFromUI = () => {
         value: parseInt(settingsUI.tradeValue.value) || 0,
         period: parseInt(settingsUI.tradeTime.value) || 0,
         testMode: settingsUI.toggleTestMode.checked,
-        devMode: settingsUI.toggleDevMode.checked
+        devMode: settingsUI.toggleDevMode.checked,
+        minPayout: settingsUI.minPayout ? parseInt(settingsUI.minPayout.value) || 80 : 80
     };
+    
+    // Log detalhado para depuração
+    logFromSettings(`Payout mínimo configurado: ${config.minPayout}%`, 'INFO');
     logFromSettings('Configurações coletadas da UI: ' + JSON.stringify(config), 'DEBUG');
     return config;
 };

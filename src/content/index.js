@@ -141,47 +141,152 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
 
     // ================== FUNÇÕES DE ANÁLISE ==================
     /**
-     * Executa a análise do gráfico
+     * Executa a análise do gráfico atual
+     * @returns {Promise<Object>} Resultado da análise
      */
     const runAnalysis = async () => {
         try {
             updateStatus('Iniciando análise...', 'info');
             addLog('Iniciando análise do gráfico...');
             
-            // Verificar se o AnalyzeGraph está disponível
-            if (!window.TradeManager?.AnalyzeGraph) {
-                throw new Error('Módulo de análise não está disponível');
-            }
-
-            // Captura a tela
-            const response = await chrome.runtime.sendMessage({ 
-                action: 'initiateCapture',
-                actionType: 'analyze',
-                requireProcessing: true,
-                iframeWidth: 480
-            });
-
-            if (response.error) {
-                throw new Error(response.error);
-            }
-
-            addLog('Captura de tela concluída, processando imagem...');
-
-            // Processa a imagem e analisa
-            const result = await window.TradeManager.AnalyzeGraph.processImage(response.dataUrl);
+            // ETAPA 1: Capturar a tela
+            addLog('Iniciando captura de tela para análise...', 'INFO');
+            let dataUrl;
             
-            if (!result.success) {
-                throw new Error(result.error);
+            // Verificar se o módulo de captura está disponível
+            if (!window.CaptureScreen || typeof window.CaptureScreen.captureForAnalysis !== 'function') {
+                addLog('Módulo de captura não disponível, tentando carregar dinamicamente', 'WARN');
+                
+                // Tentar carregar o módulo dinamicamente
+                try {
+                    const script = document.createElement('script');
+                    script.src = '../content/capture-screen.js';
+                    
+                    await new Promise((resolve, reject) => {
+                        script.onload = () => {
+                            addLog('Módulo de captura carregado dinamicamente', 'SUCCESS');
+                            resolve();
+                        };
+                        script.onerror = (err) => {
+                            addLog(`Erro ao carregar módulo de captura: ${err}`, 'ERROR');
+                            reject(new Error('Falha ao carregar módulo de captura'));
+                        };
+                        document.head.appendChild(script);
+                    });
+                    
+                    // Verificar se o carregamento foi bem-sucedido
+                    if (!window.CaptureScreen || typeof window.CaptureScreen.captureForAnalysis !== 'function') {
+                        throw new Error('Módulo de captura carregado, mas função captureForAnalysis não disponível');
+                    }
+                } catch (loadError) {
+                    throw new Error(`Não foi possível carregar o módulo de captura: ${loadError.message}`);
+                }
             }
-
-            // Atualiza a interface com os resultados
-            updateStatus(`Análise concluída: ${result.results.action}`, 'success');
-            addLog(`Análise: ${result.results.action} - Confiança: ${result.results.trust}%`);
             
-            // Mostra o modal com os resultados
-            showAnalysisModal(result.results);
+            // Agora usar o módulo de captura
+            try {
+                dataUrl = await window.CaptureScreen.captureForAnalysis();
+                addLog('Captura de tela para análise concluída com sucesso', 'SUCCESS');
+            } catch (captureError) {
+                throw new Error(`Falha ao capturar tela para análise: ${captureError.message}`);
+            }
             
-            return result;
+            // Verificar se obtivemos uma captura válida
+            if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image')) {
+                throw new Error('Dados de imagem inválidos ou ausentes');
+            }
+            
+            // Armazenar a captura para uso futuro
+            window.lastCapturedImage = dataUrl;
+            window.lastCapturedImageTimestamp = Date.now();
+            
+            // ETAPA 2: Processar a análise
+            addLog('Iniciando etapa de processamento de análise...', 'INFO');
+            
+            try {
+                // Obter configurações
+                const settings = window.StateManager ? window.StateManager.getConfig() || {} : {};
+                
+                // Enviar análise usando o analyze-graph.js diretamente se disponível
+                if (window.AnalyzeGraph && typeof window.AnalyzeGraph.analyzeImage === 'function') {
+                    addLog('Usando módulo AnalyzeGraph para processamento...', 'INFO');
+                    
+                    const analysisResult = await window.AnalyzeGraph.analyzeImage(dataUrl, settings);
+                    
+                    // Formatar resultado
+                    const formattedResult = {
+                        success: true,
+                        results: analysisResult
+                    };
+                    
+                    // Registrar sucesso
+                    addLog(`Análise concluída com sucesso: ${analysisResult.action}`, 'SUCCESS');
+                    updateStatus(`Análise: ${analysisResult.action}`, 'success');
+                    
+                    // Mostrar modal
+                    if (typeof showAnalysisModal === 'function') {
+                        showAnalysisModal(analysisResult);
+                    } else {
+                        addLog('Função showAnalysisModal não disponível', 'WARN');
+                    }
+                    
+                    return formattedResult;
+                } else {
+                    // Se o módulo não estiver disponível, tentar carregar
+                    addLog('Módulo AnalyzeGraph não disponível, tentando carregar dinamicamente', 'WARN');
+                    
+                    try {
+                        // Tentar carregar o módulo
+                        const analyzeScript = document.createElement('script');
+                        analyzeScript.src = '../content/analyze-graph.js';
+                        
+                        await new Promise((resolve, reject) => {
+                            analyzeScript.onload = () => {
+                                addLog('Módulo AnalyzeGraph carregado dinamicamente', 'SUCCESS');
+                                resolve();
+                            };
+                            analyzeScript.onerror = (err) => {
+                                addLog(`Erro ao carregar módulo de análise: ${err}`, 'ERROR');
+                                reject(new Error('Falha ao carregar módulo de análise'));
+                            };
+                            document.head.appendChild(analyzeScript);
+                        });
+                        
+                        // Verificar se o carregamento foi bem-sucedido
+                        if (!window.AnalyzeGraph || typeof window.AnalyzeGraph.analyzeImage !== 'function') {
+                            throw new Error('Módulo de análise carregado, mas função analyzeImage não disponível');
+                        }
+                        
+                        // Usar o módulo recém-carregado
+                        const analysisResult = await window.AnalyzeGraph.analyzeImage(dataUrl, settings);
+                        
+                        // Formatar resultado
+                        const formattedResult = {
+                            success: true,
+                            results: analysisResult
+                        };
+                        
+                        // Registrar sucesso
+                        addLog(`Análise concluída com sucesso: ${analysisResult.action}`, 'SUCCESS');
+                        updateStatus(`Análise: ${analysisResult.action}`, 'success');
+                        
+                        // Mostrar modal
+                        if (typeof showAnalysisModal === 'function') {
+                            showAnalysisModal(analysisResult);
+                        } else {
+                            addLog('Função showAnalysisModal não disponível', 'WARN');
+                        }
+                        
+                        return formattedResult;
+                    } catch (analyzeLoadError) {
+                        throw new Error(`Não foi possível usar o módulo de análise: ${analyzeLoadError.message}`);
+                    }
+                }
+            } catch (analysisError) {
+                addLog(`Erro no processamento da análise: ${analysisError.message}`, 'ERROR');
+                updateStatus('Erro ao analisar o gráfico', 'error');
+                throw analysisError;
+            }
         } catch (error) {
             addLog(`Erro na análise: ${error.message}`, 'ERROR');
             updateStatus('Erro ao realizar análise', 'error');
@@ -204,450 +309,6 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             updateStatus('Erro ao executar análise', 'error');
         }
     };
-
-    // Função para mostrar o modal de resultados
-    function showAnalysisModal(result) {
-        // Variável global para armazenar o resultado atual da análise
-        window.currentAnalysisResult = result;
-        
-        // Log da análise recebida
-        addLog(`Análise concluída: ${result.action} (Confiança: ${result.trust}%)`, 'INFO', 'analysis');
-        
-        const modal = document.getElementById('analysis-modal');
-        const actionElement = document.getElementById('result-action');
-        const confidenceElement = document.getElementById('result-confidence');
-        const reasonElement = document.getElementById('result-reason');
-        const periodElement = document.getElementById('result-period');
-        const valueElement = document.getElementById('result-value');
-        const testModeWarningElement = document.getElementById('test-mode-warning');
-        const countdownElement = document.getElementById('countdown');
-        const closeButton = document.getElementById('close-modal');
-        const infoIcon = document.getElementById('info-icon');
-        const executeButton = document.getElementById('execute-action');
-        const cancelButton = document.getElementById('cancel-action');
-        const waitButton = document.getElementById('wait-action');
-        const waitTextElement = document.getElementById('wait-text');
-        
-        // Função para cancelar a contagem de espera
-        const cancelWaitCountdown = () => {
-            if (waitCountdownInterval) {
-                clearInterval(waitCountdownInterval);
-                waitCountdownInterval = null;
-                updateStatus('Contagem de espera cancelada pelo usuário', 'info', 3000);
-                addLog('Contagem de espera para nova análise cancelada pelo usuário', 'INFO', 'automation');
-                
-                // Remover o botão de cancelamento
-                const cancelWaitBtn = document.getElementById('cancel-wait-btn');
-                if (cancelWaitBtn) {
-                    cancelWaitBtn.remove();
-                }
-            }
-        };
-        
-        // Função para criar um botão de cancelamento da espera
-        const createCancelWaitButton = () => {
-            // Verificar se já existe um botão
-            if (document.getElementById('cancel-wait-btn')) {
-                return;
-            }
-            
-            // Criar botão flutuante para cancelar a contagem
-            const cancelWaitBtn = document.createElement('button');
-            cancelWaitBtn.id = 'cancel-wait-btn';
-            cancelWaitBtn.className = 'floating-cancel-btn';
-            cancelWaitBtn.innerHTML = '<i class="fas fa-times"></i> Cancelar Espera';
-            cancelWaitBtn.style.position = 'fixed';
-            cancelWaitBtn.style.bottom = '20px';
-            cancelWaitBtn.style.right = '20px';
-            cancelWaitBtn.style.padding = '10px 15px';
-            cancelWaitBtn.style.backgroundColor = '#f44336';
-            cancelWaitBtn.style.color = 'white';
-            cancelWaitBtn.style.border = 'none';
-            cancelWaitBtn.style.borderRadius = '4px';
-            cancelWaitBtn.style.cursor = 'pointer';
-            cancelWaitBtn.style.zIndex = '1000';
-            cancelWaitBtn.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
-            
-            // Adicionar evento ao botão
-            cancelWaitBtn.addEventListener('click', cancelWaitCountdown);
-            
-            // Adicionar à página
-            document.body.appendChild(cancelWaitBtn);
-        };
-
-        // Atualiza o conteúdo do modal
-        actionElement.textContent = result.action;
-        actionElement.className = `result-action ${result.action.toLowerCase()}`;
-        confidenceElement.textContent = `${result.trust}%`;
-        reasonElement.textContent = result.reason;
-        periodElement.textContent = result.period || 'Não especificado';
-        valueElement.textContent = result.entry || 'Não especificado';
-        
-        // Mostrar aviso de modo de teste se aplicável
-        if (testModeWarningElement) {
-            if (result.isTestMode) {
-                testModeWarningElement.style.display = 'block';
-                addLog(`Modo de teste ativado para esta análise`, 'WARN', 'analysis');
-            } else {
-                testModeWarningElement.style.display = 'none';
-            }
-        }
-
-        // Verificar o status de automação para decidir o comportamento
-        let isAutomationActive = false;
-        
-        // Verificar o estado da automação diretamente do StateManager
-        if (window.StateManager && typeof window.StateManager.getConfig === 'function') {
-            const config = window.StateManager.getConfig();
-            isAutomationActive = config && config.automation === true;
-        } else {
-            // Fallback: verificar variável global
-            isAutomationActive = isAutomationRunning;
-        }
-        
-        addLog(`Status de automação inicial: ${isAutomationActive ? 'Ativado' : 'Desativado'}`, 'DEBUG', 'automation');
-        
-        // Configurar visibilidade dos botões baseado na ação
-        if (result.action === 'WAIT') {
-            // Para ação WAIT, mostrar o botão de aguardar e esconder os outros
-            executeButton.style.display = 'none';
-            waitButton.style.display = 'inline-block';
-            
-            // Manter o botão de cancelar visível
-            cancelButton.style.display = 'inline-block';
-            
-            addLog(`Ação WAIT detectada, configurando modal para modo de espera`, 'INFO', 'ui');
-        } else {
-            // Para ações BUY ou SELL, mostrar o botão de executar e esconder o de aguardar
-            executeButton.style.display = 'inline-block';
-            waitButton.style.display = 'none';
-            cancelButton.style.display = 'inline-block';
-        }
-
-        // Mostra o modal
-        modal.style.display = 'block';
-        addLog(`Modal de análise aberto: ${result.action}`, 'INFO', 'ui');
-
-        // Configura o countdown
-        let countdown = 15;
-        let countdownInterval = null;
-        let autoExecutionEnabled = true; // Flag para controlar a execução automática
-        
-        // Função para aguardar e executar nova análise (usado para WAIT)
-        let waitCountdown = 30;
-        let waitCountdownInterval = null;
-        
-        // Definir a função que será usada também no botão Aguardar
-        let waitLogSent = false; // Novo controle para log único
-        const waitForNextAnalysis = () => {
-            // Atualizar status para mostrar a contagem
-            updateStatus(`Aguardando próxima análise: ${waitCountdown}s...`, 'info', 0);
-            // Garantir que o botão de cancelamento exista
-            createCancelWaitButton();
-            // Registrar no log apenas UMA vez
-            if (!waitLogSent) {
-                addLog('Aguardando tempo para nova análise!', 'INFO', 'automation');
-                waitLogSent = true;
-            }
-            if (waitCountdown <= 0) {
-                clearInterval(waitCountdownInterval);
-                waitCountdownInterval = null;
-                updateStatus('Iniciando nova análise...', 'info');
-                // Remover o botão de cancelamento
-                const cancelWaitBtn = document.getElementById('cancel-wait-btn');
-                if (cancelWaitBtn) {
-                    cancelWaitBtn.remove();
-                }
-                // Verificar novamente o status da automação antes de iniciar a análise
-                let automationStillEnabled = false;
-                if (window.StateManager && typeof window.StateManager.getConfig === 'function') {
-                    const config = window.StateManager.getConfig();
-                    automationStillEnabled = config && config.automation === true;
-                } else {
-                    automationStillEnabled = isAutomationRunning;
-                }
-                if (!automationStillEnabled) {
-                    addLog('Automação foi desativada durante a contagem, cancelando nova análise', 'WARN', 'automation');
-                    updateStatus('Análise cancelada - Automação desativada', 'warn', 3000);
-                    return;
-                }
-                setTimeout(() => {
-                    runAnalysis()
-                        .then(result => {
-                            addLog(`Nova análise realizada com sucesso após espera`, 'SUCCESS', 'automation');
-                        })
-                        .catch(error => {
-                            addLog(`Erro ao realizar nova análise após espera: ${error.message}`, 'ERROR', 'automation');
-                            updateStatus(`Erro na análise: ${error.message}`, 'error', 5000);
-                        });
-                }, 500);
-            }
-            waitCountdown--;
-        };
-
-        const updateCountdown = () => {
-            countdownElement.textContent = `Janela fecha em ${countdown}s`;
-            if (countdown <= 0) {
-                clearInterval(countdownInterval);
-                modal.style.display = 'none';
-                
-                // Executa a operação automaticamente se a execução automática estiver habilitada
-                if (autoExecutionEnabled) {
-                    addLog(`Executando operação automaticamente após fechamento do modal`, 'INFO', 'trade-execution');
-                    // Se for WAIT e automação estiver ativa, iniciar o contador de espera
-                    if (result.action === 'WAIT') {
-                        // Consultar o estado real da automação do StateManager
-                        let automationEnabled = false;
-                        
-                        // Verificar o estado da automação diretamente do StateManager
-                        if (window.StateManager && typeof window.StateManager.getConfig === 'function') {
-                            const config = window.StateManager.getConfig();
-                            automationEnabled = config && config.automation === true;
-                        } else {
-                            // Fallback: verificar variável global
-                            automationEnabled = isAutomationRunning;
-                        }
-                        
-                        addLog(`Status de automação verificado: ${automationEnabled ? 'Ativado' : 'Desativado'}`, 'INFO', 'automation');
-                        
-                        if (automationEnabled) {
-                            addLog(`Iniciando contador de espera para nova análise (${waitCountdown}s)`, 'INFO', 'automation');
-                            waitCountdownInterval = setInterval(waitForNextAnalysis, 1000);
-                            waitForNextAnalysis(); // Chamar imediatamente para atualizar o status
-                        } else {
-                            // WAIT sem automação ativa - apenas fechar o modal
-                            addLog(`Ação WAIT ignorada, automação não está ativa`, 'INFO', 'automation');
-                            updateStatus('Análise aguardando - Automação desativada', 'info', 3000);
-                        }
-                    } else if (result.action !== 'WAIT') {
-                        // Para BUY ou SELL, executar a operação normal
-                        executeOperation(result.action);
-                    }
-                }
-            }
-            countdown--;
-        };
-
-        countdownInterval = setInterval(updateCountdown, 1000);
-
-        // Função para executar a operação com base na ação recomendada
-        const executeOperation = (action) => {
-            try {
-                // Verificar se a extensão ainda está válida
-                const isExtensionContextValid = () => {
-                    try {
-                        return chrome.runtime && chrome.runtime.id;
-                    } catch (e) {
-                        return false;
-                    }
-                };
-                
-                if (!isExtensionContextValid()) {
-                    logAndUpdateStatus('Contexto da extensão inválido. Recarregue a página.', 'ERROR', 'trade-execution', true);
-                    
-                    // Se o contexto não for válido, armazenar a operação para execução posterior
-                    try {
-                        const pendingOperations = JSON.parse(localStorage.getItem('pendingOperations') || '[]');
-                        pendingOperations.push({
-                            action: action,
-                            timestamp: new Date().toISOString(),
-                            result: result ? {
-                                trust: result.trust,
-                                period: result.period,
-                                entry: result.entry
-                            } : {}
-                        });
-                        localStorage.setItem('pendingOperations', JSON.stringify(pendingOperations));
-                        logAndUpdateStatus('Operação armazenada localmente para execução posterior', 'WARN', 'trade-execution', true);
-                    } catch (storageError) {
-                        console.error('Erro ao armazenar operação localmente:', storageError);
-                    }
-                    
-                    return;
-                }
-                
-                logAndUpdateStatus(`Executando operação ${action}...`, 'INFO', 'trade-execution', true);
-                
-                // Obter configurações atuais da janela ou usar valores padrão
-                const tradeSettings = window.currentSettings || {};
-                
-                // Usar o padrão de callback para evitar problemas de comunicação
-                try {
-                    chrome.runtime.sendMessage({ 
-                        action: 'EXECUTE_TRADE_ACTION', 
-                        tradeAction: action
-                    }, (response) => {
-                        // Verificar erros na mensagem
-                        if (chrome.runtime.lastError) {
-                            const errorMsg = chrome.runtime.lastError.message;
-                            logAndUpdateStatus(`Falha na comunicação: ${errorMsg}`, 'ERROR', 'trade-execution', true);
-                            
-                            // Se o erro for de contexto inválido, sugerir recarga
-                            if (errorMsg.includes('Extension context invalidated') || !isExtensionContextValid()) {
-                                logAndUpdateStatus(`Erro de contexto da extensão. Recarregue a página.`, 'ERROR', 'trade-execution', true, 10000);
-                            }
-                            return;
-                        }
-                        
-                        // Processar resposta
-                        if (response && response.success) {
-                            logAndUpdateStatus(`Operação ${action} executada com sucesso`, 'SUCCESS', 'trade-execution', true);
-                            
-                            // Adicionar registro detalhado da operação
-                            const timestamp = new Date().toLocaleString('pt-BR');
-                            const tradeValue = tradeSettings.tradeValue || 'N/A';
-                            const trustValue = result ? result.trust : 'N/A';
-                            logAndUpdateStatus(`OPERAÇÃO - ${action} - Confiança: ${trustValue}% - Valor: ${tradeValue} (Evento às ${new Date().toLocaleTimeString('pt-BR')})`, 'SUCCESS', 'trade-execution', false);
-                        } else {
-                            const errorMsg = response ? response.error : 'Sem resposta do background';
-                            logAndUpdateStatus(`Falha na execução: ${errorMsg}`, 'ERROR', 'trade-execution', true);
-                        }
-                    });
-                } catch (sendError) {
-                    logAndUpdateStatus(`Erro ao enviar comando: ${sendError.message}`, 'ERROR', 'trade-execution', true);
-                    
-                    // Verificar novamente o contexto
-                    if (!isExtensionContextValid()) {
-                        logAndUpdateStatus('Contexto da extensão perdido durante a operação. Recarregue a página.', 'ERROR', 'trade-execution', true);
-                    }
-                    
-                    // Tentar armazenar localmente para execução posterior
-                    try {
-                        const pendingOperations = JSON.parse(localStorage.getItem('pendingOperations') || '[]');
-                        pendingOperations.push({
-                            action: action,
-                            timestamp: new Date().toISOString(),
-                            result: result ? {
-                                trust: result.trust,
-                                period: result.period,
-                                entry: result.entry
-                            } : {}
-                        });
-                        localStorage.setItem('pendingOperations', JSON.stringify(pendingOperations));
-                        logAndUpdateStatus('Operação armazenada localmente para execução posterior', 'WARN', 'trade-execution', true);
-                    } catch (storageError) {
-                        console.error('Erro ao armazenar operação localmente:', storageError);
-                    }
-                }
-            } catch (error) {
-                logAndUpdateStatus(`Erro ao enviar comando de operação: ${error.message}`, 'ERROR', 'trade-execution', true);
-            }
-        };
-
-        // Evento para executar a operação manualmente
-        executeButton.onclick = () => {
-            clearInterval(countdownInterval);
-            modal.style.display = 'none';
-            autoExecutionEnabled = false; // Desativa a execução automática
-            executeOperation(result.action); // Executa a operação com a ação atual
-            logAndUpdateStatus('Operação executada manualmente pelo usuário', 'INFO', 'trade-execution', true);
-        };
-        
-        // Evento para aguardar (botão WAIT)
-        waitButton.onclick = () => {
-            clearInterval(countdownInterval);
-            modal.style.display = 'none';
-            autoExecutionEnabled = false; // Desativa a execução automática
-            
-            // Consultar o estado real da automação do StateManager
-            let automationEnabled = false;
-            
-            // Verificar o estado da automação diretamente do StateManager
-            if (window.StateManager && typeof window.StateManager.getConfig === 'function') {
-                const config = window.StateManager.getConfig();
-                automationEnabled = config && config.automation === true;
-            } else {
-                // Fallback: verificar variável global
-                automationEnabled = isAutomationRunning;
-            }
-            
-            addLog(`Status de automação verificado: ${automationEnabled ? 'Ativado' : 'Desativado'}`, 'INFO', 'automation');
-            
-            if (automationEnabled) {
-                // Se automação estiver ativa, iniciar contagem para nova análise
-                addLog(`Iniciando contador de espera para nova análise (${waitCountdown}s)`, 'INFO', 'automation');
-                
-                // Usar a função waitForNextAnalysis já definida
-                waitCountdownInterval = setInterval(waitForNextAnalysis, 1000);
-                waitForNextAnalysis(); // Chamar imediatamente para atualizar o status
-            } else {
-                // Se automação estiver inativa, apenas fechar o modal
-                addLog(`Botão Aguardar clicado, modal fechado (automação desativada)`, 'INFO', 'ui');
-                updateStatus('Análise aguardando - Automação desativada', 'info', 3000);
-            }
-        };
-        
-        // Evento para cancelar a operação
-        cancelButton.onclick = () => {
-            clearInterval(countdownInterval);
-            // Também limpar o intervalo de espera se existir
-            if (waitCountdownInterval) {
-                clearInterval(waitCountdownInterval);
-                waitCountdownInterval = null;
-            }
-            
-            // Remover o botão de cancelamento se existir
-            const cancelWaitBtn = document.getElementById('cancel-wait-btn');
-            if (cancelWaitBtn) {
-                cancelWaitBtn.remove();
-            }
-            
-            modal.style.display = 'none';
-            autoExecutionEnabled = false; // Desativa a execução automática
-            logAndUpdateStatus('Operação cancelada pelo usuário', 'INFO', 'trade-execution', true);
-        };
-
-        // Evento para fechar o modal
-        closeButton.onclick = () => {
-            clearInterval(countdownInterval);
-            // Também limpar o intervalo de espera se existir
-            if (waitCountdownInterval) {
-                clearInterval(waitCountdownInterval);
-                waitCountdownInterval = null;
-            }
-            
-            // Remover o botão de cancelamento se existir
-            const cancelWaitBtn = document.getElementById('cancel-wait-btn');
-            if (cancelWaitBtn) {
-                cancelWaitBtn.remove();
-            }
-            
-            modal.style.display = 'none';
-            autoExecutionEnabled = false; // Desativa a execução automática
-            logAndUpdateStatus('Modal fechado pelo usuário (operação cancelada)', 'INFO', 'ui', true);
-        };
-
-        // Evento para cancelar o fechamento automático
-        countdownElement.ondblclick = () => {
-            clearInterval(countdownInterval);
-            countdownElement.textContent = 'Cancelado';
-            countdownElement.classList.add('cancelled');
-            autoExecutionEnabled = false; // Desativa a execução automática
-            logAndUpdateStatus('Fechamento automático cancelado. Aguardando ação manual.', 'INFO', 'ui', true);
-        };
-
-        // Fecha o modal ao clicar fora
-        window.onclick = (event) => {
-            if (event.target === modal) {
-                clearInterval(countdownInterval);
-                // Também limpar o intervalo de espera se existir
-                if (waitCountdownInterval) {
-                    clearInterval(waitCountdownInterval);
-                    waitCountdownInterval = null;
-                }
-                
-                // Remover o botão de cancelamento se existir
-                const cancelWaitBtn = document.getElementById('cancel-wait-btn');
-                if (cancelWaitBtn) {
-                    cancelWaitBtn.remove();
-                }
-                
-                modal.style.display = 'none';
-                autoExecutionEnabled = false; // Desativa a execução automática
-                logAndUpdateStatus('Modal fechado ao clicar fora (operação cancelada)', 'INFO', 'ui', true);
-            }
-        };
-    }
 
     // ================== INICIALIZAÇÃO ==================
     document.addEventListener('DOMContentLoaded', async () => {
@@ -961,13 +622,26 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     // Função para capturar e analisar
     async function captureAndAnalyze() {
         try {
-            const tab = await getActiveTab();
-            const response = await chrome.tabs.sendMessage(tab.id, { action: 'CAPTURE_SCREENSHOT' });
-            if (response && response.success) {
-                updateStatus('Captura realizada com sucesso', 'success');
+            addLog('Iniciando processo integrado de captura e análise...', 'INFO');
+            
+            // Usar o módulo de captura centralizado
+            if (window.CaptureScreen) {
+                // Capturar a tela para análise usando a função centralizada
+                await window.CaptureScreen.captureForAnalysis();
+                addLog('Captura realizada com sucesso pelo módulo centralizado', 'SUCCESS');
+                // Executar a análise com a imagem já capturada
                 await runAnalysis();
             } else {
-                updateStatus('Erro ao capturar a tela', 'error');
+                // Fallback para o método antigo se o módulo não estiver disponível
+                addLog('Módulo CaptureScreen não disponível, tentando método alternativo', 'WARN');
+                const tab = await getActiveTab();
+                const response = await chrome.tabs.sendMessage(tab.id, { action: 'CAPTURE_SCREENSHOT' });
+                if (response && response.success) {
+                    updateStatus('Captura realizada com sucesso', 'success');
+                    await runAnalysis();
+                } else {
+                    updateStatus('Erro ao capturar a tela', 'error');
+                }
             }
         } catch (error) {
             addLog(`Erro ao capturar e analisar: ${error.message}`, 'ERROR');
@@ -1066,15 +740,60 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         }
         
         if (elements.captureScreen) {
-            elements.captureScreen.addEventListener('click', () => {
+            elements.captureScreen.addEventListener('click', async () => {
                 addLog('Botão de captura clicado no index', 'INFO');
-                // Envia mensagem para o content.js
-                window.parent.postMessage({
-                    action: 'captureScreen',
-                    actionType: 'capture',
-                    requireProcessing: true,
-                    iframeWidth: 480
-                }, '*');
+                
+                try {
+                    // Usar o sistema centralizado de captura
+                    if (window.CaptureScreen && typeof window.CaptureScreen.captureAndShow === 'function') {
+                        try {
+                            // Chamar a função simplificada que captura e mostra em uma janela popup
+                            await window.CaptureScreen.captureAndShow();
+                            updateStatus('Captura de tela realizada com sucesso', 'success');
+                        } catch (error) {
+                            addLog(`Erro ao capturar tela: ${error.message}`, 'ERROR');
+                            updateStatus('Falha na captura de tela', 'error');
+                        }
+                    } else {
+                        // Se o módulo não estiver disponível, carregar dinamicamente
+                        addLog('Módulo de captura não está disponível, tentando carregamento dinâmico', 'WARN');
+                        updateStatus('Carregando módulo de captura...', 'info');
+                        
+                        // Tentar carregar o módulo dinamicamente
+                        const script = document.createElement('script');
+                        script.src = '../content/capture-screen.js';
+                        
+                        // Promise para aguardar o carregamento do script
+                        await new Promise((resolve, reject) => {
+                            script.onload = () => {
+                                addLog('Módulo de captura carregado dinamicamente', 'SUCCESS');
+                                resolve();
+                            };
+                            script.onerror = (err) => {
+                                addLog(`Erro ao carregar módulo de captura: ${err}`, 'ERROR');
+                                reject(new Error('Falha ao carregar módulo de captura'));
+                            };
+                            document.head.appendChild(script);
+                        });
+                        
+                        // Verificar novamente se o módulo está disponível após o carregamento
+                        if (window.CaptureScreen && typeof window.CaptureScreen.captureAndShow === 'function') {
+                            try {
+                                await window.CaptureScreen.captureAndShow();
+                                updateStatus('Captura realizada com sucesso', 'success');
+                            } catch (captureError) {
+                                addLog(`Erro após carregamento dinâmico: ${captureError.message}`, 'ERROR');
+                                updateStatus('Falha na captura de tela', 'error');
+                            }
+                        } else {
+                            addLog('Módulo carregado, mas função captureAndShow não disponível', 'ERROR');
+                            updateStatus('Erro no sistema de captura', 'error');
+                        }
+                    }
+                } catch (error) {
+                    addLog(`Erro geral na captura: ${error.message}`, 'ERROR');
+                    updateStatus('Erro no processo de captura', 'error');
+                }
             });
         }
         
@@ -2346,6 +2065,20 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             automationStatusElement.className = 'automation-status ' + (isActive ? 'active' : 'inactive');
         }
     }
+
+    // Armazenar a última imagem capturada globalmente para uso entre módulos
+    window.lastCapturedImage = null;
+
+    // Listener para RUN_ANALYSIS
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        if (message.action === 'RUN_ANALYSIS') {
+            runAnalysis()
+                .then(result => sendResponse({ success: true, result }))
+                .catch(error => sendResponse({ success: false, error: error.message }));
+            return true; // resposta assíncrona
+        }
+        // ... outros handlers ...
+    });
 } else {
     console.log('Trade Manager Pro - Index Module já foi carregado anteriormente');
 }

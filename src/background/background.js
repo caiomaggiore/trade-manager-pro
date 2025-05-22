@@ -85,32 +85,107 @@ const getTradeParameters = (settings, analysis, availablePeriods) => {
  */
 async function handleCaptureRequest(request) {
     try {
+        console.log('Background: Iniciando captura de tela');
+        
         // Captura a tela visível
         const dataUrl = await chrome.tabs.captureVisibleTab(null, {
             format: 'png',
             quality: 100
         });
+        
+        console.log('Background: Captura realizada, verificando formato');
+        
+        // Verificar se a captura retornou uma dataUrl válida
+        if (!dataUrl || typeof dataUrl !== 'string') {
+            console.error('Background: Captura falhou - dataUrl inválida ou vazia');
+            throw new Error('Captura da tela falhou - dataUrl inválida');
+        }
+        
+        // Verificar se a dataUrl está no formato correto
+        if (!dataUrl.startsWith('data:image/')) {
+            console.warn('Background: Formato de dataUrl incorreto, tentando corrigir');
+            
+            // Se não for necessário processamento, tenta corrigir aqui mesmo
+            if (!request.requireProcessing) {
+                let fixedDataUrl = dataUrl;
+                
+                // Tentar corrigir o formato
+                if (dataUrl.includes(',')) {
+                    const parts = dataUrl.split(',');
+                    if (parts.length > 1) {
+                        fixedDataUrl = 'data:image/png;base64,' + parts[1];
+                        console.log('Background: URL corrigida');
+                    }
+                }
+                
+                // Se conseguiu corrigir, usa a versão corrigida
+                if (fixedDataUrl.startsWith('data:image/')) {
+                    console.log('Background: Formato corrigido com sucesso');
+                    return fixedDataUrl;
+                }
+                
+                // Se não conseguiu corrigir, continua com a URL original (pode falhar depois)
+                console.warn('Background: Não foi possível corrigir a URL, continuando mesmo assim');
+            }
+        } else {
+            console.log('Background: dataUrl em formato válido');
+        }
 
-        // Se não precisar de processamento, retorna a imagem
+        // Se não precisar de processamento, retorna a imagem direto
         if (!request.requireProcessing) {
             return dataUrl;
         }
 
+        console.log('Background: Enviando para processamento no content script');
+        
         // Envia para o content script processar
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        const response = await chrome.tabs.sendMessage(tab.id, {
-            action: 'processCapture',
-            dataUrl: dataUrl,
-            iframeWidth: request.iframeWidth
+        
+        if (!tab || !tab.id) {
+            console.error('Background: Nenhuma aba ativa encontrada');
+            throw new Error('Nenhuma aba ativa encontrada para processamento');
+        }
+        
+        // Enviar para o content script e aguardar resposta
+        const response = await new Promise((resolve, reject) => {
+            chrome.tabs.sendMessage(tab.id, {
+                action: 'processCapture',
+                dataUrl: dataUrl,
+                iframeWidth: request.iframeWidth || 0
+            }, (result) => {
+                if (chrome.runtime.lastError) {
+                    console.error('Background: Erro ao comunicar com content script', chrome.runtime.lastError);
+                    reject(new Error('Erro na comunicação com content script: ' + chrome.runtime.lastError.message));
+                    return;
+                }
+                
+                if (!result) {
+                    console.error('Background: Resposta vazia do content script');
+                    reject(new Error('Resposta vazia do content script'));
+                    return;
+                }
+                
+                if (result.error) {
+                    console.error('Background: Erro retornado pelo content script', result.error);
+                    reject(new Error(result.error));
+                    return;
+                }
+                
+                resolve(result);
+            });
         });
-
-        if (response.error) {
-            throw new Error(response.error);
+        
+        console.log('Background: Processamento concluído com sucesso');
+        
+        // Verificar se a resposta contém uma dataUrl válida
+        if (!response.dataUrl || !response.dataUrl.startsWith('data:image/')) {
+            console.error('Background: Resposta do processamento com formato inválido');
+            throw new Error('Formato de imagem inválido após processamento');
         }
 
         return response.dataUrl;
     } catch (error) {
-        console.error('Erro na captura:', error);
+        console.error('Background: Erro na captura:', error);
         throw error;
     }
 }
@@ -225,6 +300,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return false;
     }
     
+    // ================== NOVOS HANDLERS BASEADOS EM EVENTOS ==================
+    
+    // Handler para captura baseada em eventos em vez de callback
+    if (message.action === 'initiateCapture' && message.useEventResponseMode === true) {
+        console.log('Background: Recebida solicitação de captura baseada em eventos');
+        
+        // Tratar de forma assíncrona
+        handleEventBasedCapture(message);
+        
+        // Não manter conexão aberta, pois usaremos mensagem de resposta
+        return false;
+    }
+    
+    // Handler para análise baseada em eventos em vez de callback
+    if (message.action === 'PROCESS_ANALYSIS' && message.useEventResponseMode === true) {
+        console.log('Background: Recebida solicitação de análise baseada em eventos');
+        
+        // Tratar de forma assíncrona
+        handleEventBasedAnalysis(message);
+        
+        // Não manter conexão aberta, pois usaremos mensagem de resposta
+        return false;
+    }
+    
     // Handler para PROXY_STATUS_UPDATE (vindo de log-sys.js ou outras UIs auxiliares)
     if (message.action === 'PROXY_STATUS_UPDATE' && message.statusPayload) {
         try {
@@ -330,8 +429,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return false;
     }
     
-    // Handler para captura de imagem
-    if (message.action === 'initiateCapture' && !isProcessing) {
+    // Handler para captura de imagem (modo tradicional com callback)
+    if (message.action === 'initiateCapture' && !message.useEventResponseMode && !isProcessing) {
         isProcessing = true; // Marcar como processando para evitar chamadas paralelas
         
         // Definir um timeout para garantir que alguma resposta seja enviada
@@ -345,15 +444,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 clearTimeout(timeout); // Limpar o timeout
                 isProcessing = false;
                 
-                // Só abre a janela se for uma captura normal (não análise)
-                if (message.actionType !== 'analyze') {
-                    chrome.windows.create({
-                        url: dataUrl,
-                        type: 'popup',
-                        width: 800,
-                        height: 600
-                    });
-                }
+                // Retornar a URL da imagem, sem tentar mostrar a imagem
                 sendResponse({ dataUrl });
             })
             .catch(error => {
@@ -363,9 +454,48 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             });
         return true;
     }
+    
+    // Handler para mostrar uma imagem em uma janela popup
+    if (message.action === 'showImagePopup' && message.dataUrl) {
+        try {
+            console.log('Background: Recebida solicitação para mostrar imagem em popup');
+            
+            // Verificar se a dataUrl é válida
+            if (!message.dataUrl.startsWith('data:image/')) {
+                console.error('Background: URL de imagem inválida', message.dataUrl.substring(0, 30) + '...');
+                sendResponse({ success: false, error: 'URL de imagem inválida' });
+                return true;
+            }
+            
+            console.log('Background: Criando janela popup para exibir a imagem');
+            
+            // Abrir uma janela popup nativa do Chrome com a imagem
+            chrome.windows.create({
+                url: message.dataUrl,
+                type: 'popup',
+                width: 800,
+                height: 600
+            }, window => {
+                if (chrome.runtime.lastError) {
+                    console.error('Background: Erro ao criar janela popup:', chrome.runtime.lastError.message);
+                    sendResponse({ success: false, error: chrome.runtime.lastError.message });
+                    return;
+                }
+                
+                console.log('Background: Janela popup criada com sucesso, ID:', window.id);
+                
+                // Armazenar o ID da janela para referência futura se necessário
+                sendResponse({ success: true, windowId: window.id });
+            });
+        } catch (error) {
+            console.error('Background: Erro ao criar janela popup:', error);
+            sendResponse({ success: false, error: error.message });
+        }
+        return true; // manter canal aberto para resposta assíncrona
+    }
 
-  // Handler para início de análise
-  if (message.action === 'START_ANALYSIS') {
+  // Handler para início de análise (modo tradicional com callback)
+  if (message.action === 'START_ANALYSIS' || (message.action === 'PROCESS_ANALYSIS' && !message.useEventResponseMode)) {
     // Log para rastreamento
     console.log('Solicitação de análise recebida:', message);
     
@@ -448,6 +578,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
       
+      // Verificar se a operação vem do modal para evitar duplicação
+      const isFromModal = message.tradeData && message.tradeData.isFromModal === true;
+      
+      // Registro detalhado para depuração
+      console.log('Solicitação de EXECUTE_TRADE_ACTION recebida no background:', {
+        action: message.tradeAction,
+        isFromModal: isFromModal,
+        tradeValue: message.tradeData?.tradeValue,
+        tradeTime: message.tradeData?.tradeTime,
+        source: message.source || 'desconhecido'
+      });
+      
       // Tentar injetar o script diretamente, sem verificar se já está injetado
       const executeScript = () => {
         try {
@@ -489,427 +631,235 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // Função para enviar a mensagem de execução de trade
       const sendTradeMessage = () => {
         try {
+          // Assegurar que os dados da operação são enviados corretamente
+          const tradeData = message.tradeData || {};
+          
+          // Garantir que a origem da solicitação seja preservada
+          tradeData.isFromModal = isFromModal;
+          
           chrome.tabs.sendMessage(tabs[0].id, {
             action: 'EXECUTE_TRADE_ACTION',
-            tradeAction: message.tradeAction
-          }, (response) => {            
-            const sendError = chrome.runtime.lastError;
-            if (sendError) {
-              console.error('Erro ao enviar mensagem para content script:', sendError.message);
-              sendResponse({ 
-                success: false, 
-                error: `Comunicação com a página falhou: ${sendError.message}` 
-              });
-            } else if (!response) {
-              console.error('Sem resposta do content script');
-              sendResponse({ 
-                success: false, 
-                error: 'Content script não respondeu ao comando' 
-              });
-            } else {
-              sendResponse(response);
+            tradeAction: message.tradeAction,
+            tradeData: tradeData,
+            source: message.source || 'user'
+          }, (response) => {
+            if (chrome.runtime.lastError) {
+              console.error('Erro na mensagem para o content script:', chrome.runtime.lastError);
+              sendResponse({ success: false, error: chrome.runtime.lastError.message });
+              return;
             }
+            
+            console.log('Resposta da execução de trade:', response);
+            sendResponse(response || { success: true });
           });
-        } catch (sendError) {
-          console.error('Exceção ao enviar mensagem:', sendError.message);
-          sendResponse({ 
-            success: false, 
-            error: `Falha ao comunicar com a página: ${sendError.message}` 
-          });
+        } catch (error) {
+          console.error('Exceção ao enviar mensagem de trade:', error.message);
+          sendResponse({ success: false, error: error.message });
         }
       };
       
-      // Primeiro tentamos enviar mensagem diretamente para ver se o script já está injetado
+      // Verificar se o content script está disponível
       chrome.tabs.sendMessage(tabs[0].id, { action: 'PING' }, (pingResponse) => {
         if (chrome.runtime.lastError) {
+          console.log('Content script não disponível para trade, injetando...');
           executeScript();
         } else {
+          console.log('Content script disponível para trade, enviando mensagem');
           sendTradeMessage();
         }
       });
     });
-    
-    // Importante: manter canal aberto para resposta assíncrona
-    return true;
-  }
-
-  // Novo handler para obtenção de períodos
-  if (message.action === 'GET_TRADE_PARAMS') {
-    // Definir um timeout para garantir que alguma resposta seja enviada
-    const timeout = setTimeout(() => {
-      sendResponse({ 
-        success: false, 
-        error: "Timeout ao obter parâmetros de trade" 
-      });
-    }, 10000);
-    
-    try {
-      chrome.storage.sync.get(['tradeValue', 'tradeTime', 'galeEnabled'], (settings) => {
-        if (chrome.runtime.lastError) {
-          clearTimeout(timeout);
-          sendResponse({ 
-            success: false, 
-            error: `Erro ao obter configurações: ${chrome.runtime.lastError.message}` 
-          });
-          return;
-        }
-        
-        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-          if (!tabs || !tabs[0] || !tabs[0].id) {
-            clearTimeout(timeout);
-            sendResponse({ 
-              success: false, 
-              error: "Nenhuma guia ativa encontrada" 
-            });
-            return;
-          }
-          
-          try {
-            chrome.tabs.sendMessage(tabs[0].id, {
-              action: 'FETCH_AVAILABLE_PERIODS'
-            }, (response) => {
-              clearTimeout(timeout);
-              
-              if (chrome.runtime.lastError) {
-                sendResponse({ 
-                  success: false, 
-                  error: `Erro na comunicação: ${chrome.runtime.lastError.message}`
-                });
-                return;
-              }
-              
-              try {
-                const params = getTradeParameters(
-                  settings,
-                  message.analysis || {},
-                  response?.periods || []
-                );
-                sendResponse({ 
-                  success: true, 
-                  params: params 
-                });
-              } catch (parseError) {
-                sendResponse({ 
-                  success: false, 
-                  error: `Erro ao processar parâmetros: ${parseError.message}`
-                });
-              }
-            });
-          } catch (sendError) {
-            clearTimeout(timeout);
-            sendResponse({ 
-              success: false, 
-              error: `Erro ao enviar mensagem: ${sendError.message}`
-            });
-          }
-        });
-      });
-    } catch (error) {
-      clearTimeout(timeout);
-      sendResponse({ 
-        success: false, 
-        error: `Erro inesperado: ${error.message}`
-      });
-    }
-    
-    return true;
-  }
-
-  if (message.action === 'FETCH_AVAILABLE_PERIODS') {
-    // Definir um timeout para garantir que alguma resposta seja enviada
-    const timeout = setTimeout(() => {
-      sendResponse({ 
-        success: false, 
-        error: "Timeout ao buscar períodos disponíveis" 
-      });
-    }, 10000);
-    
-    try {
-      if (!sender || !sender.tab || !sender.tab.id) {
-        clearTimeout(timeout);
-        sendResponse({ 
-          success: false, 
-          error: "Informações da guia de origem não disponíveis" 
-        });
-        return true;
-      }
-      
-      chrome.tabs.sendMessage(sender.tab.id, message, (response) => {
-        clearTimeout(timeout);
-        
-        if (chrome.runtime.lastError) {
-          sendResponse({ 
-            success: false, 
-            error: `Erro na comunicação: ${chrome.runtime.lastError.message}` 
-          });
-          return;
-        }
-        
-        sendResponse(response || { success: false, error: "Sem resposta da guia" });
-      });
-    } catch (error) {
-      clearTimeout(timeout);
-      sendResponse({ 
-        success: false, 
-        error: `Erro inesperado: ${error.message}` 
-      });
-      return true;
-    }
-    
-    return true;
-  }
-
-  // Handler para logs
-  if (message.action === 'ADD_LOG' || message.action === 'logMessage') {
-    try {
-      // Obter informações do log
-      const logMessage = message.log || message.message || "Log sem mensagem";
-      const logLevel = message.level || "INFO";
-      const logSource = message.source || "system";
-      
-      // Registrar apenas erros no console do background
-      if (logLevel === 'ERROR') {
-        console.error(`[BACKGROUND LOG] [${logLevel}][${logSource}] ${logMessage}`);
-      }
-      
-      // Armazenar no storage local diretamente
-      chrome.storage.local.get(['systemLogs'], function(result) {
-        if (chrome.runtime.lastError) {
-          const errorMsg = chrome.runtime.lastError.message || 'Erro desconhecido no acesso ao storage';
-          console.error(`[BACKGROUND] Erro ao acessar logs armazenados: ${errorMsg}`);
-          return;
-        }
-        
-        const logs = result.systemLogs || [];
-        
-        // Verificar se este log é muito similar a outro log recente (dentro de 5 segundos)
-        const now = new Date().getTime();
-        const isDuplicate = logs.some(log => {
-          return log.message === logMessage && 
-                 log.level === logLevel && 
-                 log.source === logSource &&
-                 (now - log.timestamp) < 5000; // 5 segundos
-        });
-        
-        // Só adiciona se não for um log duplicado muito recente
-        if (!isDuplicate) {
-          // Adicionar novo log
-          logs.push({
-            message: logMessage,
-            level: logLevel,
-            source: logSource,
-            date: new Date().toISOString(),
-            timestamp: now
-          });
-          
-          // Limitar a quantidade de logs armazenados (manter os 500 mais recentes)
-          if (logs.length > 500) {
-            logs.splice(0, logs.length - 500);
-          }
-          
-          // Salvar logs atualizados
-          chrome.storage.local.set({ systemLogs: logs }, function() {
-            if (chrome.runtime.lastError) {
-              const errorMsg = chrome.runtime.lastError.message || 'Erro desconhecido ao salvar logs';
-              console.error(`[BACKGROUND] Erro ao salvar logs: ${errorMsg}`);
-            }
-          });
-        }
-      });
-      
-      // Responder imediatamente para evitar erros de promessa não resolvida
-      sendResponse({ success: true });
-    } catch (error) {
-      const errorMsg = error.message || error.toString() || 'Erro desconhecido';
-      console.error(`[BACKGROUND] Erro ao processar log: ${errorMsg}`);
-      // Em caso de erro, ainda responder para não deixar a promessa pendente
-      sendResponse({ success: false, error: errorMsg });
-    }
-    
-    // Não manter o canal aberto para resposta assíncrona
-    return false;
-  }
-
-  if (message.action === 'TEST_CONNECTION') {
-    // Definir um timeout para garantir que alguma resposta seja enviada
-    const timeout = setTimeout(() => {
-      sendResponse({ 
-        success: false, 
-        error: "Timeout ao testar conexão" 
-      });
-    }, 10000);
-    
-    try {
-      if (!sender || !sender.tab || !sender.tab.id) {
-        clearTimeout(timeout);
-        sendResponse({ 
-          success: false, 
-          error: "Informações da guia de origem não disponíveis" 
-        });
-        return true;
-      }
-      
-      chrome.tabs.sendMessage(sender.tab.id, {
-        action: 'TEST_CONNECTION'
-      }, (response) => {
-        clearTimeout(timeout);
-        
-        if (chrome.runtime.lastError) {
-          sendResponse({ 
-            success: false, 
-            connected: false,
-            error: `Erro na comunicação: ${chrome.runtime.lastError.message}` 
-          });
-          return;
-        }
-        
-        sendResponse(response || { 
-          success: false, 
-          connected: false,
-          error: "Sem resposta da guia" 
-        });
-      });
-    } catch (error) {
-      clearTimeout(timeout);
-      sendResponse({ 
-        success: false, 
-        connected: false,
-        error: `Erro inesperado: ${error.message}` 
-      });
-      return true;
-    }
-    
-    return true;
-  }
-
-  // Buscar configurações de usuário para operações
-  if (message.action === 'GET_USER_CONFIG') {
-    chrome.storage.sync.get(['userConfig'], (result) => {
-      if (chrome.runtime.lastError) {
-        console.error('Erro ao buscar configurações:', chrome.runtime.lastError);
-        sendResponse(null);
-        return;
-      }
-      
-      const userConfig = result.userConfig || {};
-      
-      // Extrair apenas os campos relevantes para operações
-      const operationConfig = {
-        tradeValue: userConfig.value || 10,
-        tradeTime: userConfig.period || 1,
-        galeEnabled: userConfig.gale?.active || false,
-        galeLevel: userConfig.gale?.level || '1x'
-      };
-      
-      sendResponse(operationConfig);
-    });
-    
-    // Manter canal aberto para resposta assíncrona
-    return true;
+    return true; // Manter canal aberto para resposta assíncrona
   }
 
   // Handler para copiar texto para a área de transferência
   if (message.action === 'copyTextToClipboard') {
+    console.log('Background: Solicitação para copiar texto recebida');
+    
     try {
-      // Obter a aba ativa para injetar o script de cópia
-      chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-        if (!tabs || !tabs[0] || !tabs[0].id) {
-          sendResponse({success: false, error: "Nenhuma aba ativa encontrada"});
-          return;
+        // Verificar se o texto está presente
+        if (!message.text) {
+            sendResponse({ success: false, error: 'Nenhum texto fornecido para cópia' });
+            return true;
         }
         
-        // Injetar script para copiar o texto na aba atual
-        chrome.scripting.executeScript({
-          target: {tabId: tabs[0].id},
-          function: function(textToCopy) {
-            function copyToClipboard(text) {
-              try {
-                // Método 1: função de cópia via navigator.clipboard
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                  navigator.clipboard.writeText(text).then(function() {
-                    // Criar um elemento para mostrar feedback
-                    var notification = document.createElement('div');
-                    notification.textContent = 'Logs copiados com sucesso!';
-                    notification.style.cssText = 'position:fixed;top:10px;right:10px;background:#4CAF50;color:white;padding:10px;border-radius:4px;z-index:9999';
-                    document.body.appendChild(notification);
-                    
-                    // Remover após 3 segundos
-                    setTimeout(function() {
-                      if (notification.parentNode) document.body.removeChild(notification);
-                    }, 3000);
-                    
-                    return true;
-                  }).catch(function(err) {
-                    // Método 2: fallback para execCommand
-                    return fallbackCopy(text);
-                  });
-                } else {
-                  // Método 2: fallback para execCommand
-                  return fallbackCopy(text);
-                }
-              } catch (e) {
-                // Método 2: fallback para execCommand
-                return fallbackCopy(text);
-              }
-              
-              return false;
+        // Obter a guia ativa
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (!tabs || tabs.length === 0) {
+                sendResponse({ success: false, error: 'Nenhuma guia ativa encontrada' });
+                return;
             }
             
-            function fallbackCopy(text) {
-              try {
-                var textArea = document.createElement('textarea');
-                textArea.value = text;
-                
-                // Tornar invisível mas ainda presente no DOM
-                textArea.style.position = 'fixed';
-                textArea.style.left = '-9999px';
-                textArea.style.top = '0';
-                
-                document.body.appendChild(textArea);
-                textArea.focus();
-                textArea.select();
-                
-                var success = false;
-                try {
-                  success = document.execCommand('copy');
-                } catch (err) {
-                  success = false;
+            // Injetar script para copiar texto
+            chrome.scripting.executeScript({
+                target: { tabId: tabs[0].id },
+                function: (text) => {
+                    const textArea = document.createElement('textarea');
+                    textArea.value = text;
+                    textArea.style.position = 'fixed';
+                    textArea.style.left = '-999999px';
+                    textArea.style.top = '-999999px';
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    
+                    let success = false;
+                    try {
+                        success = document.execCommand('copy');
+                    } catch (err) {
+                        console.error('Erro ao executar comando de cópia:', err);
+                    }
+                    
+                    document.body.removeChild(textArea);
+                    return success;
+                },
+                args: [message.text]
+            }, (results) => {
+                if (chrome.runtime.lastError) {
+                    sendResponse({ 
+                        success: false, 
+                        error: chrome.runtime.lastError.message
+                    });
+                    return;
                 }
                 
-                // Feedback visual
-                if (success) {
-                  var notification = document.createElement('div');
-                  notification.textContent = 'Logs copiados com sucesso!';
-                  notification.style.cssText = 'position:fixed;top:10px;right:10px;background:#4CAF50;color:white;padding:10px;border-radius:4px;z-index:9999';
-                  document.body.appendChild(notification);
-                  
-                  // Remover após 3 segundos
-                  setTimeout(function() {
-                    if (notification.parentNode) document.body.removeChild(notification);
-                  }, 3000);
-                }
-                
-                document.body.removeChild(textArea);
-                return success;
-              } catch (err) {
-                return false;
-              }
-            }
-            
-            return copyToClipboard(textToCopy);
-          },
-          args: [message.text]
-        }, function(results) {
-          if (chrome.runtime.lastError) {
-            sendResponse({success: false, error: chrome.runtime.lastError.message});
-          } else {
-            sendResponse({success: true, results: results});
-          }
+                const success = results && results[0] && results[0].result === true;
+                sendResponse({ 
+                    success: success,
+                    error: success ? null : 'Falha no comando de cópia'
+                });
+            });
         });
-      });
-    } catch (err) {
-      sendResponse({success: false, error: err.message});
+        
+        return true; // Manter canal aberto para resposta assíncrona
+    } catch (error) {
+        console.error('Background: Erro ao copiar para área de transferência:', error);
+        sendResponse({ 
+            success: false, 
+            error: error.message || 'Erro desconhecido ao copiar para área de transferência'
+        });
+        return true;
     }
-    return true; // Manter canal aberto
   }
-}); 
+
+  // Retornamos true apenas para os handlers que realmente usam resposta assíncrona
+  return false;
+});
+
+// ================== NOVOS HANDLERS PARA COMUNICAÇÃO BASEADA EM EVENTOS ==================
+
+/**
+ * Manipula a solicitação de captura baseada em eventos em vez de callback
+ * @param {object} message - Mensagem recebida
+ */
+async function handleEventBasedCapture(message) {
+    try {
+        console.log('Background: Iniciando captura baseada em eventos');
+        
+        // Extrair informações importantes
+        const { requestId, actionType } = message;
+        
+        try {
+            // Utilizar a função existente para captura
+            const dataUrl = await handleCaptureRequest(message);
+            
+            // Enviar resposta como uma nova mensagem
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs && tabs[0] && tabs[0].id) {
+                    chrome.tabs.sendMessage(tabs[0].id, {
+                        action: 'captureResponse',
+                        requestId: requestId,
+                        dataUrl: dataUrl,
+                        success: true
+                    });
+                    console.log('Background: Resposta de captura enviada via evento');
+                } else {
+                    console.error('Background: Não foi possível encontrar a aba ativa para enviar resposta');
+                }
+            });
+        } catch (error) {
+            console.error('Background: Erro ao processar captura baseada em eventos', error);
+            
+            // Enviar erro como resposta
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs && tabs[0] && tabs[0].id) {
+                    chrome.tabs.sendMessage(tabs[0].id, {
+                        action: 'captureResponse',
+                        requestId: requestId,
+                        error: error.message,
+                        success: false
+                    });
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Background: Erro crítico na captura baseada em eventos', error);
+    }
+}
+
+/**
+ * Manipula a solicitação de análise baseada em eventos em vez de callback
+ * @param {object} message - Mensagem recebida
+ */
+async function handleEventBasedAnalysis(message) {
+    try {
+        console.log('Background: Iniciando análise baseada em eventos');
+        
+        // Extrair informações importantes
+        const { requestId, imageData, settings } = message;
+        
+        try {
+            // Obter a aba ativa
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            
+            if (!tab || !tab.id) {
+                throw new Error('Nenhuma guia ativa encontrada para análise');
+            }
+            
+            // Enviar solicitação de análise para o content script
+            chrome.tabs.sendMessage(tab.id, {
+                action: 'PROCESS_ANALYSIS',
+                imageData: imageData,
+                metadata: settings || {}
+            }, (result) => {
+                if (chrome.runtime.lastError) {
+                    console.error('Background: Erro na comunicação com content script', chrome.runtime.lastError);
+                    
+                    // Enviar erro como resposta
+                    chrome.tabs.sendMessage(tab.id, {
+                        action: 'analysisResponse',
+                        requestId: requestId,
+                        error: chrome.runtime.lastError.message,
+                        success: false
+                    });
+                    return;
+                }
+                
+                // Enviar resposta como uma nova mensagem
+                chrome.tabs.sendMessage(tab.id, {
+                    action: 'analysisResponse',
+                    requestId: requestId,
+                    result: result,
+                    success: true
+                });
+                console.log('Background: Resposta de análise enviada via evento');
+            });
+        } catch (error) {
+            console.error('Background: Erro ao processar análise baseada em eventos', error);
+            
+            // Enviar erro como resposta
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs && tabs[0] && tabs[0].id) {
+                    chrome.tabs.sendMessage(tabs[0].id, {
+                        action: 'analysisResponse',
+                        requestId: requestId,
+                        error: error.message,
+                        success: false
+                    });
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Background: Erro crítico na análise baseada em eventos', error);
+    }
+} 

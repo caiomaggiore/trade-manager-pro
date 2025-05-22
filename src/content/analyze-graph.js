@@ -307,11 +307,101 @@ async function getSystemConfig() {
 }
 
 // =============================================
+// Exportação de API Pública
+// =============================================
+
+/**
+ * Processa a análise de uma imagem diretamente
+ * @param {string} imageData - A imagem em formato dataUrl
+ * @param {Object} settings - Configurações do usuário
+ * @returns {Promise<Object>} - Resultado da análise
+ */
+async function analyzeImage(imageData, settings = {}) {
+    try {
+        logFromAnalyzer('Iniciando análise direta de imagem', 'INFO');
+        
+        // Verificar se a imagem é válida
+        if (!imageData || typeof imageData !== 'string' || !imageData.startsWith('data:image')) {
+            throw new Error('Dados de imagem inválidos');
+        }
+        
+        // Obter configurações do sistema
+        const systemConfig = await getSystemConfig();
+        const userTradeTime = settings.period || 0;
+        const isTestMode = settings.testMode || false;
+        
+        // Gerar prompt adequado ao contexto
+        const prompt = generateAnalysisPrompt(
+            systemConfig.availablePeriods || ["1", "2", "5", "10", "15"],
+            userTradeTime,
+            isTestMode
+        );
+        
+        // Montar payload para a API
+        const payload = {
+            contents: [{
+                parts: [
+                    { text: prompt },
+                    { 
+                        inline_data: {
+                            mime_type: "image/png",
+                            data: imageData.split(',')[1]
+                        }
+                    }
+                ]
+            }]
+        };
+        
+        // Obter URL da API
+        const apiUrl = window.API_URL || "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyDeYcYUxAN52DNrgZeFNcEfceVMoWJDjWk";
+        
+        // Enviar para a API
+        logFromAnalyzer('Enviando solicitação para a API Gemini...', 'INFO');
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        // Verificar se a resposta é válida
+        if (!response.ok) {
+            throw new Error(`Erro na API: ${response.status} ${response.statusText}`);
+        }
+        
+        // Processar a resposta
+        const data = await response.json();
+        
+        if (!data.candidates || !data.candidates[0]?.content?.parts || !data.candidates[0].content.parts[0]?.text) {
+            throw new Error('Resposta da API sem conteúdo válido');
+        }
+        
+        // Extrair o texto da resposta
+        const rawText = data.candidates[0].content.parts[0].text;
+        
+        // Validar e processar o resultado
+        const result = validateAndProcessResponse(rawText);
+        
+        // Adicionar timestamp
+        result.timestamp = new Date().toISOString();
+        
+        logFromAnalyzer(`Análise concluída com sucesso: ${result.action}`, 'SUCCESS');
+        return result;
+    } catch (error) {
+        logFromAnalyzer(`Erro na análise: ${error.message}`, 'ERROR');
+        throw error;
+    }
+}
+
+// Exportar API global para uso em outros módulos
+window.AnalyzeGraph = {
+    analyzeImage: analyzeImage
+};
+
+// =============================================
 // Listener Principal
 // =============================================
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    // Verificar se a mensagem é para processamento de análise
-    if (request && request.action === 'PROCESS_ANALYSIS') {
+    if (request.action === 'PROCESS_ANALYSIS') {
         console.log('[Análise] Solicitação de análise recebida');
         
         // Executar em um bloco try-catch para garantir que sendResponse seja sempre chamado
@@ -330,7 +420,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 .then(result => {
                     clearTimeout(timeout);
                     console.log('[Análise] Enviando resposta de análise concluída');
-                    sendResponse(result);
+                    sendResponse({
+                        success: true,
+                        results: result
+                    });
                 })
                 .catch(error => {
                     clearTimeout(timeout);
@@ -355,79 +448,5 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Para outras mensagens, não vamos manipular
     return false;
 });
-
-// Expor o objeto AnalyzeGraph globalmente
-window.TradeManager = window.TradeManager || {};
-window.TradeManager.AnalyzeGraph = {
-    processImage: async (imageData) => {
-        try {
-            logFromAnalyzer('AnalyzeGraph: processImage chamado', 'SUCCESS');
-            graphAddLog('Processando imagem para análise...', 'SUCCESS');
-            
-            // Obter configurações do sistema
-            const config = await getSystemConfig();
-            const userTradeTime = config.period || 0;
-            const isTestMode = config.testMode || false;
-            
-            if (isTestMode) {
-                graphAddLog('Modo teste de análise ativado - usando prompt simplificado', 'SUCCESS');
-            }
-            
-            // Montar payload para análise
-            const payload = {
-                contents: [{
-                    parts: [
-                        { text: generateAnalysisPrompt([1, 5, 15, 30, 60], userTradeTime, isTestMode) },
-                        { 
-                            inline_data: {
-                                mime_type: "image/png",
-                                data: imageData.split(',')[1]
-                            }
-                        }
-                    ]
-                }]
-            };
-
-            logFromAnalyzer('AnalyzeGraph: Enviando para API...', 'SUCCESS');
-            // Enviar para API usando a URL do index.js
-            const response = await fetch(window.API_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) {
-                throw new Error(`Erro HTTP: ${response.status}`);
-            }
-
-            logFromAnalyzer('Recebida resposta da API, processando resultado...', 'SUCCESS');
-            
-            const data = await response.json();
-            const text = data.candidates[0].content.parts[0].text;
-            
-            // Processar resposta
-            const result = validateAndProcessResponse(text);
-            
-            // Adicionar flag de modo teste ao resultado
-            result.isTestMode = isTestMode;
-            
-            graphAddLog(`Análise concluída: ${result.action} (${result.trust}% de confiança)`, 'SUCCESS');
-            logFromAnalyzer(`Resultado da análise: ${result.action} - Confiança: ${result.trust}% - Explicação: ${result.reason.substring(0, 50)}...`, 'SUCCESS');
-            
-            return {
-                success: true,
-                results: result
-            };
-
-        } catch (error) {
-            logFromAnalyzer('AnalyzeGraph: Erro na análise:', 'ERROR');
-            logFromAnalyzer(`Erro na análise: ${error.message}`, 'ERROR');
-            return {
-                success: false,
-                error: error.message
-            };
-        }
-    }
-};
 
 logFromAnalyzer('AnalyzeGraph: Carregamento concluído', 'INFO');
