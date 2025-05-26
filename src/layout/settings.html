@@ -94,6 +94,20 @@
                         <option value="90">90%</option>
                     </select>
                 </div>
+
+                <div class="setting-item">
+                    <label>Comportamento com Payout Insuficiente</label>
+                    <select id="payout-behavior-select" class="styled-select">
+                        <option value="cancel" selected>Cancelar Operação</option>
+                        <option value="wait">Esperar Payout Adequado</option>
+                        <option value="switch">Trocar de Ativo (Futuro)</option>
+                    </select>
+                </div>
+
+                <div class="setting-item" id="payout-timeout-container" style="display:none;">
+                    <label>Tempo máximo de espera (segundos)</label>
+                    <input type="number" id="payout-timeout" class="styled-select" min="10" max="300" value="60" placeholder="60">
+                </div>
             </div>
         </div>
 

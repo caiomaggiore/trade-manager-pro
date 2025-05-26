@@ -432,7 +432,7 @@ function toUpdateStatus(message, type = 'info', duration = 5000) {
                   if (payoutValue > 0 && payoutValue <= 100) {
                     currentPayout = payoutValue;
                     safeLog(`Payout atual: ${currentPayout}%`, 'INFO');
-                    break;
+                          break;
                   }
                 }
               }
@@ -576,278 +576,357 @@ function toUpdateStatus(message, type = 'info', duration = 5000) {
       try {
         const inspectionResult = inspectTradingInterface();
         sendResponse({ success: true, result: inspectionResult });
-      } catch (error) {
+  } catch (error) {
         sendResponse({ success: false, error: error.message });
       }
       return true;
     }
-  });
-  
-  // ======================================================================
-  // =================== CONFIGURAÇÃO DE OPERAÇÕES =======================
-  // ======================================================================
 
-  // Funções para configurar operações na plataforma - consolidando funções duplicadas
-  const TradingConfig = {
-    // Abrir o modal de tempo
-    openTimeModal: () => {
+    // Handler para solicitação de payout do automation.js
+    if (message.action === 'GET_CURRENT_PAYOUT') {
       try {
-        const timeControl = document.querySelector('.block--expiration-inputs .control__value');
-        if (!timeControl) {
-          safeLog('Elemento de tempo não encontrado na plataforma', 'ERROR');
-          return false;
-        }
+        safeLog('Recebida solicitação de payout do automation.js', 'INFO');
         
-        // Clicar no elemento para abrir o modal
-        timeControl.click();
-        safeLog('Modal de tempo aberto', 'INFO');
-        return true;
-      } catch (error) {
-        safeLog(`Erro ao abrir modal de tempo: ${error.message}`, 'ERROR');
-        return false;
-      }
-    },
-    
-    // Converter minutos para formato da plataforma (S5, M1, etc.)
-    convertTimeToFormat: (minutes) => {
-      // Converter para segundos
-      const seconds = minutes * 60;
-      
-      // Mapear para o formato da plataforma
-      if (seconds <= 5) return 'S5';
-      if (seconds <= 15) return 'S15';
-      if (seconds <= 30) return 'S30';
-      if (seconds <= 60) return 'M1';
-      if (seconds <= 180) return 'M3';
-      if (seconds <= 300) return 'M5';
-      if (seconds <= 1800) return 'M30';
-      if (seconds <= 3600) return 'H1';
-      return 'H4'; // Acima de 1 hora
-    },
-    
-    // Encontrar e selecionar a opção de tempo no modal
-    selectTimeOption: (targetTime) => {
-      return new Promise((resolve, reject) => {
-        try {
-          // Aguardar o modal aparecer (até 2 segundos)
-          let attempts = 0;
-          const maxAttempts = 20;
-          const checkInterval = 100; // 100ms
-          
-          const findAndClickOption = () => {
-            // Verificar se o modal está visível
-            const modal = document.querySelector('.drop-down-modal.trading-panel-modal.expiration-inputs-list-modal');
-            if (!modal || modal.style.display === 'none') {
-              attempts++;
-              if (attempts < maxAttempts) {
-                setTimeout(findAndClickOption, checkInterval);
-                return;
-              } else {
-                reject('Modal de tempo não apareceu após a espera');
-                return;
-              }
-            }
+        // Usar a função checkPayout já existente e funcional
+        const checkPayout = async () => {
+          try {
+            safeLog('Verificando payout atual...', 'INFO');
             
-            // Encontrar todas as opções de tempo
-            const timeOptions = modal.querySelectorAll('.dops__timeframes-item');
-            if (!timeOptions || timeOptions.length === 0) {
-              reject('Opções de tempo não encontradas no modal');
-              return;
-            }
+            // Procurar elementos que mostram o payout
+            const payoutElements = document.querySelectorAll('.payout-info, .profit-info, [class*="payout"], [class*="profit"]');
+            let currentPayout = 0;
             
-            safeLog(`Procurando opção de tempo: ${targetTime}`, 'INFO');
-            
-            // Procurar a opção exata ou mais próxima
-            let selectedOption = null;
-            
-            // Primeiro tentar encontrar correspondência exata
-            for (const option of timeOptions) {
-              if (option.textContent.trim() === targetTime) {
-                selectedOption = option;
-                break;
-              }
-            }
-            
-            // Se não encontrou correspondência exata, converter para mapeamento e tentar novamente
-            if (!selectedOption) {
-              safeLog(`Opção exata ${targetTime} não encontrada, buscando alternativa`, 'WARN');
-              
-              // Mapear de segundos/minutos para os formatos disponíveis
-              const formatMap = {
-                'S5': 5, // 5 segundos
-                'S15': 15, // 15 segundos
-                'S30': 30, // 30 segundos
-                'M1': 60, // 1 minuto
-                'M3': 180, // 3 minutos
-                'M5': 300, // 5 minutos
-                'M30': 1800, // 30 minutos
-                'H1': 3600, // 1 hora
-                'H4': 14400 // 4 horas
-              };
-              
-              // Extrair o valor numérico do targetTime
-              let targetSeconds = 0;
-              if (targetTime.startsWith('S')) {
-                targetSeconds = parseInt(targetTime.substring(1));
-              } else if (targetTime.startsWith('M')) {
-                targetSeconds = parseInt(targetTime.substring(1)) * 60;
-              } else if (targetTime.startsWith('H')) {
-                targetSeconds = parseInt(targetTime.substring(1)) * 3600;
-              }
-              
-              // Encontrar a opção mais próxima disponível
-              let closestDiff = Infinity;
-              
-              for (const option of timeOptions) {
-                const optionText = option.textContent.trim();
-                const optionSeconds = formatMap[optionText] || 0;
-                
-                const diff = Math.abs(optionSeconds - targetSeconds);
-                if (diff < closestDiff) {
-                  closestDiff = diff;
-                  selectedOption = option;
+            if (payoutElements.length > 0) {
+              // Tentar extrair o payout de cada elemento encontrado
+              for (const element of payoutElements) {
+                const text = element.textContent.trim();
+                const matches = text.match(/(\d+)%/);
+                if (matches && matches[1]) {
+                  const payoutValue = parseInt(matches[1], 10);
+                  if (payoutValue > 0 && payoutValue <= 100) {
+                    currentPayout = payoutValue;
+                    safeLog(`Payout atual: ${currentPayout}%`, 'INFO');
+                    return { success: true, payout: currentPayout };
+                  }
                 }
               }
             }
             
-            if (selectedOption) {
-              safeLog(`Selecionando opção de tempo: ${selectedOption.textContent}`, 'SUCCESS');
-              selectedOption.click();
-              resolve(selectedOption.textContent);
-            } else {
-              reject('Não foi possível encontrar uma opção de tempo adequada');
+            // Se não encontrou o payout, tenta outro método
+            if (currentPayout === 0) {
+              // Tentar encontrar através de outros elementos
+              const profitElements = document.querySelectorAll('[class*="profit"], [class*="return"]');
+              for (const element of profitElements) {
+                const text = element.textContent.trim();
+                const matches = text.match(/(\d+)/);
+                if (matches && matches[1]) {
+                  const payoutValue = parseInt(matches[1], 10);
+                  if (payoutValue > 0 && payoutValue <= 100) {
+                    currentPayout = payoutValue;
+                    safeLog(`Payout encontrado (método alternativo): ${currentPayout}%`, 'INFO');
+                    return { success: true, payout: currentPayout };
+                  }
+                }
+              }
             }
-          };
-          
-          // Iniciar a busca
-          findAndClickOption();
-          
-        } catch (error) {
-          reject(`Erro ao selecionar tempo: ${error.message}`);
-        }
-      });
-    },
+            
+            // Se chegou aqui, não conseguiu detectar o payout
+            const errorMsg = 'Não foi possível detectar o payout real da plataforma';
+            safeLog(errorMsg, 'ERROR');
+            return { success: false, error: errorMsg };
+            
+          } catch (error) {
+            safeLog(`Erro ao verificar payout: ${error.message}`, 'ERROR');
+            return { success: false, error: error.message };
+          }
+        };
+        
+        // Executar verificação assíncrona e responder corretamente
+        (async () => {
+          try {
+            const result = await checkPayout();
+            sendResponse(result);
+          } catch (error) {
+            safeLog(`Erro ao executar checkPayout: ${error.message}`, 'ERROR');
+            sendResponse({ success: false, error: error.message });
+          }
+        })();
+        
+        return true; // Manter canal aberto para resposta assíncrona
+        
+  } catch (error) {
+        safeLog(`Erro ao processar solicitação de payout: ${error.message}`, 'ERROR');
+        sendResponse({ success: false, error: error.message });
+        return true;
+  }
+    }
+  });
+
+// ======================================================================
+// =================== CONFIGURAÇÃO DE OPERAÇÕES =======================
+// ======================================================================
+
+  // Funções para configurar operações na plataforma - consolidando funções duplicadas
+const TradingConfig = {
+  // Abrir o modal de tempo
+  openTimeModal: () => {
+    try {
+      const timeControl = document.querySelector('.block--expiration-inputs .control__value');
+      if (!timeControl) {
+          safeLog('Elemento de tempo não encontrado na plataforma', 'ERROR');
+        return false;
+      }
+      
+      // Clicar no elemento para abrir o modal
+      timeControl.click();
+        safeLog('Modal de tempo aberto', 'INFO');
+      return true;
+    } catch (error) {
+        safeLog(`Erro ao abrir modal de tempo: ${error.message}`, 'ERROR');
+      return false;
+    }
+  },
+  
+  // Converter minutos para formato da plataforma (S5, M1, etc.)
+  convertTimeToFormat: (minutes) => {
+    // Converter para segundos
+    const seconds = minutes * 60;
     
+    // Mapear para o formato da plataforma
+    if (seconds <= 5) return 'S5';
+    if (seconds <= 15) return 'S15';
+    if (seconds <= 30) return 'S30';
+    if (seconds <= 60) return 'M1';
+    if (seconds <= 180) return 'M3';
+    if (seconds <= 300) return 'M5';
+    if (seconds <= 1800) return 'M30';
+    if (seconds <= 3600) return 'H1';
+    return 'H4'; // Acima de 1 hora
+  },
+  
+  // Encontrar e selecionar a opção de tempo no modal
+  selectTimeOption: (targetTime) => {
+    return new Promise((resolve, reject) => {
+      try {
+        // Aguardar o modal aparecer (até 2 segundos)
+        let attempts = 0;
+        const maxAttempts = 20;
+        const checkInterval = 100; // 100ms
+        
+        const findAndClickOption = () => {
+          // Verificar se o modal está visível
+          const modal = document.querySelector('.drop-down-modal.trading-panel-modal.expiration-inputs-list-modal');
+          if (!modal || modal.style.display === 'none') {
+            attempts++;
+            if (attempts < maxAttempts) {
+              setTimeout(findAndClickOption, checkInterval);
+              return;
+            } else {
+              reject('Modal de tempo não apareceu após a espera');
+              return;
+            }
+          }
+          
+          // Encontrar todas as opções de tempo
+          const timeOptions = modal.querySelectorAll('.dops__timeframes-item');
+          if (!timeOptions || timeOptions.length === 0) {
+            reject('Opções de tempo não encontradas no modal');
+            return;
+          }
+          
+            safeLog(`Procurando opção de tempo: ${targetTime}`, 'INFO');
+          
+          // Procurar a opção exata ou mais próxima
+          let selectedOption = null;
+          
+          // Primeiro tentar encontrar correspondência exata
+          for (const option of timeOptions) {
+            if (option.textContent.trim() === targetTime) {
+              selectedOption = option;
+              break;
+            }
+          }
+          
+          // Se não encontrou correspondência exata, converter para mapeamento e tentar novamente
+          if (!selectedOption) {
+              safeLog(`Opção exata ${targetTime} não encontrada, buscando alternativa`, 'WARN');
+            
+            // Mapear de segundos/minutos para os formatos disponíveis
+            const formatMap = {
+              'S5': 5, // 5 segundos
+              'S15': 15, // 15 segundos
+              'S30': 30, // 30 segundos
+              'M1': 60, // 1 minuto
+              'M3': 180, // 3 minutos
+              'M5': 300, // 5 minutos
+              'M30': 1800, // 30 minutos
+              'H1': 3600, // 1 hora
+              'H4': 14400 // 4 horas
+            };
+            
+            // Extrair o valor numérico do targetTime
+            let targetSeconds = 0;
+            if (targetTime.startsWith('S')) {
+              targetSeconds = parseInt(targetTime.substring(1));
+            } else if (targetTime.startsWith('M')) {
+              targetSeconds = parseInt(targetTime.substring(1)) * 60;
+            } else if (targetTime.startsWith('H')) {
+              targetSeconds = parseInt(targetTime.substring(1)) * 3600;
+            }
+            
+            // Encontrar a opção mais próxima disponível
+            let closestDiff = Infinity;
+            
+            for (const option of timeOptions) {
+              const optionText = option.textContent.trim();
+              const optionSeconds = formatMap[optionText] || 0;
+              
+              const diff = Math.abs(optionSeconds - targetSeconds);
+              if (diff < closestDiff) {
+                closestDiff = diff;
+                selectedOption = option;
+              }
+            }
+          }
+          
+          if (selectedOption) {
+              safeLog(`Selecionando opção de tempo: ${selectedOption.textContent}`, 'SUCCESS');
+            selectedOption.click();
+            resolve(selectedOption.textContent);
+          } else {
+            reject('Não foi possível encontrar uma opção de tempo adequada');
+          }
+        };
+        
+        // Iniciar a busca
+        findAndClickOption();
+        
+      } catch (error) {
+        reject(`Erro ao selecionar tempo: ${error.message}`);
+      }
+    });
+  },
+  
     // Definir o valor da operação - função unificada que substitui setTradeAmount e TradingAutomation.setTradeValue
     setTradeValue: (amount) => {
-      try {
+    try {
         const MIN_VALUE = 10;
         const parsedValue = Math.max(Number(amount) || MIN_VALUE, MIN_VALUE);
         
         const amountInput = document.querySelector('.block--bet-amount input[type="text"], [class*="amount"] input');
-        if (!amountInput) {
+      if (!amountInput) {
           safeLog('Campo de valor não encontrado na plataforma', 'ERROR');
-          return false;
-        }
-        
-        // Definir valor e disparar evento de input
+        return false;
+      }
+      
+      // Definir valor e disparar evento de input
         amountInput.value = parsedValue;
-        amountInput.dispatchEvent(new Event('input', { bubbles: true }));
-        amountInput.dispatchEvent(new Event('change', { bubbles: true }));
-        
+      amountInput.dispatchEvent(new Event('input', { bubbles: true }));
+      amountInput.dispatchEvent(new Event('change', { bubbles: true }));
+      
         safeLog(`Valor de operação definido: $${parsedValue}`, 'SUCCESS');
-        return true;
-      } catch (error) {
+      return true;
+    } catch (error) {
         safeLog(`Erro ao definir valor: ${error.message}`, 'ERROR');
-        return false;
-      }
-    },
-    
-    // Fechar o modal de tempo após seleção
-    closeTimeModal: () => {
-      try {
-        // Verificar se o modal está aberto
-        const modal = document.querySelector('.drop-down-modal.trading-panel-modal.expiration-inputs-list-modal');
-        if (!modal) {
-          safeLog('Modal de tempo não encontrado para fechar', 'WARN');
-          return true; // Retorna true pois o modal já está fechado
-        }
-        
-        // Método 1: Clicar fora do modal (no body)
-        const bodyElement = document.body;
-        if (bodyElement) {
-          // Criar um clique fora do modal para fechá-lo
-          const clickEvent = new MouseEvent('click', {
-            bubbles: true,
-            cancelable: true,
-            view: window,
-            clientX: 10, // Posição fora do modal
-            clientY: 10
-          });
-          bodyElement.dispatchEvent(clickEvent);
-          safeLog('Evento de clique disparado para fechar o modal', 'INFO');
-        }
-        
-        // Método 2: Verificar se há um botão de fechar no modal
-        const closeButton = modal.querySelector('.close-btn, .btn-close, [data-close="true"]');
-        if (closeButton) {
-          closeButton.click();
-          safeLog('Botão de fechar modal clicado', 'INFO');
-        }
-        
-        // Verificar se o modal foi fechado
-        setTimeout(() => {
-          const modalStillOpen = document.querySelector('.drop-down-modal.trading-panel-modal.expiration-inputs-list-modal');
-          if (modalStillOpen) {
-            safeLog('Modal ainda aberto após tentativa de fechamento', 'WARN');
-            
-            // Método 3: Tentar clicar no controle de tempo novamente para alternar (toggle)
-            const timeControl = document.querySelector('.block--expiration-inputs .control__value');
-            if (timeControl) {
-              timeControl.click();
-              safeLog('Tentativa alternativa de fechar modal: clique no controle', 'INFO');
-            }
-          } else {
-            safeLog('Modal de tempo fechado com sucesso', 'SUCCESS');
-          }
-        }, 300);
-        
-        return true;
-      } catch (error) {
-        safeLog(`Erro ao fechar modal de tempo: ${error.message}`, 'ERROR');
-        return false;
-      }
-    },
-    
-    // Configurar operação com base nas configurações do usuário
-    configureOperation: async (config) => {
-      try {
-        safeLog('Configurando parâmetros da operação...', 'INFO');
-        
-        // Definir valor da operação
-        if (config.tradeValue) {
-          const valueSet = TradingConfig.setTradeValue(config.tradeValue);
-          if (!valueSet) {
-            throw new Error('Falha ao definir valor da operação');
-          }
-        }
-        
-        // Configurar tempo da operação
-        if (config.tradeTime) {
-          // Converter para o formato da plataforma
-          const timeFormat = TradingConfig.convertTimeToFormat(config.tradeTime);
-          
-          // Abrir modal de tempo
-          const modalOpened = TradingConfig.openTimeModal();
-          if (!modalOpened) {
-            throw new Error('Falha ao abrir modal de tempo');
-          }
-          
-          // Selecionar opção de tempo
-          const selectedTime = await TradingConfig.selectTimeOption(timeFormat);
-          safeLog(`Tempo de operação configurado: ${selectedTime}`, 'SUCCESS');
-          
-          // Fechar o modal após a seleção
-          TradingConfig.closeTimeModal();
-        }
-        
-        return true;
-      } catch (error) {
-        safeLog(`Erro ao configurar operação: ${error.message}`, 'ERROR');
-        return false;
-      }
+      return false;
     }
-  };
+  },
+  
+  // Fechar o modal de tempo após seleção
+  closeTimeModal: () => {
+    try {
+      // Verificar se o modal está aberto
+      const modal = document.querySelector('.drop-down-modal.trading-panel-modal.expiration-inputs-list-modal');
+      if (!modal) {
+          safeLog('Modal de tempo não encontrado para fechar', 'WARN');
+        return true; // Retorna true pois o modal já está fechado
+      }
+      
+      // Método 1: Clicar fora do modal (no body)
+      const bodyElement = document.body;
+      if (bodyElement) {
+        // Criar um clique fora do modal para fechá-lo
+        const clickEvent = new MouseEvent('click', {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          clientX: 10, // Posição fora do modal
+          clientY: 10
+        });
+        bodyElement.dispatchEvent(clickEvent);
+          safeLog('Evento de clique disparado para fechar o modal', 'INFO');
+      }
+      
+      // Método 2: Verificar se há um botão de fechar no modal
+      const closeButton = modal.querySelector('.close-btn, .btn-close, [data-close="true"]');
+      if (closeButton) {
+        closeButton.click();
+          safeLog('Botão de fechar modal clicado', 'INFO');
+      }
+      
+      // Verificar se o modal foi fechado
+      setTimeout(() => {
+        const modalStillOpen = document.querySelector('.drop-down-modal.trading-panel-modal.expiration-inputs-list-modal');
+        if (modalStillOpen) {
+            safeLog('Modal ainda aberto após tentativa de fechamento', 'WARN');
+          
+          // Método 3: Tentar clicar no controle de tempo novamente para alternar (toggle)
+          const timeControl = document.querySelector('.block--expiration-inputs .control__value');
+          if (timeControl) {
+            timeControl.click();
+              safeLog('Tentativa alternativa de fechar modal: clique no controle', 'INFO');
+          }
+        } else {
+            safeLog('Modal de tempo fechado com sucesso', 'SUCCESS');
+        }
+      }, 300);
+      
+      return true;
+    } catch (error) {
+        safeLog(`Erro ao fechar modal de tempo: ${error.message}`, 'ERROR');
+      return false;
+    }
+  },
+  
+  // Configurar operação com base nas configurações do usuário
+  configureOperation: async (config) => {
+    try {
+        safeLog('Configurando parâmetros da operação...', 'INFO');
+      
+      // Definir valor da operação
+      if (config.tradeValue) {
+          const valueSet = TradingConfig.setTradeValue(config.tradeValue);
+        if (!valueSet) {
+          throw new Error('Falha ao definir valor da operação');
+        }
+      }
+      
+      // Configurar tempo da operação
+      if (config.tradeTime) {
+        // Converter para o formato da plataforma
+        const timeFormat = TradingConfig.convertTimeToFormat(config.tradeTime);
+        
+        // Abrir modal de tempo
+        const modalOpened = TradingConfig.openTimeModal();
+        if (!modalOpened) {
+          throw new Error('Falha ao abrir modal de tempo');
+        }
+        
+        // Selecionar opção de tempo
+        const selectedTime = await TradingConfig.selectTimeOption(timeFormat);
+          safeLog(`Tempo de operação configurado: ${selectedTime}`, 'SUCCESS');
+        
+        // Fechar o modal após a seleção
+        TradingConfig.closeTimeModal();
+      }
+      
+      return true;
+    } catch (error) {
+        safeLog(`Erro ao configurar operação: ${error.message}`, 'ERROR');
+      return false;
+    }
+  }
+};
 
 const executeTradeAction = async (action, config) => {
   return new Promise(async (resolve, reject) => {

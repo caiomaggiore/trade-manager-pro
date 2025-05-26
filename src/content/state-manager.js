@@ -9,7 +9,9 @@ const DEFAULT_CONFIG = {
     automation: false,
     value: 10,
     period: 1,
-    minPayout: 80
+    minPayout: 80,
+    payoutBehavior: 'cancel',
+    payoutTimeout: 60
 };
 
 class StateManager {

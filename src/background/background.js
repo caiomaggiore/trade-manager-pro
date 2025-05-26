@@ -569,6 +569,72 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // Manter canal aberto para resposta assíncrona
   }
 
+  // Handler para obter payout atual da plataforma (roteamento para content.js)
+  if (message.action === 'GET_CURRENT_PAYOUT') {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (!tabs[0]?.id) {
+        console.error('Nenhuma guia ativa encontrada para verificar payout');
+        sendResponse({ success: false, error: "Nenhuma guia ativa encontrada" });
+        return;
+      }
+      
+      console.log('Solicitação de GET_CURRENT_PAYOUT recebida no background, roteando para content.js');
+      
+      // Verificar se o content script está disponível
+      chrome.tabs.sendMessage(tabs[0].id, { action: 'PING' }, (pingResponse) => {
+        if (chrome.runtime.lastError) {
+          console.log('Content script não disponível para payout, injetando...');
+          
+          // Injetar content script se necessário
+          chrome.scripting.executeScript({
+            target: { tabId: tabs[0].id },
+            files: ['src/content/content.js']
+          }, (injectionResults) => {
+            const injectError = chrome.runtime.lastError;
+            if (injectError) {
+              console.error('Erro ao injetar script para payout:', injectError.message);
+              sendResponse({ success: false, error: injectError.message });
+              return;
+            }
+            
+            // Aguardar script carregar e enviar mensagem
+            setTimeout(() => {
+              chrome.tabs.sendMessage(tabs[0].id, {
+                action: 'GET_CURRENT_PAYOUT'
+              }, (response) => {
+                if (chrome.runtime.lastError) {
+                  console.error('Erro na mensagem para o content script (payout):', chrome.runtime.lastError);
+                  sendResponse({ success: false, error: chrome.runtime.lastError.message });
+                  return;
+                }
+                
+                console.log('Resposta do payout recebida:', response);
+                sendResponse(response || { success: false, error: 'Sem resposta do content script' });
+              });
+            }, 300);
+          });
+        } else {
+          console.log('Content script disponível para payout, enviando mensagem');
+          
+          // Enviar mensagem diretamente
+          chrome.tabs.sendMessage(tabs[0].id, {
+            action: 'GET_CURRENT_PAYOUT'
+          }, (response) => {
+            if (chrome.runtime.lastError) {
+              console.error('Erro na mensagem para o content script (payout):', chrome.runtime.lastError);
+              sendResponse({ success: false, error: chrome.runtime.lastError.message });
+              return;
+            }
+            
+            console.log('Resposta do payout recebida:', response);
+            sendResponse(response || { success: false, error: 'Sem resposta do content script' });
+          });
+        }
+      });
+    });
+    return true; // Manter canal aberto para resposta assíncrona
+  }
+
   // Handler para executar ação de compra/venda na plataforma
   if (message.action === 'EXECUTE_TRADE_ACTION') {    
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {

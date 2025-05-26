@@ -4,6 +4,23 @@
 // Dependências globais esperadas: addLog, updateStatus (ou toUpdateStatus), window.StateManager, chrome.runtime
 
 function showAnalysisModal(result) {
+    // Validação crítica: verificar se result e result.action existem
+    if (!result) {
+        console.error('showAnalysisModal: result é undefined ou null');
+        if (typeof addLog === 'function') {
+            addLog('Erro: Resultado da análise é undefined', 'ERROR', 'analysis');
+        }
+        return;
+    }
+    
+    if (!result.action) {
+        console.error('showAnalysisModal: result.action é undefined ou null', result);
+        if (typeof addLog === 'function') {
+            addLog(`Erro: Ação da análise é undefined. Resultado recebido: ${JSON.stringify(result)}`, 'ERROR', 'analysis');
+        }
+        return;
+    }
+    
     window.currentAnalysisResult = result;
     
     // Log da análise recebida
@@ -186,35 +203,42 @@ function showAnalysisModal(result) {
                 return;
             }
             setTimeout(() => {
-                // Enviar mensagem para iniciar nova análise
-                chrome.runtime.sendMessage({
-                    action: 'PROCESS_ANALYSIS',
-                    imageData: window.lastCapturedImage, // Assumindo que a última imagem capturada está armazenada aqui
-                    settings: window.StateManager ? window.StateManager.getConfig() : {}
-                }, (response) => {
-                    if (response && response.success) {
-                        if (typeof addLog === 'function') {
-                            addLog('Nova análise realizada com sucesso após espera', 'SUCCESS', 'automation');
-                        } else if (typeof sendToLogSystem === 'function') {
-                            sendToLogSystem('Nova análise realizada com sucesso após espera', 'SUCCESS');
-                        }
-                        // Mostrar o modal com o novo resultado
-                        if (typeof showAnalysisModal === 'function') {
-                            showAnalysisModal(response.results);
-                        }
-                    } else {
-                        if (typeof addLog === 'function') {
-                            addLog(`Erro ao realizar nova análise após espera: ${response ? response.error : 'Erro desconhecido'}`, 'ERROR', 'automation');
-                        } else if (typeof sendToLogSystem === 'function') {
-                            sendToLogSystem(`Erro ao realizar nova análise após espera: ${response ? response.error : 'Erro desconhecido'}`, 'ERROR');
-                        }
-                        if (typeof updateStatus === 'function') {
-                            updateStatus(`Erro na análise: ${response ? response.error : 'Erro desconhecido'}`, 'error', 5000);
-                        } else if (typeof toUpdateStatus === 'function') {
-                            toUpdateStatus(`Erro na análise: ${response ? response.error : 'Erro desconhecido'}`, 'error', 5000);
-                        }
+                // SOLUÇÃO IDEAL: Simular clique no botão "Iniciar Análise" ao invés de criar nova função
+                
+                // Primeiro, garantir que qualquer modal anterior esteja completamente fechado
+                const existingModal = document.getElementById('analysis-modal');
+                if (existingModal) {
+                    existingModal.style.display = 'none';
+                    if (typeof addLog === 'function') {
+                        addLog('Modal anterior fechado antes de nova análise', 'DEBUG', 'automation');
                     }
-                });
+                }
+                
+                // ID correto do botão conforme index.html: 'analyzeBtn' (não 'analyze-btn')
+                const analyzeButton = document.getElementById('analyzeBtn');
+                
+                if (analyzeButton) {
+                    if (typeof addLog === 'function') {
+                        addLog('Simulando clique no botão "Iniciar Análise" após espera', 'INFO', 'automation');
+                    } else if (typeof sendToLogSystem === 'function') {
+                        sendToLogSystem('Simulando clique no botão "Iniciar Análise" após espera', 'INFO');
+                    }
+                    
+                    // Simular clique no botão existente
+                    analyzeButton.click();
+                } else {
+                    if (typeof addLog === 'function') {
+                        addLog('Erro: Botão "Iniciar Análise" não encontrado para simulação de clique', 'ERROR', 'automation');
+                    } else if (typeof sendToLogSystem === 'function') {
+                        sendToLogSystem('Erro: Botão "Iniciar Análise" não encontrado para simulação de clique', 'ERROR');
+                    }
+                    
+                    if (typeof updateStatus === 'function') {
+                        updateStatus('Erro: Botão de análise não encontrado', 'error', 5000);
+                    } else if (typeof toUpdateStatus === 'function') {
+                        toUpdateStatus('Erro: Botão de análise não encontrado', 'error', 5000);
+                    }
+                }
             }, 500);
         }
         waitCountdown--;
@@ -298,8 +322,6 @@ function showAnalysisModal(result) {
                 userConfig = window.StateManager.getConfig();
                 if (typeof addLog === 'function') {
                     addLog(`Configurações obtidas: Valor=${userConfig.value}, Tempo=${userConfig.period}`, 'INFO', 'trade-execution');
-                    // Adicionar log específico para o payout mínimo
-                    addLog(`Payout mínimo configurado: ${userConfig.minPayout || 80}%`, 'INFO', 'trade-execution');
                 }
             } else {
                 if (typeof addLog === 'function') {
@@ -318,20 +340,16 @@ function showAnalysisModal(result) {
                 analysisResult: window.currentAnalysisResult || result,
                 
                 // Flag para evitar execução duplicada
-                isFromModal: true,
-                
-                // Adicionar comentário sobre payout
-                payoutComment: `Verificando payout: Mínimo configurado ${userConfig.minPayout || 80}%`
+                isFromModal: true
             };
             
-            // Mostrar informação sobre payout ao usuário
+            // Mostrar informação sobre a operação ao usuário
             if (typeof toUpdateStatus === 'function') {
                 toUpdateStatus(`Executando ${action} - Valor: ${tradeData.tradeValue}, Período: ${tradeData.tradeTime}min`, 'info');
-                toUpdateStatus(`Verificando payout mínimo (${tradeData.minPayout}%) antes de executar...`, 'info', 3000);
             }
             
             if (typeof addLog === 'function') {
-                addLog(`Enviando solicitação de operação ${action} com: valor=${tradeData.tradeValue}, período=${tradeData.tradeTime}, payout mínimo=${tradeData.minPayout}%`, 'INFO', 'trade-execution');
+                addLog(`Enviando solicitação de operação ${action} com: valor=${tradeData.tradeValue}, período=${tradeData.tradeTime}`, 'INFO', 'trade-execution');
             }
             
             // Enviar solicitação única para o content.js executar a operação
@@ -350,27 +368,8 @@ function showAnalysisModal(result) {
                         const errorMsg = response ? response.error : 'Sem resposta';
                         addLog(`Falha ao executar operação ${action}: ${errorMsg}`, 'WARN', 'trade-execution');
                         
-                        // Verificar se o erro é de payout insuficiente
-                        if (errorMsg && errorMsg.includes('Payout insuficiente')) {
-                            // Extrair o valor do payout atual
-                            const match = errorMsg.match(/\((\d+)%\)/);
-                            const payoutValue = match ? match[1] : '?';
-                            
-                            if (typeof toUpdateStatus === 'function') {
-                                toUpdateStatus(`Payout atual (${payoutValue}%) muito baixo. Tente outro ativo.`, 'warn', 10000);
-                            }
-                            
-                            // Registrar no log com mais detalhes
-                            if (typeof addLog === 'function') {
-                                addLog(`Payout insuficiente detectado (${payoutValue}%). Mínimo requerido: ${tradeData.minPayout}%. Recomendação: tente outro ativo ou aguarde melhor momento.`, 'WARN', 'trade-execution');
-                                
-                                // Adicionar um segundo log mais visível com tag específica para payout
-                                addLog(`ALERTA DE PAYOUT: Operação ${action} cancelada. Payout atual (${payoutValue}%) abaixo do mínimo requerido (${tradeData.minPayout}%).`, 'WARN', 'payout-verification');
-                            }
-                        } else {
-                            if (typeof toUpdateStatus === 'function') {
-                                toUpdateStatus(`Falha: ${errorMsg}`, 'warn');
-                            }
+                        if (typeof toUpdateStatus === 'function') {
+                            toUpdateStatus(`Falha: ${errorMsg}`, 'warn');
                         }
                     }
                 }
@@ -406,9 +405,18 @@ function showAnalysisModal(result) {
         }
     };
     waitButton.onclick = () => {
-        // Não fechar o modal imediatamente
+        // Fechar o modal imediatamente quando o usuário clica em "Aguardar"
         clearInterval(countdownInterval);
+        modal.style.display = 'none';
         autoExecutionEnabled = false;
+        
+        // Log da ação do usuário
+        if (typeof logAndUpdateStatus === 'function') {
+            logAndUpdateStatus('Usuário escolheu aguardar próxima análise', 'INFO', 'ui', true);
+        } else if (typeof addLog === 'function') {
+            addLog('Usuário escolheu aguardar próxima análise', 'INFO', 'ui');
+        }
+        
         // Iniciar o contador de WAIT (se já não estiver rodando)
         if (!waitCountdownInterval) {
             waitCountdownInterval = setInterval(waitForNextAnalysis, 1000);

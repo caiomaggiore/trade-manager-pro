@@ -11,7 +11,10 @@ const settingsUI = {
     tradeTime: document.getElementById('trade-time'),
     toggleTestMode: document.getElementById('toggleTestMode'),
     toggleDevMode: document.getElementById('toggleDevMode'),
-    minPayout: document.getElementById('min-payout-select')
+    minPayout: document.getElementById('min-payout-select'),
+    payoutBehavior: document.getElementById('payout-behavior-select'),
+    payoutTimeout: document.getElementById('payout-timeout'),
+    payoutTimeoutContainer: document.getElementById('payout-timeout-container')
 };
 
 // Função simplificada para enviar logs ao sistema centralizado
@@ -105,10 +108,41 @@ const applySettingsToUI = (config) => {
         logFromSettings(`Payout mínimo configurado na UI: ${settingsUI.minPayout.value}%`, 'DEBUG');
     }
 
+    // Configurar comportamento de payout insuficiente
+    if (settingsUI.payoutBehavior) {
+        settingsUI.payoutBehavior.value = config.payoutBehavior || 'cancel';
+        logFromSettings(`Comportamento de payout configurado: ${settingsUI.payoutBehavior.value}`, 'DEBUG');
+    }
+
+    // Configurar timeout para espera de payout
+    if (settingsUI.payoutTimeout) {
+        settingsUI.payoutTimeout.value = config.payoutTimeout || 60;
+        logFromSettings(`Timeout de payout configurado: ${settingsUI.payoutTimeout.value}s`, 'DEBUG');
+    }
+
+    // Mostrar/ocultar campo de timeout baseado no comportamento selecionado
+    updatePayoutTimeoutVisibility();
+
     // Atualiza o estado do select de gale
     settingsUI.galeSelect.disabled = !settingsUI.toggleGale.checked;
     
     logFromSettings('UI atualizada com as configurações', 'SUCCESS');
+};
+
+// Função para atualizar a visibilidade do campo de timeout baseado no comportamento selecionado
+const updatePayoutTimeoutVisibility = () => {
+    if (settingsUI.payoutBehavior && settingsUI.payoutTimeoutContainer) {
+        const behavior = settingsUI.payoutBehavior.value;
+        
+        // Mostrar o campo de timeout apenas para o comportamento "wait"
+        if (behavior === 'wait') {
+            settingsUI.payoutTimeoutContainer.style.display = 'block';
+            logFromSettings('Campo de timeout de payout exibido', 'DEBUG');
+        } else {
+            settingsUI.payoutTimeoutContainer.style.display = 'none';
+            logFromSettings('Campo de timeout de payout ocultado', 'DEBUG');
+        }
+    }
 };
 
 // Coletar configurações da UI
@@ -125,11 +159,15 @@ const getSettingsFromUI = () => {
         period: parseInt(settingsUI.tradeTime.value) || 0,
         testMode: settingsUI.toggleTestMode.checked,
         devMode: settingsUI.toggleDevMode.checked,
-        minPayout: settingsUI.minPayout ? parseInt(settingsUI.minPayout.value) || 80 : 80
+        minPayout: settingsUI.minPayout ? parseInt(settingsUI.minPayout.value) || 80 : 80,
+        payoutBehavior: settingsUI.payoutBehavior ? settingsUI.payoutBehavior.value || 'cancel' : 'cancel',
+        payoutTimeout: settingsUI.payoutTimeout ? parseInt(settingsUI.payoutTimeout.value) || 60 : 60
     };
     
     // Log detalhado para depuração
     logFromSettings(`Payout mínimo configurado: ${config.minPayout}%`, 'INFO');
+    logFromSettings(`Comportamento de payout: ${config.payoutBehavior}`, 'INFO');
+    logFromSettings(`Timeout de payout: ${config.payoutTimeout}s`, 'INFO');
     logFromSettings('Configurações coletadas da UI: ' + JSON.stringify(config), 'DEBUG');
     return config;
 };
@@ -214,6 +252,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     settingsUI.toggleGale.addEventListener('change', () => {
         settingsUI.galeSelect.disabled = !settingsUI.toggleGale.checked;
     });
+    
+    // Listener para mudança no comportamento de payout
+    if (settingsUI.payoutBehavior) {
+        settingsUI.payoutBehavior.addEventListener('change', () => {
+            updatePayoutTimeoutVisibility();
+            logFromSettings(`Comportamento de payout alterado para: ${settingsUI.payoutBehavior.value}`, 'INFO');
+        });
+    }
     
     // Evento de salvar
     if (settingsUI.saveBtn) {

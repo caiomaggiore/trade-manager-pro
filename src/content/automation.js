@@ -27,11 +27,213 @@ function toUpdateStatus(message, type = 'info', duration = 5000) {
     }
 }
 
-// Função para obter o payout atual (exemplo, ajuste conforme sua lógica real)
-function getCurrentPayout() {
-    // Substitua por sua lógica real de obtenção do payout
-    return window.currentPayout || 100; // Exemplo: valor fictício
+// Função para obter o payout atual da plataforma (solicita ao content.js)
+async function getCurrentPayout() {
+    return new Promise((resolve, reject) => {
+        try {
+            sendToLogSystem('Solicitando payout atual ao content.js...', 'DEBUG');
+            
+            // Solicitar payout ao content.js via chrome.runtime
+            chrome.runtime.sendMessage({
+                action: 'GET_CURRENT_PAYOUT'
+            }, (response) => {
+                if (chrome.runtime.lastError) {
+                    const errorMsg = `Erro ao solicitar payout: ${chrome.runtime.lastError.message}`;
+                    sendToLogSystem(errorMsg, 'ERROR');
+                    reject(new Error(errorMsg));
+                    return;
+                }
+                
+                if (!response) {
+                    const errorMsg = 'Nenhuma resposta recebida do content.js para solicitação de payout';
+                    sendToLogSystem(errorMsg, 'ERROR');
+                    reject(new Error(errorMsg));
+                    return;
+                }
+                
+                if (!response.success) {
+                    const errorMsg = response.error || 'Erro desconhecido ao obter payout';
+                    sendToLogSystem(errorMsg, 'ERROR');
+                    reject(new Error(errorMsg));
+                    return;
+                }
+                
+                if (typeof response.payout !== 'number' || response.payout <= 0) {
+                    const errorMsg = `Payout inválido recebido: ${response.payout}`;
+                    sendToLogSystem(errorMsg, 'ERROR');
+                    reject(new Error(errorMsg));
+                    return;
+                }
+                
+                sendToLogSystem(`Payout recebido do content.js: ${response.payout}%`, 'SUCCESS');
+                resolve(response.payout);
+            });
+            
+        } catch (error) {
+            sendToLogSystem(`Erro ao solicitar payout: ${error.message}`, 'ERROR');
+            reject(error);
+        }
+    });
 }
+
+// Função para verificar payout antes de análise e aplicar comportamento configurado
+async function checkPayoutBeforeAnalysis() {
+    return new Promise(async (resolve, reject) => {
+        chrome.storage.sync.get(['userConfig'], async (storageResult) => {
+            if (chrome.runtime.lastError) {
+                const errorMsg = `Falha ao ler userConfig para verificação de payout: ${chrome.runtime.lastError.message}`;
+                sendToLogSystem(errorMsg, 'ERROR');
+                reject(errorMsg);
+                return;
+            }
+
+            const config = storageResult.userConfig || {};
+            const minPayout = parseFloat(config.minPayout) || 80;
+            const payoutBehavior = config.payoutBehavior || 'cancel';
+            const payoutTimeout = parseInt(config.payoutTimeout) || 60;
+            
+            sendToLogSystem(`Verificando payout: Mínimo=${minPayout}%, Comportamento=${payoutBehavior}, Timeout=${payoutTimeout}s`, 'INFO');
+            
+            // Obter payout atual usando await
+            const currentPayout = await getCurrentPayout();
+            sendToLogSystem(`Payout atual detectado: ${currentPayout}%`, 'INFO');
+            
+            if (currentPayout >= minPayout) {
+                sendToLogSystem(`Payout adequado (${currentPayout}% >= ${minPayout}%). Prosseguindo com análise.`, 'SUCCESS');
+                resolve(true);
+                return;
+            }
+            
+            // Payout insuficiente - aplicar comportamento configurado
+            sendToLogSystem(`Payout insuficiente (${currentPayout}% < ${minPayout}%). Aplicando comportamento: ${payoutBehavior}`, 'WARN');
+            
+            switch (payoutBehavior) {
+                case 'cancel':
+                    const cancelMsg = `Análise cancelada: Payout atual (${currentPayout}%) abaixo do mínimo configurado (${minPayout}%).`;
+                    sendToLogSystem(cancelMsg, 'WARN');
+                    toUpdateStatus(cancelMsg, 'warn', 8000);
+                    reject('PAYOUT_INSUFFICIENT');
+                    break;
+                    
+                case 'wait':
+                    sendToLogSystem(`Iniciando monitoramento contínuo de payout (mínimo: ${minPayout}%)...`, 'INFO');
+                    toUpdateStatus(`Monitoramento de payout ativo - aguardando ${minPayout}%...`, 'info', 0);
+                    waitForPayoutImprovement(minPayout, payoutTimeout, resolve, reject);
+                    break;
+                    
+                case 'switch':
+                    // Futuro: implementar troca de ativo
+                    sendToLogSystem('Comportamento "switch" ainda não implementado. Cancelando por enquanto.', 'WARN');
+                    toUpdateStatus('Troca automática de ativo ainda não disponível. Operação cancelada.', 'warn', 5000);
+                    reject('SWITCH_NOT_IMPLEMENTED');
+                    break;
+                    
+                default:
+                    sendToLogSystem(`Comportamento de payout desconhecido: ${payoutBehavior}. Cancelando.`, 'ERROR');
+                    reject('UNKNOWN_BEHAVIOR');
+            }
+        });
+    });
+}
+
+// Função auxiliar para aguardar melhora do payout (loop contínuo)
+function waitForPayoutImprovement(minPayout, maxTimeout, resolve, reject) {
+    let elapsedTime = 0;
+    let waitInterval = null;
+    let lastStatusUpdate = 0;
+    let isCancelled = false;
+    
+    // Log inicial único
+    sendToLogSystem(`Aguardando payout adequado - monitoramento ativo (mínimo: ${minPayout}%)`, 'INFO');
+    
+    const checkPayoutPeriodically = async () => {
+        // Verificar cancelamento via storage ou mensagem
+        try {
+            const result = await new Promise((storageResolve) => {
+                chrome.storage.local.get(['cancelPayoutWait'], (data) => {
+                    storageResolve(data.cancelPayoutWait || false);
+                });
+            });
+            
+            if (result || isCancelled) {
+                clearInterval(waitInterval);
+                sendToLogSystem('Monitoramento de payout cancelado', 'INFO');
+                toUpdateStatus('Aguardo de payout cancelado', 'warn', 3000);
+                
+                // Limpar flag de cancelamento
+                chrome.storage.local.remove(['cancelPayoutWait']);
+                reject('USER_CANCELLED');
+                return;
+            }
+        } catch (storageError) {
+            sendToLogSystem(`Erro ao verificar cancelamento: ${storageError.message}`, 'WARN');
+        }
+        
+        try {
+            const currentPayout = await getCurrentPayout();
+            elapsedTime++;
+            
+            // Verificar se o payout melhorou
+            if (currentPayout >= minPayout) {
+                clearInterval(waitInterval);
+                sendToLogSystem(`Payout adequado alcançado! ${currentPayout}% >= ${minPayout}%. Prosseguindo com análise.`, 'SUCCESS');
+                toUpdateStatus(`Payout adequado (${currentPayout}%)! Iniciando análise...`, 'success', 3000);
+                resolve(true);
+                return;
+            }
+            
+            // Atualizar status visual para o usuário a cada 5 segundos (não logs)
+            if (elapsedTime % 5 === 0) {
+                const minutes = Math.floor(elapsedTime / 60);
+                const seconds = elapsedTime % 60;
+                const timeStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+                
+                toUpdateStatus(`Aguardando payout: ${currentPayout}% → ${minPayout}% (${timeStr} aguardando)`, 'info', 0);
+                lastStatusUpdate = elapsedTime;
+            }
+            
+            // Log periódico opcional a cada 30 segundos (reduzido)
+            if (elapsedTime % 30 === 0) {
+                const minutes = Math.floor(elapsedTime / 60);
+                sendToLogSystem(`Monitoramento payout: ${currentPayout}% após ${minutes > 0 ? minutes + 'm' : elapsedTime + 's'}`, 'DEBUG');
+            }
+            
+        } catch (payoutError) {
+            clearInterval(waitInterval);
+            sendToLogSystem(`Erro ao verificar payout durante monitoramento: ${payoutError.message}`, 'ERROR');
+            toUpdateStatus(`Erro na verificação de payout: ${payoutError.message}`, 'error', 5000);
+            reject(`PAYOUT_READ_ERROR: ${payoutError.message}`);
+            return;
+        }
+    };
+    
+    // Verificar imediatamente e depois a cada segundo
+    checkPayoutPeriodically();
+    waitInterval = setInterval(checkPayoutPeriodically, 1000);
+    
+    // Armazenar referência do interval no chrome.storage para cancelamento
+    chrome.storage.local.set({
+        currentPayoutInterval: true,
+        payoutMonitoringActive: true
+    });
+}
+
+// Função para cancelar monitoramento de payout (usando chrome.storage)
+function cancelPayoutMonitoring() {
+    chrome.storage.local.set({ cancelPayoutWait: true }, () => {
+        sendToLogSystem('Sinal de cancelamento de monitoramento enviado via chrome.storage', 'INFO');
+        toUpdateStatus('Cancelando monitoramento de payout...', 'info', 3000);
+    });
+}
+
+// Exportar função via chrome.runtime para acesso externo
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'cancelPayoutMonitoring') {
+        cancelPayoutMonitoring();
+        sendResponse({ success: true });
+        return true;
+    }
+});
 
 (function() {
     sendToLogSystem('Módulo de Automação INICIANDO.', 'DEBUG');
@@ -114,36 +316,26 @@ function getCurrentPayout() {
                  const errorMsg = 'Valores de lucro inválidos.';
                  sendToLogSystem(errorMsg, 'ERROR');
                  toUpdateStatus(errorMsg, 'error');
-                 return;
-             }
-
-            const minPayout = parseFloat(config.minPayout) || 80;
-            const currentPayout = getCurrentPayout();
-            if (currentPayout < minPayout) {
-                sendToLogSystem(`Payout atual (${currentPayout}%) está abaixo do mínimo configurado (${minPayout}%). Forçando WAIT.`, 'WARN');
-                toUpdateStatus(`Aguardando payout subir para o mínimo configurado (${minPayout}%).`, 'warn');
-                // Chamar modal de análise forçado com ação WAIT e mensagem personalizada
-                if (chrome && chrome.runtime && chrome.runtime.id) {
-                    chrome.runtime.sendMessage({
-                        action: 'forceWaitModal',
-                        reason: `O payout atual (${currentPayout}%) está abaixo do mínimo configurado (${minPayout}%). Aguarde ou troque de moeda.`
-                    });
-                }
                 return;
             }
 
             if (currentProfit < dailyProfitTarget) {
-                const conditionMsg = `Automação: Condição atendida (${currentProfit} < ${dailyProfitTarget}). Iniciando análise...`;
+                const conditionMsg = `Automação: Condição atendida (${currentProfit} < ${dailyProfitTarget}). Verificando payout antes da análise...`;
                 sendToLogSystem(conditionMsg, 'INFO');
-                toUpdateStatus('Automação: Iniciando análise...', 'info');
+                toUpdateStatus('Automação: Verificando payout antes da análise...', 'info');
+                
+                // *** NOVA LÓGICA: Verificar payout antes de iniciar análise ***
+                checkPayoutBeforeAnalysis()
+                    .then(() => {
+                        // Payout adequado, pode prosseguir com análise
+                        sendToLogSystem('Payout verificado e adequado. Iniciando análise...', 'SUCCESS');
+                        toUpdateStatus('Payout adequado! Iniciando análise...', 'success', 3000);
                 
                 // Tentar clicar no botão de análise DIRETAMENTE
                 try {
-                    // O botão é buscado no DOMContentLoaded
                     if (analyzeBtn) {
                         sendToLogSystem('Clicando #analyzeBtn DIRETAMENTE para iniciar análise.', 'DEBUG');
                         analyzeBtn.click();
-                        // Não atualiza status final aqui, espera a análise rodar
                     } else {
                         const errorMsg = 'Botão #analyzeBtn NÃO encontrado (referência não estabelecida).';
                         sendToLogSystem(errorMsg, 'ERROR');
@@ -154,6 +346,23 @@ function getCurrentPayout() {
                     sendToLogSystem(errorMsg, 'ERROR');
                     toUpdateStatus(errorMsg, 'error');
                 }
+                    })
+                    .catch((reason) => {
+                        // Payout insuficiente ou outro erro
+                        sendToLogSystem(`Verificação de payout falhou: ${reason}`, 'WARN');
+                        
+                        if (reason === 'PAYOUT_INSUFFICIENT') {
+                            toUpdateStatus('Análise cancelada: Payout insuficiente', 'warn', 5000);
+                        } else if (reason === 'PAYOUT_TIMEOUT') {
+                            toUpdateStatus('Análise cancelada: Timeout aguardando payout', 'warn', 5000);
+                        } else if (reason === 'USER_CANCELLED') {
+                            toUpdateStatus('Monitoramento de payout cancelado pelo usuário', 'info', 5000);
+                        } else if (reason === 'SWITCH_NOT_IMPLEMENTED') {
+                            toUpdateStatus('Troca de ativo não implementada ainda', 'warn', 5000);
+                        } else {
+                            toUpdateStatus(`Erro na verificação de payout: ${reason}`, 'error', 5000);
+                        }
+                    });
             } else {
                 const resultMsg = `Automação: Meta de lucro atingida ou superada (${currentProfit} >= ${dailyProfitTarget}). Nenhuma análise necessária.`;
                 sendToLogSystem(resultMsg, 'INFO');
