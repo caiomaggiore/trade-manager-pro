@@ -210,24 +210,15 @@ const saveSettings = async () => {
     const config = getSettingsFromUI();
     
     try {
-        // Usar o StateManager para salvar configurações
-        if (window.StateManager) {
-            const success = await window.StateManager.saveConfig(config);
-            if (success) {
-                logFromSettings('Configurações salvas com sucesso via StateManager', 'SUCCESS');
-                
-                // Notificar a página pai explicitamente sobre a atualização das configurações
-                notifyMainPage(config);
-            } else {
-                throw new Error('Erro ao salvar configurações via StateManager');
-            }
-        } else {
-            // Fallback para salvar diretamente no storage
-            await chrome.storage.sync.set({ userConfig: config });
-            logFromSettings('Configurações salvas diretamente no storage', 'SUCCESS');
+        // Usar o StateManagerWrapper para salvar configurações
+        const success = await StateManagerWrapper.saveConfig(config);
+        if (success) {
+            logFromSettings('Configurações salvas com sucesso via StateManager', 'SUCCESS');
             
-            // Também notificar a página pai
+            // Notificar a página pai explicitamente sobre a atualização das configurações
             notifyMainPage(config);
+        } else {
+            throw new Error('Erro ao salvar configurações via StateManager');
         }
         
         // Feedback visual mais sutil (opcional)
@@ -249,8 +240,20 @@ const saveSettings = async () => {
             closeSettings();
         }
     } catch (error) {
-        logFromSettings('Erro ao salvar configurações: ' + error.message, 'ERROR');
-        alert('Erro ao salvar configurações: ' + error.message);
+        logFromSettings(`Erro ao salvar configurações: ${error.message}`, 'ERROR');
+        
+        // Fallback para salvar diretamente no storage
+        try {
+            await chrome.storage.sync.set({ userConfig: config });
+            logFromSettings('Configurações salvas diretamente no storage como fallback', 'SUCCESS');
+            
+            // Também notificar a página pai
+            notifyMainPage(config);
+            closeSettings();
+        } catch (storageError) {
+            logFromSettings(`Erro também no fallback: ${storageError.message}`, 'ERROR');
+            alert('Erro ao salvar configurações. Tente novamente.');
+        }
     }
 };
 
@@ -304,22 +307,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Carregar configurações
     try {
-        // Verificar se o StateManager está disponível
-        if (window.StateManager) {
-            logFromSettings('Carregando configurações via StateManager...', 'INFO');
-            const config = await window.StateManager.loadConfig();
-            loadSettingsToUI(config);
-        } else {
-            // Fallback para carregar diretamente do storage
-            logFromSettings('StateManager não encontrado, carregando do storage...', 'WARN');
-            chrome.storage.sync.get(['userConfig'], (result) => {
-                loadSettingsToUI(result.userConfig);
-            });
-        }
+        // Verificar se o StateManagerWrapper está disponível
+        logFromSettings('Carregando configurações via StateManager...', 'INFO');
+        const config = await StateManagerWrapper.loadConfig();
+        loadSettingsToUI(config);
     } catch (error) {
-        logFromSettings('Erro ao carregar configurações: ' + error.message, 'ERROR');
-        // Carregar configurações padrão em caso de erro
-        loadSettingsToUI(null);
+        // Fallback para carregar diretamente do storage
+        logFromSettings('StateManager não encontrado, carregando do storage...', 'WARN');
+        chrome.storage.sync.get(['userConfig'], (result) => {
+            loadSettingsToUI(result.userConfig);
+        });
     }
 });
 
@@ -342,18 +339,7 @@ const notifyMainPage = (config) => {
         logFromSettings(`Falha ao notificar via postMessage: ${err.message}`, 'WARN');
     }
     
-    // Método 2: Tentar acessar diretamente o StateManager da página pai, se disponível
-    try {
-        if (window.parent && window.parent.StateManager) {
-            window.parent.StateManager.saveConfig(config);
-            logFromSettings('Notificação enviada diretamente ao StateManager da página pai', 'SUCCESS');
-            notified = true;
-        }
-    } catch (err) {
-        logFromSettings(`Falha ao notificar via StateManager pai: ${err.message}`, 'WARN');
-    }
-    
-    // Método 3: Enviar via mensagem do Chrome runtime para outras partes da extensão
+    // Método 2: Enviar via mensagem do Chrome runtime para outras partes da extensão
     try {
         chrome.runtime.sendMessage({
             action: 'configUpdated',
@@ -386,6 +372,70 @@ function toUpdateStatus(message, type = 'info', duration = 3000) {
         });
     }
 }
+
+// ================== WRAPPER PARA STATEMANAGER VIA CHROME.RUNTIME ==================
+// Wrapper para comunicação com StateManager sem usar window
+const StateManagerWrapper = {
+    async getConfig() {
+        return new Promise((resolve, reject) => {
+            chrome.runtime.sendMessage({
+                action: 'STATE_MANAGER_REQUEST',
+                method: 'getConfig'
+            }, (response) => {
+                if (chrome.runtime.lastError) {
+                    reject(new Error(chrome.runtime.lastError.message));
+                    return;
+                }
+                if (response && response.success) {
+                    resolve(response.data);
+                } else {
+                    reject(new Error(response?.error || 'Erro ao obter configurações'));
+                }
+            });
+        });
+    },
+
+    async saveConfig(config) {
+        return new Promise((resolve, reject) => {
+            chrome.runtime.sendMessage({
+                action: 'STATE_MANAGER_REQUEST',
+                method: 'saveConfig',
+                params: { config }
+            }, (response) => {
+                if (chrome.runtime.lastError) {
+                    reject(new Error(chrome.runtime.lastError.message));
+                    return;
+                }
+                if (response && response.success) {
+                    resolve(response.data);
+                } else {
+                    reject(new Error(response?.error || 'Erro ao salvar configurações'));
+                }
+            });
+        });
+    },
+
+    async loadConfig() {
+        return new Promise((resolve, reject) => {
+            chrome.runtime.sendMessage({
+                action: 'STATE_MANAGER_REQUEST',
+                method: 'loadConfig'
+            }, (response) => {
+                if (chrome.runtime.lastError) {
+                    reject(new Error(chrome.runtime.lastError.message));
+                    return;
+                }
+                if (response && response.success) {
+                    resolve(response.data);
+                } else {
+                    reject(new Error(response?.error || 'Erro ao carregar configurações'));
+                }
+            });
+        });
+    }
+};
+
+// ================== CONFIGURAÇÕES PADRÃO ==================
 
 // Exportar funções para uso em outros scripts
 window.settingsModule = {

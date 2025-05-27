@@ -2,6 +2,12 @@
 // Sistema de aplicação de Gale para o Trade Manager Pro
 
 (function() {
+    'use strict';
+    
+    // ================== WRAPPER PARA STATEMANAGER VIA CHROME.RUNTIME ==================
+    // REMOVIDO: Vamos usar window.StateManager diretamente como funcionava antes
+
+    // ================== CONSTANTES ==================
     const GALE_LOG_PREFIX = '[GaleSystem]';
 
     function log(message, level = 'INFO') {
@@ -369,49 +375,37 @@
     }
     
     function initialize() {
-    log('Inicializando sistema de gale...', 'INFO');
-    try {
-        if (window.StateManager) {
-            const config = window.StateManager.getConfig();
-            log(`Initialize: Configuração recebida do StateManager: ${config ? JSON.stringify(config) : 'N/A'}`, 'DEBUG');
-            isActive = config?.gale?.active || false;
-            // Garantir que o valor original seja capturado do StateManager
-            originalValue = config?.value || 10;
-            galeCount = 0; // Resetar galeCount na inicialização
-            galeLosses = []; // Resetar histórico de perdas
-            
+        log('Inicializando sistema de gale...', 'INFO');
+        try {
             // Obter multiplicador do gale (agora é a % de lucro desejado)
-            if (config?.gale?.level) {
-                // Converter formato "Xx%" para decimal (exemplo: "20%" para 0.2, "0%" para 0, "5%" para 0.05)
-                const levelMatch = config.gale.level.match(/(\d+)%?/);
-                if (levelMatch && levelMatch[1] !== undefined) {
-                    desiredProfitPercentage = parseFloat(levelMatch[1]) / 100;
-                    log(`Percentual de lucro desejado: ${desiredProfitPercentage * 100}%`, 'INFO');
-                } else {
-                    desiredProfitPercentage = parseFloat(config.gale.level.replace('x', '')) / 100 || 0.2;
+            if (window.StateManager && window.StateManager.getConfig()) {
+                const config = window.StateManager.getConfig();
+                if (config.gale && config.gale.level) {
+                    // Converter formato "Xx%" para decimal (exemplo: "20%" para 0.2, "0%" para 0, "5%" para 0.05)
+                    const levelMatch = config.gale.level.match(/(\d+)%?/);
+                    if (levelMatch && levelMatch[1] !== undefined) {
+                        desiredProfitPercentage = parseFloat(levelMatch[1]) / 100;
+                        log(`Percentual de lucro desejado: ${desiredProfitPercentage * 100}%`, 'INFO');
+                    } else {
+                        desiredProfitPercentage = parseFloat(config.gale.level.replace('x', '')) / 100 || 0.2;
+                    }
                 }
             }
             
+            // Garantir que o valor original seja capturado do StateManager
+            originalValue = parseFloat(window.StateManager.getConfig().value || 10);
+            galeCount = 0; // Resetar galeCount na inicialização
+            galeLosses = []; // Resetar histórico de perdas
+            
             log(`Initialize: isActive definido como: ${isActive}. Valor original: ${originalValue}. Lucro desejado: ${desiredProfitPercentage * 100}%.`, 'DEBUG');
             
-            window.StateManager.subscribe((notification) => {
-                if (notification.type === 'config') {
-                    handleConfigUpdate(notification.state.config);
-                }
-            });
-            log('Sistema de Gale inicializado e StateManager listener configurado.', 'SUCCESS');
+            isActive = true; // Supondo que o sistema de gale esteja ativo por padrão
+            
             log(`Gale ${isActive ? 'ativado' : 'desativado'}, lucro desejado: ${desiredProfitPercentage * 100}%`, 'INFO');
-        } else {
-            log('StateManager não encontrado. O sistema de gale não funcionará corretamente.', 'ERROR');
-             isActive = false; // Garantir que isActive seja false se o StateManager não estiver lá
+        } catch (error) {
+            log(`Erro na inicialização: ${error.message}`, 'ERROR');
         }
-    } catch (error) {
-        log(`Erro ao inicializar: ${error.message}`, 'ERROR');
-        isActive = false; // Garantir que isActive seja false em caso de erro
     }
-    setupMessageListener(); // Mover para o final de initialize
-    setupDOMListeners(); // Configurar listeners do DOM
-}
     
     // Nova função para configurar os listeners do DOM
     function setupDOMListeners() {
@@ -578,7 +572,7 @@
         }
     }
     
-    function applyGale(data = {}) {
+    async function applyGale(data = {}) {
         log(`applyGale: Iniciando. isActive: ${isActive}. Dados: ${data ? JSON.stringify(data) : 'N/A'}`, 'DEBUG');
         try {
             if (!isActive) {
@@ -595,34 +589,39 @@
                 return { success: false, message: 'Operação muito antiga para aplicar gale' };
             }
             
-            // Obter valor atual da entrada
+            // Obter valor atual do StateManager
             let currentEntryValue = 0;
-            if (window.StateManager) {
-                currentEntryValue = parseFloat(window.StateManager.getConfig().value || 0);
+            try {
+                const config = window.StateManager.getConfig();
+                currentEntryValue = parseFloat(config.value || 0);
+            } catch (error) {
+                log(`Erro ao obter valor atual: ${error.message}`, 'ERROR');
             }
+            
             if (currentEntryValue <= 0) {
                 log(`Valor de entrada atual inválido (${currentEntryValue}), usando valor original base (${originalValue}).`, 'WARN');
                 currentEntryValue = originalValue;
             }
             
-                // Inicializar ou incrementar o contador de gale
-    if (galeCount === 0) {
-        galeCount = 1;
-        // Atualiza o valor original base APENAS no primeiro gale do ciclo
-        if (window.StateManager) { 
-            // Aqui é o ponto crucial: capturar o valor original das configurações
-            originalValue = parseFloat(window.StateManager.getConfig().value || 10);
-            log(`Valor original base para este ciclo de gale: ${originalValue}`, 'DEBUG');
-        }
-        // Inicia o histórico de perdas com o valor original
-        galeLosses = [originalValue];
-        log(`Inicializando histórico de perdas com valor original: ${originalValue}`, 'DEBUG');
-    } else {
-        galeCount++;
-        // Adicionar o valor atual perdido ao histórico
-        galeLosses.push(currentEntryValue);
-        log(`Adicionado ao histórico de perdas: ${currentEntryValue}. Total: ${galeLosses.join(' + ')} = ${galeLosses.reduce((a, b) => a + b, 0)}`, 'DEBUG');
-    }
+            // Garantir que o valor original seja capturado do StateManager
+            try {
+                const config = window.StateManager.getConfig();
+                originalValue = parseFloat(config.value || 10);
+            } catch (error) {
+                log(`Erro ao obter valor original: ${error.message}`, 'ERROR');
+            }
+            
+            // Inicializar ou incrementar o contador de gale
+            if (galeCount === 0) {
+                galeCount = 1;
+                log(`Valor original base para este ciclo de gale: ${originalValue}`, 'DEBUG');
+                // Inicia o histórico de perdas com o valor original
+                galeLosses = [originalValue];
+            } else {
+                galeCount++;
+                // Adiciona a perda atual ao histórico
+                galeLosses.push(currentEntryValue);
+            }
             
             // Obter o multiplicador de payout atual
             const payoutMultiplier = getPayoutMultiplier();
@@ -705,27 +704,23 @@
             
             log(`Aplicando Gale nível ${galeCount} com estratégia baseada em payout (cálculo direto)`, 'INFO');
 
-            if (window.StateManager) {
+            // Atualizar valor no StateManager
+            try {
                 const config = window.StateManager.getConfig();
                 const updatedConfig = { ...config, value: newValue };
-                window.StateManager.saveConfig(updatedConfig)
-                    .then(() => {
-                        log(`Valor de entrada atualizado para: ${newValue} no StateManager.`, 'SUCCESS');
-                        chrome.runtime.sendMessage({
-                            action: 'SHOW_FEEDBACK', 
-                            type: 'warning', 
-                            message: `Gale nível ${galeCount} aplicado. Novo valor: $${newValue}`
-                        });
+                await window.StateManager.saveConfig(updatedConfig);
+                log(`Valor de entrada atualizado para: ${newValue} no StateManager.`, 'SUCCESS');
+                chrome.runtime.sendMessage({
+                    action: 'SHOW_FEEDBACK', 
+                    type: 'warning', 
+                    message: `Gale nível ${galeCount} aplicado. Novo valor: $${newValue}`
+                });
 
-                        // Acionar nova análise após sucesso na aplicação do gale e salvamento da config
-                        setTimeout(triggerNewAnalysis, 500);
-                    })
-                    .catch(error => {
-                        log(`Erro ao salvar novo valor ${newValue} no StateManager: ${error.message}`, 'ERROR');
-                    });
-            } else {
-                log('StateManager não disponível. Não foi possível atualizar o valor de entrada.', 'ERROR');
-                return { success: false, message: 'StateManager não disponível para salvar novo valor' };
+                // Acionar nova análise após sucesso na aplicação do gale e salvamento da config
+                setTimeout(triggerNewAnalysis, 500);
+            } catch (error) {
+                log(`Erro ao salvar novo valor ${newValue} no StateManager: ${error.message}`, 'ERROR');
+                return { success: false, message: 'Erro ao salvar configurações no StateManager' };
             }
             
             notify(GALE_ACTIONS.UPDATED, { 
@@ -752,72 +747,36 @@
         }
     }
     
-    function resetGale(data = {}) {
-        log(`resetGale: Iniciando. isActive: ${isActive}. Contador Gale: ${galeCount}. Dados: ${data ? JSON.stringify(data) : 'N/A'}`, 'DEBUG');
+    async function resetGale() {
+        log('resetGale: Iniciando reset do sistema de gale...', 'INFO');
+        
         try {
-            if (galeCount === 0) {
-                log('Não há gale ativo para resetar.', 'INFO');
-                return { success: false, message: 'Não há gale para resetar' };
-            }
-            if (data && data.isHistorical) {
-                log('Ignorando reset de gale para operação histórica.', 'INFO');
-                return { success: false, message: 'Operação histórica ignorada para reset' };
-            }
-            
-            const operationTime = data?.timestamp || data?.notifyTime || 0;
-            if (operationTime > 0 && (Date.now() - operationTime) > 30000) { // 30 segundos
-                 log(`Ignorando reset de gale para operação antiga (${Math.round((Date.now() - operationTime)/1000)}s atrás).`, 'WARN');
-                 return { success: false, message: 'Operação muito antiga para resetar gale' };
-            }
-            
-                const previousLevel = galeCount;
-    const totalLosses = galeLosses.reduce((a, b) => a + b, 0);
-    
-    // Resetar contador e histórico de perdas
-    galeCount = 0;
-    galeLosses = [];
-    
-    log(`Gale resetado do nível ${previousLevel}. Total de perdas: ${totalLosses}. Restaurando valor original: ${originalValue}`, 'INFO');
-    
-    if (window.StateManager && originalValue > 0) {
-        const config = window.StateManager.getConfig();
-        // Apenas atualiza o valor se ele for diferente do originalValue, para evitar escritas desnecessárias
-        if (config.value !== originalValue) {
+            const config = window.StateManager.getConfig();
             const updatedConfig = { ...config, value: originalValue };
-            window.StateManager.saveConfig(updatedConfig)
-                .then(() => {
-                    log(`Valor original (${originalValue}) restaurado no StateManager.`, 'SUCCESS');
-                    chrome.runtime.sendMessage({action: 'SHOW_FEEDBACK', type: 'success', message: `Gale resetado. Valor restaurado: $${originalValue}`});
-                })
-                .catch(error => {
-                    log(`Erro ao restaurar valor original no StateManager: ${error.message}`, 'ERROR');
-                });
-        } else {
-             log(`Valor no StateManager (${config.value}) já é o original (${originalValue}). Nenhuma atualização necessária.`, 'DEBUG');
-             chrome.runtime.sendMessage({action: 'SHOW_FEEDBACK', type: 'info', message: `Gale resetado. Valor original: $${originalValue}`});
-        }
-    } else {
-        log('StateManager não disponível ou originalValue inválido. Não foi possível restaurar o valor de entrada.', 'ERROR');
-         return { success: false, message: 'StateManager não disponível ou originalValue inválido para resetar valor' };
-    }
-            
-            notify(GALE_ACTIONS.RESET_DONE, { 
-                level: previousLevel, 
-                originalValue: originalValue,
-                totalLosses: totalLosses
-            });
-            
-            return { 
-                success: true, 
-                level: previousLevel, 
-                originalValue: originalValue, 
-                message: `Gale resetado. Nível anterior: ${previousLevel}. Valor restaurado para ${originalValue}`,
-                totalLosses: totalLosses
-            };
+            await window.StateManager.saveConfig(updatedConfig);
+            log(`Valor de entrada resetado para o valor original: ${originalValue} no StateManager.`, 'SUCCESS');
         } catch (error) {
-            log(`Erro ao resetar gale: ${error.message}`, 'ERROR');
-            return { success: false, message: `Erro: ${error.message}` };
+            log(`Erro ao resetar valor no StateManager: ${error.message}`, 'ERROR');
         }
+        
+        // Reset das variáveis internas
+        galeCount = 0;
+        galeLosses = [];
+        
+        log(`resetGale: Gale resetado. Valor original: ${originalValue}. Contagem: ${galeCount}.`, 'SUCCESS');
+        
+        notify(GALE_ACTIONS.RESET, { 
+            originalValue: originalValue, 
+            resetValue: originalValue,
+            message: `Gale resetado. Valor retornado para: ${originalValue}`
+        });
+        
+        return { 
+            success: true, 
+            originalValue: originalValue, 
+            resetValue: originalValue,
+            message: `Gale resetado. Valor retornado para: ${originalValue}`
+        };
     }
 
     // Função auxiliar para notificar outros sistemas (como UI)
@@ -864,8 +823,8 @@
         return result;
     }
     
-    function getStatusForTesting() {
-        log('getStatusForTesting chamado.', 'DEBUG');
+    async function getStatus() {
+        log('getStatus chamado.', 'DEBUG');
         
         // Obter payout atual
         const payoutMultiplier = getPayoutMultiplier();
@@ -912,7 +871,7 @@
         window.GaleSystem = {
             simulateGale: simulateGaleForTesting,
             simulateReset: simulateResetForTesting,
-            getStatus: getStatusForTesting,
+            getStatus: getStatus,
             // Adicionar a nova função para captura de payout
             capturePayout: capturePayoutFromDOM
         };

@@ -211,7 +211,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             
             try {
                 // Obter configurações
-                const settings = window.StateManager ? window.StateManager.getConfig() || {} : {};
+                const settings = window.StateManager ? window.StateManager.getConfig() : {};
                 
                 // Enviar análise usando o analyze-graph.js diretamente se disponível
                 if (window.AnalyzeGraph && typeof window.AnalyzeGraph.analyzeImage === 'function') {
@@ -343,6 +343,30 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         
         // Carregar configurações
         loadConfig();
+        
+        // Adicionar logs de debug para rastrear configurações
+        setTimeout(async () => {
+            try {
+                const config = window.StateManager.getConfig();
+                addLog(`[DEBUG] Configurações após carregamento: ${JSON.stringify(config)}`, 'DEBUG');
+                addLog(`[DEBUG] Modo desenvolvedor: ${config?.devMode}`, 'DEBUG');
+                
+                // Forçar atualização do status de automação na inicialização
+                await updateAutomationStatus(config?.automation || false, false);
+            } catch (error) {
+                addLog(`[DEBUG] Erro ao obter configurações: ${error.message}`, 'WARN');
+            }
+        }, 500);
+        
+        // Verificação adicional após 1 segundo
+        setTimeout(async () => {
+            try {
+                const config = window.StateManager.getConfig();
+                addLog(`[DEBUG] Verificação 1s - Automação: ${config?.automation}`, 'DEBUG');
+            } catch (error) {
+                addLog(`[DEBUG] Erro na verificação 1s: ${error.message}`, 'WARN');
+            }
+        }, 1000);
         
         // Atualizar status inicial
         updateStatus('Sistema operando normalmente', 'INFO');
@@ -653,7 +677,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     };
 
     // Função para cancelar operações (pode ser chamada de qualquer lugar)
-    const cancelCurrentOperation = (reason = 'Cancelado pelo usuário') => {
+    const cancelCurrentOperation = async (reason = 'Cancelado pelo usuário') => {
         addLog(`Cancelando operação atual: ${reason}`, 'INFO');
         
         // Limpar estado de operação no StateManager
@@ -662,7 +686,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             const isAutomationActive = currentConfig.automation === true;
             
             // Atualizar estado para indicar que não há operação em andamento
-            window.StateManager.updateAutomationState(isAutomationActive, null);
+            window.StateManager.updateAutomationState(false, null);
             
             // Atualizar visibilidade dos botões
             updateUserControlsVisibility(isAutomationActive, false);
@@ -745,11 +769,11 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         };
 
         if (elements.startOperation) {
-            elements.startOperation.addEventListener('click', () => {
+            elements.startOperation.addEventListener('click', async () => {
                 // Verificar o estado atual da automação no StateManager
-                if (window.StateManager && typeof window.StateManager.getConfig === 'function') {
-                    const currentConfig = window.StateManager.getConfig() || {};
-                    const isAutomationActive = currentConfig.automation === true;
+                try {
+                    const currentConfig = window.StateManager.getConfig();
+                    const isAutomationActive = currentConfig?.automation === true;
                     
                     // Verificar se o módulo História está disponível
                     if (window.TradeManager?.History) {
@@ -771,7 +795,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                             
                             // Iniciar o monitoramento
                             window.TradeManager.History.startMonitoring()
-                                .then(() => {
+                                .then(async () => {
                                     addLog('Monitoramento de operações iniciado com sucesso', 'SUCCESS');
                                     updateStatus('Operação automática em andamento', 'success');
                                     
@@ -784,7 +808,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                                         });
                                     }
                                 })
-                                .catch(error => {
+                                .catch(async (error) => {
                                     addLog(`Erro ao iniciar monitoramento: ${error.message}`, 'ERROR');
                                     updateStatus('Falha ao iniciar operação automática', 'error');
                                     
@@ -802,29 +826,32 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         addLog('Módulo de histórico não disponível', 'ERROR');
                         updateStatus('Módulo de histórico não disponível', 'error');
                     }
-                } else {
+                } catch (error) {
                     // Se não conseguir acessar o estado via StateManager
+                    addLog(`Erro ao verificar estado da automação: ${error.message}`, 'ERROR');
                     updateStatus('Não foi possível verificar o status da automação', 'error');
                 }
             });
         }
         
         if (elements.cancelOperation) {
-            elements.cancelOperation.addEventListener('click', () => {
+            elements.cancelOperation.addEventListener('click', async () => {
                 addLog('Cancelando operação automática...', 'INFO');
                 updateStatus('Cancelando operação...', 'warn');
                 
                 // Limpar estado de operação no StateManager
-                if (window.StateManager) {
+                try {
                     const currentState = window.StateManager.getAutomationState();
-                    const currentConfig = window.StateManager.getConfig() || {};
-                    const isAutomationActive = currentConfig.automation === true;
+                    const currentConfig = window.StateManager.getConfig();
+                    const isAutomationActive = currentConfig?.automation === true;
                     
                     // Atualizar estado para indicar que não há operação em andamento
                     window.StateManager.updateAutomationState(isAutomationActive, null);
                     
                     // Atualizar visibilidade dos botões imediatamente
                     updateUserControlsVisibility(isAutomationActive, false);
+                } catch (error) {
+                    addLog(`Erro ao atualizar estado no StateManager: ${error.message}`, 'ERROR');
                 }
                 
                 // Interromper monitoramento se disponível
@@ -1040,62 +1067,49 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     }
 
     // Função para carregar configurações
-    function loadConfig() {
-        return new Promise((resolve) => {
+    async function loadConfig() {
+        return new Promise(async (resolve) => {
             addLog('Iniciando carregamento das configurações...', 'INFO');
             updateStatus('Carregando configurações...', 'info');
 
-            // Utilizar o StateManager para carregar as configurações
-            if (window.StateManager) {
+            // Utilizar o StateManager diretamente como funcionava na versão beta
+            try {
                 addLog('Utilizando StateManager para carregar configurações', 'INFO');
-                window.StateManager.loadConfig()
-                    .then(config => {
-                        addLog('Configurações carregadas via StateManager', 'SUCCESS');
-                        
-                        // Log específico para status de automação e gale
-                        addLog(`Status carregado - Gale: ${config.gale?.active} (${config.gale?.level}), Automação: ${config.automation}`, 'DEBUG');
-                        
-                        // Atualizar campos da página principal
-                        updateCurrentSettings({
-                            galeEnabled: config.gale?.active || false,
-                            galeLevel: config.gale?.level || '1.2x',
-                            dailyProfit: config.dailyProfit || 150,
-                            stopLoss: config.stopLoss || 30,
-                            tradeValue: config.value || 10,
-                            tradeTime: config.period || 1,
-                            autoActive: config.automation || false
-                        });
-                        
-                        // Atualizar visibilidade do painel de teste do Gale
-                        updateGaleTestPanelVisibility(config.devMode);
-                        
-                        // Atualizar visibilidade dos botões principais
-                        updateUserControlsVisibility(config.automation, false);
-                        
-                        updateStatus('Configurações carregadas com sucesso', 'success');
-                        resolve(config);
-                    })
-                    .catch(error => {
-                        addLog(`Erro ao carregar configurações via StateManager: ${error.message}`, 'ERROR');
-                        updateStatus('Erro ao carregar configurações', 'error');
-                        
-                        // Em caso de erro, tentar usar a abordagem antiga como fallback
-                        loadConfigLegacy()
-                            .then(config => resolve(config))
-                            .catch(err => {
-                                addLog(`Erro também no fallback: ${err.message}`, 'ERROR');
-                                // Usar configurações padrão em último caso
-                                resolve(indexDefaultConfig);
-                            });
-                    });
-            } else {
-                // Fallback para o método antigo se o StateManager não estiver disponível
-                addLog('StateManager não encontrado, usando método legacy', 'WARN');
+                const config = window.StateManager.loadConfig();
+                addLog('Configurações carregadas via StateManager', 'SUCCESS');
+                
+                // Log específico para status de automação e gale
+                addLog(`Status carregado - Gale: ${config.gale?.active} (${config.gale?.level}), Automação: ${config.automation}`, 'DEBUG');
+                
+                // Atualizar campos da página principal usando StateManager
+                updateCurrentSettings({
+                    galeEnabled: config.gale?.active || false,
+                    galeLevel: config.gale?.level || '1.2x',
+                    dailyProfit: config.dailyProfit || 150,
+                    stopLoss: config.stopLoss || 30,
+                    tradeValue: config.value || 10,
+                    tradeTime: config.period || 1,
+                    autoActive: config.automation || false
+                });
+                
+                // Atualizar visibilidade do painel de teste do Gale
+                updateGaleTestPanelVisibility(config.devMode);
+                
+                // Atualizar visibilidade dos botões principais
+                updateUserControlsVisibility(config.automation, false);
+                
+                updateStatus('Configurações carregadas com sucesso', 'success');
+                resolve(config);
+            } catch (error) {
+                addLog(`Erro ao carregar configurações via StateManager: ${error.message}`, 'ERROR');
+                updateStatus('Erro ao carregar configurações', 'error');
+                
+                // Em caso de erro, tentar usar a abordagem antiga como fallback
                 loadConfigLegacy()
                     .then(config => resolve(config))
-                    .catch(error => {
-                        addLog(`Erro ao carregar configurações: ${error.message}`, 'ERROR');
-                        updateStatus('Erro ao carregar configurações', 'error');
+                    .catch(err => {
+                        addLog(`Erro também no fallback: ${err.message}`, 'ERROR');
+                        // Usar configurações padrão em último caso
                         resolve(indexDefaultConfig);
                     });
             }
@@ -1166,85 +1180,81 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
 
     // Inicialização do StateManager listener
     function initStateManagerListener() {
-        if (window.StateManager) {
-            addLog('Registrando listener para StateManager', 'INFO');
+        addLog('Registrando listener para StateManager', 'INFO');
+        
+        // Registrar listener para atualizações de estado usando StateManager
+        window.StateManager.subscribe((notification) => {
+            // Formato de notificação: {state, type, timestamp}
+            const { state, type, timestamp } = notification;
             
-            // Registrar listener para atualizações de estado
-            window.StateManager.subscribe((notification) => {
-                // Formato de notificação atualizado: {state, type, timestamp}
-                const { state, type, timestamp } = notification;
+            if (type === 'config') {
+                addLog(`Recebida atualização de configurações do StateManager (${new Date(timestamp).toLocaleTimeString()})`, 'INFO');
                 
-                if (type === 'config') {
-                    addLog(`Recebida atualização de configurações do StateManager (${new Date(timestamp).toLocaleTimeString()})`, 'INFO');
+                const config = state.config;
+                if (config) {
+                    // Log detalhado das configurações atualizadas
+                    addLog(`Configurações atualizadas - Gale: ${config.gale?.active} (${config.gale?.level}), Automação: ${config.automation}`, 'DEBUG');
                     
-                    const config = state.config;
-                    if (config) {
-                        // Log detalhado das configurações atualizadas
-                        addLog(`Configurações atualizadas - Gale: ${config.gale?.active} (${config.gale?.level}), Automação: ${config.automation}`, 'DEBUG');
-                        
-                        // Atualizar campos da página principal
-                        updateCurrentSettings({
-                            galeEnabled: config.gale?.active || false,
-                            galeLevel: config.gale?.level || '1.2x',
-                            dailyProfit: config.dailyProfit || 150,
-                            stopLoss: config.stopLoss || 30,
-                            tradeValue: config.value || 10,
-                            tradeTime: config.period || 1,
-                            autoActive: config.automation || false
-                        });
-                        
-                        // Atualizar visibilidade do painel de teste do Gale baseado no modo desenvolvedor
-                        updateGaleTestPanelVisibility(config.devMode);
-                        
-                        // Atualizar visibilidade dos botões principais baseado no estado da automação
-                        updateUserControlsVisibility(config.automation, false);
-                        
-                        // Se a automação foi desativada e havia uma operação em andamento, cancelar
-                        if (!config.automation) {
-                            const currentState = window.StateManager.getAutomationState();
-                            if (currentState.currentOperation) {
-                                addLog('Automação desativada com operação em andamento - cancelando operação', 'WARN');
-                                cancelCurrentOperation('Automação desativada nas configurações');
-                            }
-                        }
-                                              
-                        updateStatus('Configurações atualizadas', 'success', 2000);
-                    }
-                } 
-                else if (type === 'automation') {
-                    // Tratar atualizações específicas do estado de automação
-                    addLog(`Recebida atualização de estado de AUTOMAÇÃO (${new Date(timestamp).toLocaleTimeString()})`, 'WARN');
+                    // REMOVIDO: updateCurrentSettings para evitar loops
+                    // O StateManager já atualiza o dashboard automaticamente
                     
-                    const automationState = state.automation;
-                    if (automationState) {
-                        // Atualizar apenas a UI, sem modificar o estado
-                        const isRunning = automationState.isRunning || false;
-                        const automationStatusElement = document.querySelector('#automation-status');
-                        if (automationStatusElement) {
-                            automationStatusElement.textContent = `Automação: ${isRunning ? 'Ativa' : 'Inativa'}`;
-                            automationStatusElement.className = 'automation-status';
-                            automationStatusElement.classList.add(isRunning ? 'active' : 'inactive');
-                        }
-                        
-                        // Log adicional para depuração
-                        addLog(`Estado de automação atualizado na UI: isRunning=${isRunning}`, 'WARN');
-                        
-                        // Atualizar visibilidade dos botões baseado no estado da automação
-                        const operationInProgress = automationState.currentOperation ? true : false;
-                        updateUserControlsVisibility(isRunning, operationInProgress);
-                        
-                        // Se houver uma operação atual, podemos mostrar informações adicionais
-                        if (automationState.currentOperation) {
-                            addLog(`Operação atual: ${JSON.stringify(automationState.currentOperation)}`, 'DEBUG');
+                    // Atualizar visibilidade do painel de teste do Gale baseado no modo desenvolvedor
+                    updateGaleTestPanelVisibility(config.devMode);
+                    
+                    // Atualizar visibilidade dos botões principais baseado no estado da automação
+                    updateUserControlsVisibility(config.automation, false);
+                    
+                    // Se a automação foi desativada e havia uma operação em andamento, cancelar
+                    if (!config.automation) {
+                        const currentState = window.StateManager.getAutomationState();
+                        if (currentState.currentOperation) {
+                            addLog('Automação desativada com operação em andamento - cancelando operação', 'WARN');
+                            cancelCurrentOperation('Automação desativada nas configurações');
                         }
                     }
                 }
-            });
-            
-            addLog('Listener registrado com sucesso', 'SUCCESS');
-        } else {
-            addLog('StateManager não disponível para registro de listener', 'WARN');
-        }
+            } 
+            else if (type === 'automation') {
+                // Tratar atualizações específicas do estado de automação
+                addLog(`Recebida atualização de estado de AUTOMAÇÃO (${new Date(timestamp).toLocaleTimeString()})`, 'WARN');
+                
+                const automationState = state.automation;
+                if (automationState) {
+                    // Atualizar apenas a UI, sem modificar o estado
+                    const isRunning = automationState.isRunning || false;
+                    const automationStatusElement = document.querySelector('#automation-status');
+                    if (automationStatusElement) {
+                        automationStatusElement.textContent = `Automação: ${isRunning ? 'Ativa' : 'Inativa'}`;
+                        automationStatusElement.className = 'automation-status';
+                        automationStatusElement.classList.add(isRunning ? 'active' : 'inactive');
+                    }
+                    
+                    // Log adicional para depuração
+                    addLog(`Estado de automação atualizado na UI: isRunning=${isRunning}`, 'WARN');
+                    
+                    // Atualizar visibilidade dos botões baseado no estado da automação
+                    const operationInProgress = automationState.currentOperation ? true : false;
+                    updateUserControlsVisibility(isRunning, operationInProgress);
+                    
+                    // Se houver uma operação atual, podemos mostrar informações adicionais
+                    if (automationState.currentOperation) {
+                        addLog(`Operação atual: ${JSON.stringify(automationState.currentOperation)}`, 'DEBUG');
+                    }
+                }
+            }
+            else if (type === 'performance') {
+                // Atualizar dashboard quando dados de performance mudarem
+                addLog(`Recebida atualização de performance (${new Date(timestamp).toLocaleTimeString()})`, 'DEBUG');
+                // O StateManager já atualiza o dashboard automaticamente
+            }
+            else if (type === 'system') {
+                // Atualizar dashboard quando estado do sistema mudar
+                addLog(`Recebida atualização de sistema (${new Date(timestamp).toLocaleTimeString()})`, 'DEBUG');
+                // O StateManager já atualiza o dashboard automaticamente
+            }
+        });
+        
+        addLog('Listener registrado com sucesso', 'SUCCESS');
     }
 
     // ================== ANALISADOR DE DADOS ==================
@@ -2434,6 +2444,41 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         }
         // ... outros handlers ...
     });
+
+    // ================== FUNÇÃO DE ATUALIZAÇÃO DE STATUS DE AUTOMAÇÃO ==================
+    // Função para atualizar o status de automação (restaurada da versão original)
+    const updateAutomationStatus = async (isRunning, operationInProgress = false) => {
+        addLog(`Atualizando status de automação: isRunning=${isRunning}, operationInProgress=${operationInProgress}`, 'DEBUG');
+        
+        // Atualizar via StateManager se disponível (método híbrido)
+        try {
+            window.StateManager.updateAutomationState(isRunning, operationInProgress ? {
+                id: Date.now(),
+                type: 'automation_operation',
+                startTime: new Date().toISOString(),
+                status: 'running'
+            } : null);
+        } catch (error) {
+            addLog(`Erro ao atualizar estado via StateManager: ${error.message}`, 'ERROR');
+        }
+        
+        // Atualizar elementos de UI diretamente para compatibilidade
+        const automationStatusElement = document.querySelector('#automation-status');
+        if (automationStatusElement) {
+            automationStatusElement.textContent = `Automação: ${isRunning ? 'Ativa' : 'Inativa'}`;
+            automationStatusElement.className = 'automation-status';
+            automationStatusElement.classList.add(isRunning ? 'active' : 'inactive');
+        }
+        
+        // Atualizar visibilidade dos botões
+        updateUserControlsVisibility(isRunning, operationInProgress);
+        
+        addLog(`Status de automação atualizado: ${isRunning ? 'Ativo' : 'Inativo'}`, 'DEBUG');
+    };
+
+    // ================== INICIALIZAÇÃO DO MONITORAMENTO ==================
+
+    // ================== VERIFICAÇÃO DE ELEMENTOS ==================
 } else {
     console.log('Trade Manager Pro - Index Module já foi carregado anteriormente');
 }
