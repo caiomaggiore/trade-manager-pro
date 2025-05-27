@@ -93,6 +93,57 @@
                 Resultado: Nenhum teste executado
             </div>
         </div>
+
+        <!-- Teste de Modal de Ativos -->
+        <div class="modal-test-buttons" style="margin-top: 15px; border-top: 1px solid #ccc; padding-top: 15px;">
+            <h4 style="margin: 0 0 10px 0; color: #333;">🔧 Debug Modal de Ativos</h4>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;">
+                <button id="debug-open-modal" class="btn secondary">
+                    <i class="fas fa-folder-open"></i> Abrir Modal
+                </button>
+                <button id="debug-close-modal" class="btn secondary">
+                    <i class="fas fa-times"></i> Fechar Modal
+                </button>
+                <button id="debug-check-status" class="btn secondary">
+                    <i class="fas fa-search"></i> Verificar Status
+                </button>
+                <button id="debug-toggle-modal" class="btn secondary" style="background-color: #ff9800;">
+                    <i class="fas fa-exchange-alt"></i> Toggle Modal
+                </button>
+            </div>
+            <div id="modal-debug-result" class="modal-debug-result" style="margin-top: 5px; padding: 8px; border: 1px solid #ddd; border-radius: 3px; background: #f9f9f9; font-size: 12px; max-height: 120px; overflow-y: auto; font-family: monospace;">
+                Debug: Nenhum teste executado
+            </div>
+        </div>
+        
+        <!-- Novo painel para teste de troca de ativos -->
+        <div class="asset-test-buttons" style="margin-top: 15px; border-top: 1px solid #ccc; padding-top: 15px;">
+            <h4 style="margin: 0 0 10px 0; color: #333;">Teste de Troca de Ativos</h4>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;">
+                <button id="test-open-asset-modal" class="btn secondary">
+                    <i class="fas fa-list"></i> Abrir Modal de Ativos
+                </button>
+                <button id="test-find-best-asset" class="btn secondary">
+                    <i class="fas fa-search"></i> Buscar Melhor Ativo
+                </button>
+                <button id="test-switch-to-crypto" class="btn secondary">
+                    <i class="fab fa-bitcoin"></i> Mudar para Crypto
+                </button>
+                <button id="test-switch-to-currency" class="btn secondary">
+                    <i class="fas fa-dollar-sign"></i> Mudar para Moedas
+                </button>
+            </div>
+            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                <label style="font-size: 12px;">Payout Mínimo:</label>
+                <input id="min-payout-input" type="number" value="85" min="50" max="100" style="width: 60px; padding: 2px;">
+                <span style="font-size: 12px;">%</span>
+            </div>
+            <div id="asset-test-result" class="asset-test-result" style="margin-top: 5px; padding: 8px; border: 1px solid #ddd; border-radius: 3px; background: #f9f9f9; font-size: 12px; max-height: 120px; overflow-y: auto;">
+                Resultado: Nenhum teste executado
+            </div>
+        </div>
+        
+
      </div>
  
      <div class="operations-table">

@@ -1859,6 +1859,319 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             
             addLog('Botões de teste do sistema de Gale configurados', 'INFO');
             
+            // =================== CONFIGURAR BOTÕES DE TESTE DE ATIVOS ===================
+            
+            // Obter elementos dos botões de teste de ativos
+            const testOpenAssetModalBtn = document.getElementById('test-open-asset-modal');
+            const testFindBestAssetBtn = document.getElementById('test-find-best-asset');
+            const testSwitchToCryptoBtn = document.getElementById('test-switch-to-crypto');
+            const testSwitchToCurrencyBtn = document.getElementById('test-switch-to-currency');
+            const minPayoutInput = document.getElementById('min-payout-input');
+            const assetTestResult = document.getElementById('asset-test-result');
+            
+            // Função para atualizar resultado dos testes de ativos
+            const updateAssetTestResult = (message, isError = false) => {
+                if (assetTestResult) {
+                    assetTestResult.innerHTML = message;
+                    assetTestResult.style.color = isError ? '#d32f2f' : '#333';
+                    assetTestResult.style.backgroundColor = isError ? '#ffebee' : '#f9f9f9';
+                }
+            };
+            
+            // Função auxiliar para formatar lista de ativos
+            const formatAssetsList = (assets) => {
+                if (!assets || assets.length === 0) return 'Nenhum ativo encontrado';
+                
+                return assets.map((asset, index) => 
+                    `${index + 1}. ${asset.name} - ${asset.payout}%${asset.isSelected ? ' (SELECIONADO)' : ''}`
+                ).join('<br>');
+            };
+            
+            // Event listener para abrir modal de ativos
+            if (testOpenAssetModalBtn) {
+                testOpenAssetModalBtn.addEventListener('click', () => {
+                    updateAssetTestResult('Abrindo modal de ativos...');
+                    
+                    chrome.runtime.sendMessage({
+                        action: 'TEST_OPEN_ASSET_MODAL'
+                    }, (response) => {
+                        if (chrome.runtime.lastError) {
+                            updateAssetTestResult(`Erro: ${chrome.runtime.lastError.message}`, true);
+                            return;
+                        }
+                        
+                        if (response && response.success) {
+                            updateAssetTestResult(`✅ ${response.message}`);
+                        } else {
+                            updateAssetTestResult(`❌ ${response?.error || 'Falha ao abrir modal'}`, true);
+                        }
+                    });
+                });
+            }
+            
+            // Event listener para buscar melhor ativo
+            if (testFindBestAssetBtn) {
+                testFindBestAssetBtn.addEventListener('click', () => {
+                    const minPayout = parseInt(minPayoutInput?.value || '85', 10);
+                    updateAssetTestResult(`Buscando melhor ativo (payout >= ${minPayout}%)...`);
+                    
+                    chrome.runtime.sendMessage({
+                        action: 'TEST_FIND_BEST_ASSET',
+                        minPayout: minPayout
+                    }, (response) => {
+                        if (chrome.runtime.lastError) {
+                            updateAssetTestResult(`Erro: ${chrome.runtime.lastError.message}`, true);
+                            return;
+                        }
+                        
+                        if (response && response.success) {
+                            const asset = response.asset;
+                            let resultText = `✅ ${response.message}<br><br>`;
+                            resultText += `<strong>Todos os ativos encontrados:</strong><br>`;
+                            resultText += formatAssetsList(response.allAssets);
+                            updateAssetTestResult(resultText);
+                        } else {
+                            let errorText = `❌ ${response?.error || 'Falha ao buscar ativo'}`;
+                            if (response?.allAssets && response.allAssets.length > 0) {
+                                errorText += `<br><br><strong>Ativos disponíveis:</strong><br>`;
+                                errorText += formatAssetsList(response.allAssets);
+                            }
+                            updateAssetTestResult(errorText, true);
+                        }
+                    });
+                });
+            }
+            
+            // Event listener para mudar para crypto
+            if (testSwitchToCryptoBtn) {
+                testSwitchToCryptoBtn.addEventListener('click', () => {
+                    updateAssetTestResult('Mudando para categoria Cryptocurrencies...');
+                    
+                    chrome.runtime.sendMessage({
+                        action: 'TEST_SWITCH_ASSET_CATEGORY',
+                        category: 'crypto'
+                    }, (response) => {
+                        if (chrome.runtime.lastError) {
+                            updateAssetTestResult(`Erro: ${chrome.runtime.lastError.message}`, true);
+                            return;
+                        }
+                        
+                        if (response && response.success) {
+                            let resultText = `✅ ${response.message}<br><br>`;
+                            resultText += `<strong>Ativos de ${response.category}:</strong><br>`;
+                            resultText += formatAssetsList(response.assets);
+                            updateAssetTestResult(resultText);
+                        } else {
+                            updateAssetTestResult(`❌ ${response?.error || 'Falha ao mudar categoria'}`, true);
+                        }
+                    });
+                });
+            }
+            
+            // Event listener para mudar para moedas
+            if (testSwitchToCurrencyBtn) {
+                testSwitchToCurrencyBtn.addEventListener('click', () => {
+                    updateAssetTestResult('Mudando para categoria Currencies...');
+                    
+                    chrome.runtime.sendMessage({
+                        action: 'TEST_SWITCH_ASSET_CATEGORY',
+                        category: 'currency'
+                    }, (response) => {
+                        if (chrome.runtime.lastError) {
+                            updateAssetTestResult(`Erro: ${chrome.runtime.lastError.message}`, true);
+                            return;
+                        }
+                        
+                        if (response && response.success) {
+                            let resultText = `✅ ${response.message}<br><br>`;
+                            resultText += `<strong>Ativos de ${response.category}:</strong><br>`;
+                            resultText += formatAssetsList(response.assets);
+                            updateAssetTestResult(resultText);
+                        } else {
+                            updateAssetTestResult(`❌ ${response?.error || 'Falha ao mudar categoria'}`, true);
+                        }
+                    });
+                });
+            }
+            
+            addLog('Botões de teste de ativos configurados', 'INFO');
+
+            // =================== BOTÕES DE DEBUG DO MODAL ===================
+            // Configurar botões de debug para testar abertura/fechamento do modal
+            const debugOpenModalBtn = document.getElementById('debug-open-modal');
+            const debugCloseModalBtn = document.getElementById('debug-close-modal');
+            const debugCheckStatusBtn = document.getElementById('debug-check-status');
+            const debugToggleModalBtn = document.getElementById('debug-toggle-modal');
+            const modalDebugResult = document.getElementById('modal-debug-result');
+
+            // Função para atualizar resultado do debug
+            const updateModalDebugResult = (message, isError = false) => {
+                if (modalDebugResult) {
+                    const timestamp = new Date().toLocaleTimeString();
+                    modalDebugResult.innerHTML = `[${timestamp}] ${message}`;
+                    modalDebugResult.style.backgroundColor = isError ? '#ffdddd' : '#ddffdd';
+                    modalDebugResult.style.color = isError ? '#cc0000' : '#006600';
+                }
+            };
+
+            // Event listener para abrir modal (debug)
+            if (debugOpenModalBtn) {
+                debugOpenModalBtn.addEventListener('click', () => {
+                    updateModalDebugResult('🔄 Executando: AssetManager.openAssetModal()...');
+                    
+                    chrome.runtime.sendMessage({
+                        action: 'TEST_OPEN_ASSET_MODAL'
+                    }, (response) => {
+                        if (chrome.runtime.lastError) {
+                            updateModalDebugResult(`❌ ERRO: ${chrome.runtime.lastError.message}`, true);
+                            return;
+                        }
+                        
+                        if (response && response.success) {
+                            updateModalDebugResult(`✅ SUCESSO: ${response.message}`);
+                        } else {
+                            updateModalDebugResult(`❌ FALHA: ${response?.error || 'Erro desconhecido'}`, true);
+                        }
+                    });
+                });
+            }
+
+            // Event listener para fechar modal (debug)
+            if (debugCloseModalBtn) {
+                debugCloseModalBtn.addEventListener('click', () => {
+                    updateModalDebugResult('🔄 Executando: AssetManager.closeAssetModal()...');
+                    
+                    chrome.runtime.sendMessage({
+                        action: 'CLOSE_ASSET_MODAL'
+                    }, (response) => {
+                        if (chrome.runtime.lastError) {
+                            updateModalDebugResult(`❌ ERRO: ${chrome.runtime.lastError.message}`, true);
+                            return;
+                        }
+                        
+                        if (response && response.success) {
+                            updateModalDebugResult(`✅ SUCESSO: ${response.message}`);
+                        } else {
+                            updateModalDebugResult(`❌ FALHA: ${response?.error || 'Erro desconhecido'}`, true);
+                        }
+                    });
+                });
+            }
+
+            // Event listener para verificar status do modal
+            if (debugCheckStatusBtn) {
+                debugCheckStatusBtn.addEventListener('click', () => {
+                    updateModalDebugResult('🔍 Verificando status do modal...');
+                    
+                    // Executar script para verificar status do modal na página
+                    chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+                        if (!tabs || !tabs.length) {
+                            updateModalDebugResult('❌ ERRO: Aba ativa não encontrada', true);
+                            return;
+                        }
+                        
+                        chrome.scripting.executeScript({
+                            target: { tabId: tabs[0].id },
+                            func: () => {
+                                // Verificar elementos do modal
+                                const assetButton = document.querySelector('.currencies-block .pair-number-wrap');
+                                const activeControl = document.querySelector('.currencies-block__in.active');
+                                const modal = document.querySelector('.drop-down-modal.drop-down-modal--quotes-list');
+                                const currentAsset = document.querySelector('.current-symbol, .currencies-block .current-symbol_cropped');
+                                
+                                return {
+                                    assetButtonExists: !!assetButton,
+                                    modalIsActive: !!activeControl,
+                                    modalExists: !!modal,
+                                    modalVisible: modal ? (modal.style.display !== 'none' && modal.offsetParent !== null) : false,
+                                    currentAsset: currentAsset ? currentAsset.textContent.trim() : 'Não detectado',
+                                    timestamp: new Date().toLocaleTimeString()
+                                };
+                            }
+                        }, (results) => {
+                            if (chrome.runtime.lastError) {
+                                updateModalDebugResult(`❌ ERRO: ${chrome.runtime.lastError.message}`, true);
+                                return;
+                            }
+                            
+                            if (results && results[0] && results[0].result) {
+                                const status = results[0].result;
+                                let statusText = `📊 STATUS DO MODAL [${status.timestamp}]:\n`;
+                                statusText += `• Botão de controle: ${status.assetButtonExists ? '✅' : '❌'}\n`;
+                                statusText += `• Modal ativo (classe): ${status.modalIsActive ? '✅ ABERTO' : '❌ FECHADO'}\n`;
+                                statusText += `• Modal existe: ${status.modalExists ? '✅' : '❌'}\n`;
+                                statusText += `• Modal visível: ${status.modalVisible ? '✅' : '❌'}\n`;
+                                statusText += `• Ativo atual: ${status.currentAsset}`;
+                                
+                                updateModalDebugResult(statusText.replace(/\n/g, '<br>'));
+                            } else {
+                                updateModalDebugResult('❌ ERRO: Nenhum resultado retornado', true);
+                            }
+                        });
+                    });
+                });
+            }
+
+            // Event listener para toggle do modal (abrir/fechar automaticamente)
+            if (debugToggleModalBtn) {
+                debugToggleModalBtn.addEventListener('click', () => {
+                    updateModalDebugResult('🔄 Executando toggle do modal...');
+                    
+                    // Primeiro verificar status
+                    chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+                        if (!tabs || !tabs.length) {
+                            updateModalDebugResult('❌ ERRO: Aba ativa não encontrada', true);
+                            return;
+                        }
+                        
+                        chrome.scripting.executeScript({
+                            target: { tabId: tabs[0].id },
+                            func: () => {
+                                const activeControl = document.querySelector('.currencies-block__in.active');
+                                return !!activeControl; // true se modal estiver aberto
+                            }
+                        }, (results) => {
+                            if (chrome.runtime.lastError) {
+                                updateModalDebugResult(`❌ ERRO: ${chrome.runtime.lastError.message}`, true);
+                                return;
+                            }
+                            
+                            const isModalOpen = results && results[0] && results[0].result;
+                            const action = isModalOpen ? 'CLOSE_ASSET_MODAL' : 'TEST_OPEN_ASSET_MODAL';
+                            const actionText = isModalOpen ? 'fechar' : 'abrir';
+                            
+                            updateModalDebugResult(`🔄 Modal está ${isModalOpen ? 'ABERTO' : 'FECHADO'}, tentando ${actionText}...`);
+                            
+                            chrome.runtime.sendMessage({
+                                action: action
+                            }, (response) => {
+                                if (chrome.runtime.lastError) {
+                                    updateModalDebugResult(`❌ ERRO: ${chrome.runtime.lastError.message}`, true);
+                                    return;
+                                }
+                                
+                                if (response && response.success) {
+                                    updateModalDebugResult(`✅ SUCESSO: Modal ${isModalOpen ? 'fechado' : 'aberto'} com sucesso!`);
+                                } else {
+                                    updateModalDebugResult(`❌ FALHA: ${response?.error || 'Erro desconhecido'}`, true);
+                                }
+                            });
+                        });
+                    });
+                });
+            }
+
+
+
+
+
+
+
+            addLog('Botões de debug do modal configurados', 'INFO');
+            
+            // =================== CONFIGURAÇÕES DE ATIVOS MOVIDAS PARA SETTINGS.HTML ===================
+            // As configurações de troca de ativos agora estão na página de configurações
+            
             // Adicionar listener para atualização automática do status do Gale
             chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 // Verificar se é uma mensagem de atualização do Gale

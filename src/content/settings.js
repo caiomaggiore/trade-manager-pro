@@ -14,7 +14,10 @@ const settingsUI = {
     minPayout: document.getElementById('min-payout-select'),
     payoutBehavior: document.getElementById('payout-behavior-select'),
     payoutTimeout: document.getElementById('payout-timeout'),
-    payoutTimeoutContainer: document.getElementById('payout-timeout-container')
+    payoutTimeoutContainer: document.getElementById('payout-timeout-container'),
+    // Novos elementos para troca de ativos
+    assetSwitchingContainer: document.getElementById('asset-switching-container'),
+    assetPreferredCategory: document.getElementById('asset-preferred-category')
 };
 
 // Função simplificada para enviar logs ao sistema centralizado
@@ -114,14 +117,22 @@ const applySettingsToUI = (config) => {
         logFromSettings(`Comportamento de payout configurado: ${settingsUI.payoutBehavior.value}`, 'DEBUG');
     }
 
-    // Configurar timeout para espera de payout
+    // Configurar intervalo de verificação de payout
     if (settingsUI.payoutTimeout) {
-        settingsUI.payoutTimeout.value = config.payoutTimeout || 60;
-        logFromSettings(`Timeout de payout configurado: ${settingsUI.payoutTimeout.value}s`, 'DEBUG');
+        settingsUI.payoutTimeout.value = config.payoutTimeout || 5;
+        logFromSettings(`Intervalo de verificação de payout configurado: ${settingsUI.payoutTimeout.value}s`, 'DEBUG');
     }
 
-    // Mostrar/ocultar campo de timeout baseado no comportamento selecionado
-    updatePayoutTimeoutVisibility();
+    // Configurar troca de ativos
+    if (config.assetSwitching) {
+        if (settingsUI.assetPreferredCategory) {
+            settingsUI.assetPreferredCategory.value = config.assetSwitching.preferredCategory || 'crypto';
+            logFromSettings(`Categoria preferida configurada: ${settingsUI.assetPreferredCategory.value}`, 'DEBUG');
+        }
+    }
+
+    // Mostrar/ocultar campos baseado no comportamento selecionado
+    updatePayoutBehaviorVisibility();
 
     // Atualiza o estado do select de gale
     settingsUI.galeSelect.disabled = !settingsUI.toggleGale.checked;
@@ -129,18 +140,24 @@ const applySettingsToUI = (config) => {
     logFromSettings('UI atualizada com as configurações', 'SUCCESS');
 };
 
-// Função para atualizar a visibilidade do campo de timeout baseado no comportamento selecionado
-const updatePayoutTimeoutVisibility = () => {
-    if (settingsUI.payoutBehavior && settingsUI.payoutTimeoutContainer) {
+// Função para atualizar a visibilidade dos campos baseado no comportamento selecionado
+const updatePayoutBehaviorVisibility = () => {
+    if (settingsUI.payoutBehavior && settingsUI.payoutTimeoutContainer && settingsUI.assetSwitchingContainer) {
         const behavior = settingsUI.payoutBehavior.value;
         
-        // Mostrar o campo de timeout apenas para o comportamento "wait"
+        // Mostrar/ocultar campos baseado no comportamento
         if (behavior === 'wait') {
             settingsUI.payoutTimeoutContainer.style.display = 'block';
-            logFromSettings('Campo de timeout de payout exibido', 'DEBUG');
+            settingsUI.assetSwitchingContainer.style.display = 'none';
+            logFromSettings('Campos de intervalo de verificação exibidos, campos de troca de ativos ocultados', 'DEBUG');
+        } else if (behavior === 'switch') {
+            settingsUI.payoutTimeoutContainer.style.display = 'none';
+            settingsUI.assetSwitchingContainer.style.display = 'block';
+            logFromSettings('Campos de troca de ativos exibidos, campo de timeout ocultado', 'DEBUG');
         } else {
             settingsUI.payoutTimeoutContainer.style.display = 'none';
-            logFromSettings('Campo de timeout de payout ocultado', 'DEBUG');
+            settingsUI.assetSwitchingContainer.style.display = 'none';
+            logFromSettings('Todos os campos condicionais ocultados (cancel selecionado)', 'DEBUG');
         }
     }
 };
@@ -161,13 +178,27 @@ const getSettingsFromUI = () => {
         devMode: settingsUI.toggleDevMode.checked,
         minPayout: settingsUI.minPayout ? parseInt(settingsUI.minPayout.value) || 80 : 80,
         payoutBehavior: settingsUI.payoutBehavior ? settingsUI.payoutBehavior.value || 'cancel' : 'cancel',
-        payoutTimeout: settingsUI.payoutTimeout ? parseInt(settingsUI.payoutTimeout.value) || 60 : 60
+        payoutTimeout: settingsUI.payoutTimeout ? parseInt(settingsUI.payoutTimeout.value) || 5 : 5,
+        // Configurações de troca de ativos
+        assetSwitching: {
+            enabled: settingsUI.payoutBehavior ? settingsUI.payoutBehavior.value === 'switch' : false,
+            minPayout: settingsUI.minPayout ? parseInt(settingsUI.minPayout.value) || 85 : 85, // Usar o mesmo payout mínimo principal
+            preferredCategory: settingsUI.assetPreferredCategory ? settingsUI.assetPreferredCategory.value || 'crypto' : 'crypto',
+            checkBeforeAnalysis: true,  // Sempre ativo quando troca está habilitada
+            checkBeforeTrade: true,     // Sempre ativo quando troca está habilitada
+            maxRetries: 3               // Valor fixo
+        }
     };
     
     // Log detalhado para depuração
     logFromSettings(`Payout mínimo configurado: ${config.minPayout}%`, 'INFO');
     logFromSettings(`Comportamento de payout: ${config.payoutBehavior}`, 'INFO');
-    logFromSettings(`Timeout de payout: ${config.payoutTimeout}s`, 'INFO');
+    logFromSettings(`Intervalo de verificação de payout: ${config.payoutTimeout}s`, 'INFO');
+    logFromSettings(`Troca de ativos habilitada: ${config.assetSwitching.enabled}`, 'INFO');
+    if (config.assetSwitching.enabled) {
+        logFromSettings(`Categoria preferida: ${config.assetSwitching.preferredCategory}`, 'INFO');
+        logFromSettings(`Payout mínimo para troca: ${config.assetSwitching.minPayout}% (mesmo valor do payout mínimo principal)`, 'INFO');
+    }
     logFromSettings('Configurações coletadas da UI: ' + JSON.stringify(config), 'DEBUG');
     return config;
 };
@@ -256,7 +287,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Listener para mudança no comportamento de payout
     if (settingsUI.payoutBehavior) {
         settingsUI.payoutBehavior.addEventListener('change', () => {
-            updatePayoutTimeoutVisibility();
+            updatePayoutBehaviorVisibility();
             logFromSettings(`Comportamento de payout alterado para: ${settingsUI.payoutBehavior.value}`, 'INFO');
         });
     }

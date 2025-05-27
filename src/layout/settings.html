@@ -79,7 +79,11 @@
                     <label>Período</label>
                     <input type="number" id="trade-time" class="styled-select" min="5">
                 </div>
-
+            </div>
+        </div>
+        
+        <div class="subpage-grid settings-grid">
+            <div class="subpage-group settings-group" style="grid-column: 1 / -1;">
                 <div class="setting-item">
                     <label>Payout Mínimo (%)</label>
                     <select id="min-payout-select" class="styled-select">
@@ -100,13 +104,25 @@
                     <select id="payout-behavior-select" class="styled-select">
                         <option value="cancel" selected>Cancelar Operação</option>
                         <option value="wait">Esperar Payout Adequado</option>
-                        <option value="switch">Trocar de Ativo (Futuro)</option>
+                        <option value="switch">Trocar de Ativo</option>
                     </select>
                 </div>
 
                 <div class="setting-item" id="payout-timeout-container" style="display:none;">
-                    <label>Tempo máximo de espera (segundos)</label>
-                    <input type="number" id="payout-timeout" class="styled-select" min="10" max="300" value="60" placeholder="60">
+                    <label>Intervalo de verificação (segundos)</label>
+                    <input type="number" id="payout-timeout" class="styled-select" min="1" max="60" value="5" placeholder="5">
+                </div>
+
+                <!-- Configurações de Troca de Ativos -->
+                <div class="setting-item" id="asset-switching-container" style="display:none;">
+                    <label>Categoria Preferida para Troca</label>
+                    <select id="asset-preferred-category" class="styled-select">
+                        <option value="crypto" selected>Criptomoedas</option>
+                        <option value="currency">Moedas</option>
+                        <option value="commodity">Commodities</option>
+                        <option value="stock">Ações</option>
+                        <option value="index">Índices</option>
+                    </select>
                 </div>
             </div>
         </div>

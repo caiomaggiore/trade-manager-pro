@@ -808,6 +808,70 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
   }
 
+  // ================== HANDLERS PARA TESTE DE ATIVOS ==================
+  
+  // Handler para testes de manipulação de ativos e operações de modal
+  if (message.action && (message.action.startsWith('TEST_') || message.action === 'CLOSE_ASSET_MODAL' || message.action === 'GET_CURRENT_ASSET')) {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (!tabs[0]?.id) {
+        console.error('Nenhuma guia ativa encontrada para teste de ativos');
+        sendResponse({ success: false, error: "Nenhuma guia ativa encontrada" });
+        return;
+      }
+      
+      console.log(`Roteando operação de ativo: ${message.action}`);
+      
+      // Verificar se o content script está disponível
+      chrome.tabs.sendMessage(tabs[0].id, { action: 'PING' }, (pingResponse) => {
+        if (chrome.runtime.lastError) {
+          console.log('Content script não disponível para teste de ativos, injetando...');
+          
+          // Injetar content script se necessário
+          chrome.scripting.executeScript({
+            target: { tabId: tabs[0].id },
+            files: ['src/content/content.js']
+          }, (injectionResults) => {
+            const injectError = chrome.runtime.lastError;
+            if (injectError) {
+              console.error('Erro ao injetar script para teste de ativos:', injectError.message);
+              sendResponse({ success: false, error: injectError.message });
+              return;
+            }
+            
+            // Aguardar script carregar e enviar mensagem
+            setTimeout(() => {
+              chrome.tabs.sendMessage(tabs[0].id, message, (response) => {
+                if (chrome.runtime.lastError) {
+                  console.error('Erro na mensagem para o content script (teste ativos):', chrome.runtime.lastError);
+                  sendResponse({ success: false, error: chrome.runtime.lastError.message });
+                  return;
+                }
+                
+                console.log('Resposta do teste de ativos recebida:', response);
+                sendResponse(response || { success: false, error: 'Sem resposta do content script' });
+              });
+            }, 300);
+          });
+        } else {
+          console.log('Content script disponível para teste de ativos, enviando mensagem');
+          
+          // Enviar mensagem diretamente
+          chrome.tabs.sendMessage(tabs[0].id, message, (response) => {
+            if (chrome.runtime.lastError) {
+              console.error('Erro na mensagem para o content script (teste ativos):', chrome.runtime.lastError);
+              sendResponse({ success: false, error: chrome.runtime.lastError.message });
+              return;
+            }
+            
+            console.log('Resposta do teste de ativos recebida:', response);
+            sendResponse(response || { success: false, error: 'Sem resposta do content script' });
+          });
+        }
+      });
+    });
+    return true; // Manter canal aberto para resposta assíncrona
+  }
+
   // Retornamos true apenas para os handlers que realmente usam resposta assíncrona
   return false;
 });

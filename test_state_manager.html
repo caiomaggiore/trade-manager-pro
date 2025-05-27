@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teste StateManager - Configurações de Troca de Ativos</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 5px; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 3px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        button { margin: 5px; padding: 8px 15px; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Teste do StateManager - Configurações de Troca de Ativos</h1>
+    
+    <div class="test-section">
+        <h3>1. Teste de Carregamento do StateManager</h3>
+        <button onclick="testStateManagerLoad()">Testar Carregamento</button>
+        <div id="load-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>2. Teste de Configurações Padrão</h3>
+        <button onclick="testDefaultConfig()">Verificar Configurações Padrão</button>
+        <div id="default-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>3. Teste de Salvamento de Configurações de Troca de Ativos</h3>
+        <button onclick="testSaveAssetConfig()">Salvar Configurações de Teste</button>
+        <div id="save-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>4. Teste de Carregamento de Configurações de Troca de Ativos</h3>
+        <button onclick="testLoadAssetConfig()">Carregar Configurações</button>
+        <div id="load-asset-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>5. Teste de Métodos Específicos de Troca de Ativos</h3>
+        <button onclick="testAssetMethods()">Testar Métodos</button>
+        <div id="methods-result" class="result"></div>
+    </div>
+
+    <script src="src/content/state-manager.js"></script>
+    <script>
+        function log(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.className = `result ${type}`;
+            element.innerHTML = message;
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        function testStateManagerLoad() {
+            try {
+                if (typeof window.StateManager === 'undefined') {
+                    log('load-result', '❌ StateManager não está disponível', 'error');
+                    return;
+                }
+                
+                if (window.StateManager && typeof window.StateManager.getConfig === 'function') {
+                    log('load-result', '✅ StateManager carregado com sucesso!', 'success');
+                } else {
+                    log('load-result', '❌ StateManager carregado mas métodos não disponíveis', 'error');
+                }
+            } catch (error) {
+                log('load-result', `❌ Erro ao testar StateManager: ${error.message}`, 'error');
+            }
+        }
+
+        function testDefaultConfig() {
+            try {
+                const config = window.StateManager.getConfig();
+                
+                if (!config) {
+                    log('default-result', '❌ Nenhuma configuração retornada', 'error');
+                    return;
+                }
+                
+                let result = '✅ Configurações padrão carregadas:<br>';
+                result += `• Automação: ${config.automation}<br>`;
+                result += `• Payout Mínimo: ${config.minPayout}%<br>`;
+                result += `• Comportamento Payout: ${config.payoutBehavior}<br>`;
+                
+                if (config.assetSwitching) {
+                    result += `• Troca de Ativos Habilitada: ${config.assetSwitching.enabled}<br>`;
+                    result += `• Categoria Preferida: ${config.assetSwitching.preferredCategory}<br>`;
+                    result += `• Payout Mínimo para Troca: ${config.assetSwitching.minPayout}%<br>`;
+                } else {
+                    result += '• ⚠️ Configurações de troca de ativos não encontradas<br>';
+                }
+                
+                log('default-result', result, 'success');
+            } catch (error) {
+                log('default-result', `❌ Erro ao verificar configurações padrão: ${error.message}`, 'error');
+            }
+        }
+
+        async function testSaveAssetConfig() {
+            try {
+                const testConfig = {
+                    gale: { active: true, level: '1.2x' },
+                    dailyProfit: 150,
+                    stopLoss: 30,
+                    automation: false,
+                    value: 10,
+                    period: 1,
+                    minPayout: 80,
+                    payoutBehavior: 'switch',
+                    payoutTimeout: 60,
+                    assetSwitching: {
+                        enabled: true,
+                        minPayout: 90,
+                        preferredCategory: 'currency',
+                        checkBeforeAnalysis: true,
+                        checkBeforeTrade: true,
+                        maxRetries: 3
+                    }
+                };
+                
+                const success = await window.StateManager.saveConfig(testConfig);
+                
+                if (success) {
+                    log('save-result', '✅ Configurações de teste salvas com sucesso!', 'success');
+                } else {
+                    log('save-result', '❌ Falha ao salvar configurações de teste', 'error');
+                }
+            } catch (error) {
+                log('save-result', `❌ Erro ao salvar configurações: ${error.message}`, 'error');
+            }
+        }
+
+        async function testLoadAssetConfig() {
+            try {
+                const config = await window.StateManager.loadConfig();
+                
+                if (!config || !config.assetSwitching) {
+                    log('load-asset-result', '❌ Configurações de troca de ativos não encontradas', 'error');
+                    return;
+                }
+                
+                let result = '✅ Configurações de troca de ativos carregadas:<br>';
+                result += `• Habilitada: ${config.assetSwitching.enabled}<br>`;
+                result += `• Payout Mínimo: ${config.assetSwitching.minPayout}%<br>`;
+                result += `• Categoria Preferida: ${config.assetSwitching.preferredCategory}<br>`;
+                result += `• Verificar antes da Análise: ${config.assetSwitching.checkBeforeAnalysis}<br>`;
+                result += `• Verificar antes da Operação: ${config.assetSwitching.checkBeforeTrade}<br>`;
+                result += `• Máximo de Tentativas: ${config.assetSwitching.maxRetries}<br>`;
+                
+                log('load-asset-result', result, 'success');
+            } catch (error) {
+                log('load-asset-result', `❌ Erro ao carregar configurações: ${error.message}`, 'error');
+            }
+        }
+
+        function testAssetMethods() {
+            try {
+                let result = '✅ Testando métodos específicos de troca de ativos:<br>';
+                
+                // Teste 1: getAssetSwitchingConfig
+                const assetConfig = window.StateManager.getAssetSwitchingConfig();
+                result += `• getAssetSwitchingConfig(): ${assetConfig ? '✅ OK' : '❌ FALHOU'}<br>`;
+                
+                // Teste 2: isAssetSwitchingEnabled
+                const isEnabled = window.StateManager.isAssetSwitchingEnabled();
+                result += `• isAssetSwitchingEnabled(): ${isEnabled} ✅<br>`;
+                
+                // Teste 3: getMinPayoutForAssets
+                const minPayout = window.StateManager.getMinPayoutForAssets();
+                result += `• getMinPayoutForAssets(): ${minPayout}% ✅<br>`;
+                
+                // Teste 4: getPreferredAssetCategory
+                const category = window.StateManager.getPreferredAssetCategory();
+                result += `• getPreferredAssetCategory(): ${category} ✅<br>`;
+                
+                log('methods-result', result, 'success');
+            } catch (error) {
+                log('methods-result', `❌ Erro ao testar métodos: ${error.message}`, 'error');
+            }
+        }
+
+        // Executar teste inicial ao carregar a página
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                testStateManagerLoad();
+                setTimeout(() => testDefaultConfig(), 500);
+            }, 100);
+        });
+    </script>
+</body>
+</html> 

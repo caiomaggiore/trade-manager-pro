@@ -543,8 +543,8 @@ function toUpdateStatus(message, type = 'info', duration = 5000) {
         sendResponse({ 
           success: false, 
           error: errorMsg
-        });
-        return true;
+              });
+              return true;
       }
     }
     
@@ -582,84 +582,378 @@ function toUpdateStatus(message, type = 'info', duration = 5000) {
       return true;
     }
 
-    // Handler para solicitação de payout do automation.js
+    // Handler para solicitação de payout do automation.js - VERSÃO MELHORADA
     if (message.action === 'GET_CURRENT_PAYOUT') {
       try {
-        safeLog('Recebida solicitação de payout do automation.js', 'INFO');
+        safeLog('🔍 Capturando payout atual em tempo real...', 'INFO');
         
-        // Usar a função checkPayout já existente e funcional
-        const checkPayout = async () => {
+        // Função melhorada para capturar payout em tempo real
+        const getCurrentPayoutRealTime = async () => {
           try {
-            safeLog('Verificando payout atual...', 'INFO');
+            // MÉTODO 1: Procurar no ativo atualmente selecionado
+            const currentAssetElement = document.querySelector('.current-symbol, .currencies-block .current-symbol_cropped');
+            if (currentAssetElement) {
+              safeLog(`Ativo atual detectado: ${currentAssetElement.textContent.trim()}`, 'DEBUG');
+            }
             
-            // Procurar elementos que mostram o payout
-            const payoutElements = document.querySelectorAll('.payout-info, .profit-info, [class*="payout"], [class*="profit"]');
+            // MÉTODO 2: Procurar elementos de payout mais específicos da PocketOption
+            const payoutSelectors = [
+              // ✅ NOVO: Seletor específico para o elemento fornecido pelo usuário
+              '.value__val .value__val-start',
+              '.value__val-start',
+              '.estimated-profit-block__percent',
+              // Seletores específicos da PocketOption
+              '.profit-info .profit-info__value',
+              '.payout-info .payout-info__value', 
+              '.trading-panel .profit-value',
+              '.trading-panel [class*="profit"]',
+              '.trading-panel [class*="payout"]',
+              // Seletores genéricos
+              '[class*="payout"] span',
+              '[class*="profit"] span',
+              '.profit-info',
+              '.payout-info'
+            ];
+            
             let currentPayout = 0;
+            let foundElement = null;
             
-            if (payoutElements.length > 0) {
-              // Tentar extrair o payout de cada elemento encontrado
-              for (const element of payoutElements) {
+            // Tentar cada seletor até encontrar um payout válido
+            for (const selector of payoutSelectors) {
+                    const elements = document.querySelectorAll(selector);
+              
+                      for (const element of elements) {
+                if (!element.offsetParent) continue; // Pular elementos não visíveis
+                
                 const text = element.textContent.trim();
-                const matches = text.match(/(\d+)%/);
-                if (matches && matches[1]) {
-                  const payoutValue = parseInt(matches[1], 10);
-                  if (payoutValue > 0 && payoutValue <= 100) {
+                safeLog(`🔍 Verificando elemento "${selector}": "${text}"`, 'DEBUG');
+                
+                // TRATAMENTO ESPECIAL para o elemento .value__val-start
+                if (selector.includes('value__val-start')) {
+                  // Para elementos como "+85%" onde o % pode estar em um span separado
+                  const parentElement = element.closest('.value__val');
+                  if (parentElement) {
+                    const fullText = parentElement.textContent.trim();
+                    safeLog(`🔍 Texto completo do elemento pai: "${fullText}"`, 'DEBUG');
+                    
+                    // Procurar padrão "+85%" no texto completo
+                    const payoutMatches = fullText.match(/[+]?(\d+)%/);
+                    if (payoutMatches && payoutMatches[1]) {
+                      const payoutValue = parseInt(payoutMatches[1], 10);
+                      
+                      if (payoutValue >= 50 && payoutValue <= 100) {
+                        currentPayout = payoutValue;
+                        foundElement = element;
+                        safeLog(`✅ Payout encontrado (value__val): ${currentPayout}% - Texto: "${fullText}"`, 'SUCCESS');
+                          break;
+                      }
+                    }
+                  }
+                }
+                
+                // Procurar padrões de payout padrão (ex: "85%", "+85%", "85")
+                const payoutMatches = text.match(/[+]?(\d+)%?/);
+                if (payoutMatches && payoutMatches[1]) {
+                  const payoutValue = parseInt(payoutMatches[1], 10);
+                  
+                  // Validar se é um payout realista (entre 50% e 100%)
+                  if (payoutValue >= 50 && payoutValue <= 100) {
                     currentPayout = payoutValue;
-                    safeLog(`Payout atual: ${currentPayout}%`, 'INFO');
-                    return { success: true, payout: currentPayout };
+                    foundElement = element;
+                    safeLog(`✅ Payout encontrado: ${currentPayout}% (seletor: ${selector})`, 'SUCCESS');
+                    break;
                   }
                 }
               }
+              
+              if (currentPayout > 0) break; // Sair do loop se encontrou
             }
             
-            // Se não encontrou o payout, tenta outro método
+            // MÉTODO 3: Se não encontrou, tentar busca mais ampla
             if (currentPayout === 0) {
-              // Tentar encontrar através de outros elementos
-              const profitElements = document.querySelectorAll('[class*="profit"], [class*="return"]');
-              for (const element of profitElements) {
+              safeLog('Tentando busca mais ampla por elementos de payout...', 'DEBUG');
+              
+              const allElements = document.querySelectorAll('*');
+              for (const element of allElements) {
+                if (!element.offsetParent) continue; // Pular elementos não visíveis
+                
                 const text = element.textContent.trim();
-                const matches = text.match(/(\d+)/);
-                if (matches && matches[1]) {
-                  const payoutValue = parseInt(matches[1], 10);
-                  if (payoutValue > 0 && payoutValue <= 100) {
-                    currentPayout = payoutValue;
-                    safeLog(`Payout encontrado (método alternativo): ${currentPayout}%`, 'INFO');
-                    return { success: true, payout: currentPayout };
+                
+                // Procurar apenas elementos que contenham % e números
+                if (text.includes('%') && text.length < 20) { // Evitar textos muito longos
+                  const payoutMatches = text.match(/(\d+)%/);
+                  if (payoutMatches && payoutMatches[1]) {
+                    const payoutValue = parseInt(payoutMatches[1], 10);
+                    
+                    if (payoutValue >= 50 && payoutValue <= 100) {
+                      currentPayout = payoutValue;
+                      foundElement = element;
+                      safeLog(`✅ Payout encontrado (busca ampla): ${currentPayout}% - "${text}"`, 'SUCCESS');
+                      break;
+                    }
                   }
                 }
               }
             }
             
-            // Se chegou aqui, não conseguiu detectar o payout
-            const errorMsg = 'Não foi possível detectar o payout real da plataforma';
-            safeLog(errorMsg, 'ERROR');
-            return { success: false, error: errorMsg };
+            // Resultado final
+            if (currentPayout > 0) {
+              safeLog(`🎯 Payout capturado com sucesso: ${currentPayout}%`, 'SUCCESS');
+              return { success: true, payout: currentPayout };
+            } else {
+              const errorMsg = 'Não foi possível detectar o payout atual da plataforma';
+              safeLog(`❌ ${errorMsg}`, 'ERROR');
+              return { success: false, error: errorMsg };
+            }
             
-          } catch (error) {
-            safeLog(`Erro ao verificar payout: ${error.message}`, 'ERROR');
+              } catch (error) {
+            safeLog(`Erro ao capturar payout: ${error.message}`, 'ERROR');
             return { success: false, error: error.message };
           }
         };
         
-        // Executar verificação assíncrona e responder corretamente
-        (async () => {
-          try {
-            const result = await checkPayout();
-            sendResponse(result);
-          } catch (error) {
-            safeLog(`Erro ao executar checkPayout: ${error.message}`, 'ERROR');
-            sendResponse({ success: false, error: error.message });
-          }
-        })();
+        // Executar captura com timeout de segurança
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Timeout: Captura de payout demorou mais de 5 segundos')), 5000);
+        });
+        
+        Promise.race([
+          getCurrentPayoutRealTime(),
+          timeoutPromise
+        ]).then(result => {
+          sendResponse(result);
+        }).catch(error => {
+          safeLog(`Erro na captura de payout: ${error.message}`, 'ERROR');
+          sendResponse({ success: false, error: error.message });
+        });
         
         return true; // Manter canal aberto para resposta assíncrona
         
-  } catch (error) {
+      } catch (error) {
         safeLog(`Erro ao processar solicitação de payout: ${error.message}`, 'ERROR');
         sendResponse({ success: false, error: error.message });
-        return true;
-  }
+              return true;
+      }
     }
+
+    // =================== HANDLERS PARA TESTE DE ATIVOS ===================
+    
+    // Handler para abrir modal de ativos
+    if (message.action === 'TEST_OPEN_ASSET_MODAL') {
+      try {
+        safeLog('Recebida solicitação para abrir modal de ativos', 'INFO');
+        
+        // Executar abertura de forma assíncrona com timeout
+        const executeOpenWithTimeout = async () => {
+          try {
+            // Timeout de 10 segundos para abertura
+            const timeoutPromise = new Promise((_, reject) => {
+              setTimeout(() => reject(new Error('Timeout: Abertura demorou mais de 10 segundos')), 10000);
+            });
+            
+            const result = await Promise.race([
+              AssetManager.openAssetModal(),
+              timeoutPromise
+            ]);
+            
+            safeLog(`Abertura concluída: ${result}`, 'INFO');
+              sendResponse({ 
+              success: result, 
+              message: result ? 'Modal de ativos aberto com sucesso' : 'Falha ao abrir modal de ativos'
+              });
+          } catch (error) {
+            safeLog(`Erro ao abrir modal: ${error.message}`, 'ERROR');
+            sendResponse({ success: false, error: error.message });
+          }
+        };
+        
+        executeOpenWithTimeout();
+        
+        return true; // Manter canal aberto para resposta assíncrona
+      } catch (error) {
+        safeLog(`Erro ao processar abertura de modal: ${error.message}`, 'ERROR');
+        sendResponse({ success: false, error: error.message });
+        return true;
+      }
+    }
+
+    // Handler para buscar melhor ativo
+    if (message.action === 'TEST_FIND_BEST_ASSET') {
+      try {
+        safeLog('Recebida solicitação para buscar melhor ativo', 'INFO');
+        
+        const minPayout = message.minPayout || 85;
+        
+        // Primeiro abrir o modal
+        AssetManager.openAssetModal()
+          .then(modalOpened => {
+            if (!modalOpened) {
+              throw new Error('Falha ao abrir modal de ativos');
+            }
+            
+            // Aguardar modal carregar
+        setTimeout(() => {
+              try {
+                const result = AssetManager.findBestAssetDetailed(minPayout);
+                
+                // Fechar modal
+                AssetManager.closeAssetModal();
+                
+                sendResponse(result);
+              } catch (error) {
+                AssetManager.closeAssetModal();
+                sendResponse({ success: false, error: error.message });
+              }
+            }, 800);
+          })
+          .catch(error => {
+            sendResponse({ success: false, error: error.message });
+          });
+        
+        return true; // Manter canal aberto para resposta assíncrona
+      } catch (error) {
+        safeLog(`Erro ao buscar melhor ativo: ${error.message}`, 'ERROR');
+        sendResponse({ success: false, error: error.message });
+        return true;
+      }
+    }
+
+    // Handler para mudar categoria de ativo
+    if (message.action === 'TEST_SWITCH_ASSET_CATEGORY') {
+      try {
+        safeLog(`Recebida solicitação para mudar categoria: ${message.category}`, 'INFO');
+        
+        // Primeiro abrir o modal
+        AssetManager.openAssetModal()
+          .then(modalOpened => {
+            if (!modalOpened) {
+              throw new Error('Falha ao abrir modal de ativos');
+            }
+            
+            // Aguardar modal carregar e mudar categoria
+            setTimeout(() => {
+              AssetManager.switchToAssetCategory(message.category)
+                .then(categoryChanged => {
+                  // Aguardar lista atualizar e obter ativos
+                  setTimeout(() => {
+                    try {
+                      const assets = AssetManager.getAvailableAssets();
+                      
+                      // Fechar modal
+                      AssetManager.closeAssetModal();
+                      
+                      sendResponse({
+                        success: categoryChanged,
+                        category: message.category,
+                        assets: assets,
+                        message: categoryChanged 
+                          ? `Categoria alterada para ${message.category}. Encontrados ${assets.length} ativos.`
+                          : `Falha ao alterar categoria para ${message.category}`
+                      });
+                    } catch (error) {
+                      AssetManager.closeAssetModal();
+                      sendResponse({ success: false, error: error.message });
+                    }
+                  }, 500);
+                })
+                .catch(error => {
+                  AssetManager.closeAssetModal();
+                  sendResponse({ success: false, error: error.message });
+                });
+            }, 800);
+          })
+          .catch(error => {
+            sendResponse({ success: false, error: error.message });
+          });
+        
+        return true; // Manter canal aberto para resposta assíncrona
+  } catch (error) {
+        safeLog(`Erro ao mudar categoria: ${error.message}`, 'ERROR');
+        sendResponse({ success: false, error: error.message });
+        return true;
+      }
+    }
+
+    // Handler para trocar para melhor ativo (função completa)
+    if (message.action === 'TEST_SWITCH_TO_BEST_ASSET') {
+      try {
+        safeLog('Recebida solicitação para trocar para melhor ativo', 'INFO');
+        
+        const minPayout = message.minPayout || 85;
+        const category = message.category || 'crypto';
+        
+        AssetManager.switchToBestAsset(minPayout, category)
+          .then(result => {
+            sendResponse(result);
+          })
+          .catch(error => {
+            sendResponse({ success: false, error: error.message });
+          });
+        
+        return true; // Manter canal aberto para resposta assíncrona
+      } catch (error) {
+        safeLog(`Erro ao trocar para melhor ativo: ${error.message}`, 'ERROR');
+        sendResponse({ success: false, error: error.message });
+        return true;
+      }
+    }
+
+    // Handler para verificar ativo atual
+    if (message.action === 'GET_CURRENT_ASSET') {
+      try {
+        const currentAsset = AssetManager.getCurrentSelectedAsset();
+        sendResponse({ 
+          success: true, 
+          currentAsset: currentAsset,
+          message: currentAsset ? `Ativo atual: ${currentAsset}` : 'Ativo atual não detectado'
+        });
+  } catch (error) {
+        safeLog(`Erro ao verificar ativo atual: ${error.message}`, 'ERROR');
+        sendResponse({ success: false, error: error.message });
+      }
+      return true;
+    }
+
+    // Handler para fechar modal de ativos
+    if (message.action === 'CLOSE_ASSET_MODAL') {
+      try {
+        safeLog('Recebida solicitação para fechar modal de ativos', 'INFO');
+        
+        // Executar fechamento de forma assíncrona com timeout
+        const executeCloseWithTimeout = async () => {
+          try {
+            // Timeout de 15 segundos para fechamento
+            const timeoutPromise = new Promise((_, reject) => {
+              setTimeout(() => reject(new Error('Timeout: Fechamento demorou mais de 15 segundos')), 15000);
+            });
+            
+            const closed = await Promise.race([
+              AssetManager.closeAssetModal(),
+              timeoutPromise
+            ]);
+            
+            safeLog(`Fechamento concluído: ${closed}`, 'INFO');
+            sendResponse({ 
+              success: closed, 
+              message: closed ? 'Modal fechado com sucesso' : 'Falha ao fechar modal'
+            });
+  } catch (error) {
+            safeLog(`Erro ao fechar modal: ${error.message}`, 'ERROR');
+            sendResponse({ success: false, error: error.message });
+          }
+        };
+        
+        executeCloseWithTimeout();
+        
+        return true; // Manter canal aberto para resposta assíncrona
+      } catch (error) {
+        safeLog(`Erro ao processar fechamento de modal: ${error.message}`, 'ERROR');
+        sendResponse({ success: false, error: error.message });
+        return true;
+      }
+    }
+
+
   });
 
 // ======================================================================
@@ -1389,4 +1683,547 @@ const safeLog = (message, level = 'info') => {
 // Função para enviar logs para o sistema central - agora usando o mesmo padrão que safeLog
 const sendLog = (message, level = 'INFO') => {
   safeLog(message, level);
+};
+
+// ======================================================================
+// =================== SISTEMA DE MANIPULAÇÃO DE ATIVOS ================
+// ======================================================================
+
+const AssetManager = {
+  // Função para abrir o modal de seleção de ativos
+  openAssetModal: () => {
+    try {
+      safeLog('Abrindo modal de ativos...', 'INFO');
+      
+      // Usar o mesmo seletor para abrir e fechar
+      const assetButton = document.querySelector('.currencies-block .pair-number-wrap');
+      
+      if (!assetButton) {
+        throw new Error('Botão de seleção de ativos não encontrado');
+      }
+      
+      // Clicar no botão para abrir o modal
+      assetButton.click();
+      safeLog('Clique executado para abrir modal', 'INFO');
+      
+      // Aguardar um momento para o modal aparecer
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          const activeControl = document.querySelector('.currencies-block__in.active');
+          if (activeControl) {
+            safeLog('✅ Modal aberto com sucesso (classe active detectada)', 'SUCCESS');
+            resolve(true);
+          } else {
+            safeLog('❌ Modal pode não ter aberto', 'WARN');
+            resolve(false);
+          }
+        }, 500);
+      });
+    } catch (error) {
+      safeLog(`Erro ao abrir modal de ativos: ${error.message}`, 'ERROR');
+      return Promise.resolve(false);
+    }
+  },
+
+  // Função para fechar o modal de ativos - MÉTODO MOUSEDOWN + MOUSEUP
+  closeAssetModal: () => {
+    return new Promise((resolve) => {
+      try {
+        safeLog('Fechando modal de ativos...', 'INFO');
+        
+        // Verificar se o modal está realmente aberto
+        const activeControl = document.querySelector('.currencies-block__in.active');
+        if (!activeControl) {
+          safeLog('✅ Modal já está fechado', 'INFO');
+          resolve(true);
+          return;
+        }
+        
+        // MÉTODO DESCOBERTO: Mousedown + mouseup no wrapper do modal
+        const modalWrapper = document.querySelector('.drop-down-modal-wrap.active');
+        if (!modalWrapper) {
+          safeLog('❌ Wrapper do modal não encontrado', 'ERROR');
+          resolve(false);
+          return;
+        }
+        
+        safeLog('Executando mousedown + mouseup no wrapper do modal...', 'INFO');
+        
+        // Disparar mousedown
+        modalWrapper.dispatchEvent(new MouseEvent('mousedown', { 
+          bubbles: true,
+          cancelable: true,
+          view: window
+        }));
+        
+        // Aguardar um pouco e disparar mouseup
+        setTimeout(() => {
+          modalWrapper.dispatchEvent(new MouseEvent('mouseup', { 
+            bubbles: true,
+            cancelable: true,
+            view: window
+          }));
+          
+          safeLog('Eventos mousedown + mouseup executados', 'INFO');
+          
+          // Verificar se fechou após 500ms
+          setTimeout(() => {
+            const stillActive = document.querySelector('.currencies-block__in.active');
+            if (!stillActive) {
+              safeLog('✅ Modal fechado com sucesso via mousedown + mouseup', 'SUCCESS');
+              resolve(true);
+            } else {
+              safeLog('❌ Modal não fechou, tentando método de fallback...', 'WARN');
+              
+              // FALLBACK: Tentar clique simples no wrapper
+              modalWrapper.click();
+              
+              setTimeout(() => {
+                const finalCheck = document.querySelector('.currencies-block__in.active');
+                if (!finalCheck) {
+                  safeLog('✅ Modal fechado com clique de fallback', 'SUCCESS');
+                  resolve(true);
+                } else {
+                  safeLog('❌ Modal persistiu após todos os métodos', 'ERROR');
+                  resolve(false);
+                }
+              }, 300);
+            }
+          }, 500);
+        }, 50); // 50ms entre mousedown e mouseup
+        
+      } catch (error) {
+        safeLog(`Erro ao fechar modal: ${error.message}`, 'ERROR');
+        resolve(false);
+      }
+    });
+  },
+
+  // Função para mudar para a categoria de ativos (Crypto, Currency, etc.)
+  switchToCategory: async (category) => {
+    try {
+      safeLog(`Mudando para categoria: ${category}`, 'INFO');
+      
+      const result = await AssetManager.switchToAssetCategory(category);
+      if (!result) {
+        return {
+          success: false,
+          error: `Falha ao mudar para categoria ${category}`
+        };
+      }
+      
+      // Aguardar lista atualizar
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Obter ativos da nova categoria
+      const assets = AssetManager.getAvailableAssets();
+      
+      return {
+        success: true,
+        category: category,
+        assets: assets,
+        message: `Categoria alterada para ${category}. Encontrados ${assets.length} ativos.`
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  },
+
+  // Função para mudar para a categoria de ativos (Crypto, Currency, etc.)
+  switchToAssetCategory: (category) => {
+    try {
+      safeLog(`Tentando mudar para categoria: ${category}`, 'INFO');
+      
+      // Mapear categorias para seletores
+      const categorySelectors = {
+        'crypto': '.assets-block__nav-item--cryptocurrency',
+        'cryptocurrency': '.assets-block__nav-item--cryptocurrency',
+        'currency': '.assets-block__nav-item--currency',
+        'currencies': '.assets-block__nav-item--currency',
+        'commodity': '.assets-block__nav-item--commodity',
+        'commodities': '.assets-block__nav-item--commodity',
+        'stock': '.assets-block__nav-item--stock',
+        'stocks': '.assets-block__nav-item--stock',
+        'index': '.assets-block__nav-item--index',
+        'indices': '.assets-block__nav-item--index'
+      };
+      
+      const selector = categorySelectors[category.toLowerCase()];
+      if (!selector) {
+        throw new Error(`Categoria não reconhecida: ${category}`);
+      }
+      
+      const categoryButton = document.querySelector(selector);
+      if (!categoryButton) {
+        throw new Error(`Botão da categoria ${category} não encontrado`);
+      }
+      
+      // Verificar se já está ativo
+      if (categoryButton.classList.contains('assets-block__nav-item--active')) {
+        safeLog(`Categoria ${category} já está ativa`, 'INFO');
+        return true;
+      }
+      
+      // Clicar na categoria
+      categoryButton.click();
+      safeLog(`Mudança para categoria ${category} executada`, 'SUCCESS');
+      
+      // Aguardar um momento para a lista atualizar
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          if (categoryButton.classList.contains('assets-block__nav-item--active')) {
+            safeLog(`Categoria ${category} ativada com sucesso`, 'SUCCESS');
+            resolve(true);
+          } else {
+            safeLog(`Falha ao ativar categoria ${category}`, 'WARN');
+            resolve(false);
+          }
+        }, 300);
+      });
+    } catch (error) {
+      safeLog(`Erro ao mudar categoria: ${error.message}`, 'ERROR');
+      return Promise.resolve(false);
+    }
+  },
+
+  // Função para obter lista de ativos disponíveis com seus payouts
+  getAvailableAssets: () => {
+    try {
+      safeLog('Obtendo lista de ativos disponíveis...', 'INFO');
+      
+      const assets = [];
+      
+      // Procurar por itens de ativos na lista
+      const assetItems = document.querySelectorAll('.alist__item:not(.alist__item--no-active)');
+      
+      if (assetItems.length === 0) {
+        safeLog('Nenhum ativo ativo encontrado na lista', 'WARN');
+        return [];
+      }
+      
+      assetItems.forEach((item, index) => {
+        try {
+          // Obter nome do ativo
+          const nameElement = item.querySelector('.alist__label');
+          const name = nameElement ? nameElement.textContent.trim() : `Ativo ${index + 1}`;
+          
+          // Obter payout
+          const payoutElement = item.querySelector('.alist__payout span');
+          let payout = 0;
+          
+          if (payoutElement) {
+            const payoutText = payoutElement.textContent.trim();
+            const payoutMatch = payoutText.match(/\+?(\d+)%/);
+            if (payoutMatch) {
+              payout = parseInt(payoutMatch[1], 10);
+            }
+          }
+          
+          // Verificar se está ativo (disponível para trading)
+          const isActive = !item.classList.contains('alist__item--no-active') && 
+                          !item.classList.contains('alist__item--no-hover');
+          
+          // Verificar se está atualmente selecionado
+          const isSelected = item.classList.contains('alist__item--active');
+          
+          if (isActive && payout > 0) {
+            assets.push({
+              name: name,
+              payout: payout,
+              isSelected: isSelected,
+              element: item,
+              index: index
+            });
+          }
+        } catch (itemError) {
+          safeLog(`Erro ao processar ativo ${index}: ${itemError.message}`, 'WARN');
+        }
+      });
+      
+      // Ordenar por payout (maior primeiro)
+      assets.sort((a, b) => b.payout - a.payout);
+      
+      safeLog(`Encontrados ${assets.length} ativos disponíveis`, 'SUCCESS');
+      return assets;
+    } catch (error) {
+      safeLog(`Erro ao obter lista de ativos: ${error.message}`, 'ERROR');
+      return [];
+    }
+  },
+
+  // Função para encontrar o melhor ativo baseado no payout mínimo
+  findBestAsset: (minPayout = 85) => {
+    try {
+      safeLog(`Procurando melhor ativo com payout mínimo de ${minPayout}%`, 'INFO');
+      
+      const assets = AssetManager.getAvailableAssets();
+      
+      if (assets.length === 0) {
+        safeLog('Nenhum ativo disponível encontrado', 'WARN');
+        return null;
+      }
+      
+      // Filtrar ativos que atendem ao payout mínimo
+      const validAssets = assets.filter(asset => asset.payout >= minPayout);
+      
+      if (validAssets.length === 0) {
+        safeLog(`Nenhum ativo encontrado com payout >= ${minPayout}%`, 'WARN');
+        return null;
+      }
+      
+      // Retornar o primeiro (melhor payout) que atende ao critério
+      const bestAsset = validAssets[0];
+      safeLog(`Melhor ativo encontrado: ${bestAsset.name} (${bestAsset.payout}%)`, 'SUCCESS');
+      
+      return bestAsset;
+    } catch (error) {
+      safeLog(`Erro ao encontrar melhor ativo: ${error.message}`, 'ERROR');
+      return null;
+    }
+  },
+
+  // Função para encontrar o melhor ativo com informações detalhadas (para testes)
+  findBestAssetDetailed: (minPayout = 85) => {
+    try {
+      safeLog(`Procurando melhor ativo com payout mínimo de ${minPayout}%`, 'INFO');
+      
+      const assets = AssetManager.getAvailableAssets();
+      
+      if (assets.length === 0) {
+        return {
+          success: false,
+          error: 'Nenhum ativo disponível encontrado',
+          allAssets: []
+        };
+      }
+      
+      // Filtrar ativos que atendem ao payout mínimo
+      const validAssets = assets.filter(asset => asset.payout >= minPayout);
+      
+      if (validAssets.length === 0) {
+        safeLog(`Nenhum ativo encontrado com payout >= ${minPayout}%`, 'WARN');
+        return {
+          success: false,
+          error: `Nenhum ativo com payout >= ${minPayout}% encontrado`,
+          allAssets: assets
+        };
+      }
+      
+      // Retornar o primeiro (melhor payout) que atende ao critério
+      const bestAsset = validAssets[0];
+      
+      // Selecionar o ativo encontrado
+      const selected = AssetManager.selectAsset(bestAsset);
+      if (!selected) {
+        return {
+          success: false,
+          error: 'Falha ao selecionar o ativo',
+          allAssets: assets
+        };
+      }
+      
+      safeLog(`Melhor ativo encontrado e selecionado: ${bestAsset.name} (${bestAsset.payout}%)`, 'SUCCESS');
+      
+      return {
+        success: true,
+        asset: bestAsset,
+        message: `Melhor ativo selecionado: ${bestAsset.name} (${bestAsset.payout}%)`,
+        allAssets: assets
+      };
+    } catch (error) {
+      safeLog(`Erro ao encontrar melhor ativo: ${error.message}`, 'ERROR');
+      return {
+        success: false,
+        error: error.message,
+        allAssets: []
+      };
+    }
+  },
+
+  // Função para verificar qual ativo está atualmente selecionado
+  getCurrentSelectedAsset: () => {
+    try {
+      // Verificar no elemento principal da interface
+      const currentSymbolElement = document.querySelector('.current-symbol, .currencies-block .current-symbol_cropped');
+      if (currentSymbolElement) {
+        const currentAsset = currentSymbolElement.textContent.trim();
+        safeLog(`Ativo atual detectado: ${currentAsset}`, 'INFO');
+        return currentAsset;
+      }
+      
+      // Fallback: verificar no seletor de pares
+      const pairElement = document.querySelector('.pair .current-symbol');
+      if (pairElement) {
+        const currentAsset = pairElement.textContent.trim();
+        safeLog(`Ativo atual detectado (fallback): ${currentAsset}`, 'INFO');
+        return currentAsset;
+      }
+      
+      safeLog('Não foi possível detectar o ativo atual', 'WARN');
+      return null;
+    } catch (error) {
+      safeLog(`Erro ao verificar ativo atual: ${error.message}`, 'ERROR');
+      return null;
+    }
+  },
+
+  // Função para verificar se um ativo específico foi selecionado
+  verifyAssetSelection: (expectedAssetName, maxRetries = 3) => {
+    return new Promise((resolve) => {
+      let attempts = 0;
+      
+      const checkSelection = () => {
+        attempts++;
+        const currentAsset = AssetManager.getCurrentSelectedAsset();
+        
+        if (currentAsset && currentAsset.includes(expectedAssetName.split(' ')[0])) {
+          safeLog(`✅ Verificação confirmada: ${expectedAssetName} está selecionado`, 'SUCCESS');
+          resolve(true);
+          return;
+        }
+        
+        if (attempts < maxRetries) {
+          safeLog(`Tentativa ${attempts}/${maxRetries}: Aguardando seleção de ${expectedAssetName}...`, 'INFO');
+          setTimeout(checkSelection, 500);
+        } else {
+          safeLog(`❌ Falha na verificação: ${expectedAssetName} não foi selecionado após ${maxRetries} tentativas`, 'ERROR');
+          resolve(false);
+        }
+      };
+      
+      checkSelection();
+    });
+  },
+
+  // Função para selecionar um ativo específico
+  selectAsset: (asset) => {
+    try {
+      if (!asset || !asset.element) {
+        throw new Error('Ativo inválido ou elemento não encontrado');
+      }
+      
+      safeLog(`Selecionando ativo: ${asset.name} (${asset.payout}%)`, 'INFO');
+      
+      // Verificar se já está selecionado
+      if (asset.isSelected) {
+        safeLog(`Ativo ${asset.name} já está selecionado`, 'INFO');
+        return true;
+      }
+      
+      // Clicar no ativo para selecioná-lo
+      const linkElement = asset.element.querySelector('.alist__link');
+      if (linkElement) {
+        linkElement.click();
+        safeLog(`Clique executado no ativo ${asset.name}`, 'INFO');
+        return true;
+      } else {
+        throw new Error('Link do ativo não encontrado');
+      }
+    } catch (error) {
+      safeLog(`Erro ao selecionar ativo: ${error.message}`, 'ERROR');
+      return false;
+    }
+  },
+
+
+
+  // Função principal para trocar para o melhor ativo disponível
+  switchToBestAsset: async (minPayout = 85, preferredCategory = 'crypto') => {
+    try {
+      safeLog(`Iniciando troca para melhor ativo (payout >= ${minPayout}%, categoria: ${preferredCategory})`, 'INFO');
+      
+      // Verificar ativo atual antes de abrir modal
+      const currentAsset = AssetManager.getCurrentSelectedAsset();
+      safeLog(`Ativo atual antes da troca: ${currentAsset || 'Não detectado'}`, 'INFO');
+      
+      // Passo 1: Abrir modal de ativos
+      const modalOpened = await AssetManager.openAssetModal();
+      if (!modalOpened) {
+        throw new Error('Falha ao abrir modal de ativos');
+      }
+      
+      // Aguardar modal carregar completamente
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      // Passo 2: Mudar para categoria preferida
+      if (preferredCategory) {
+        const categoryChanged = await AssetManager.switchToAssetCategory(preferredCategory);
+        if (!categoryChanged) {
+          safeLog(`Falha ao mudar para categoria ${preferredCategory}, continuando com categoria atual`, 'WARN');
+        }
+        
+        // Aguardar lista atualizar
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      // Passo 3: Encontrar e obter melhor ativo
+      const assets = AssetManager.getAvailableAssets();
+      if (assets.length === 0) {
+        throw new Error('Nenhum ativo disponível encontrado');
+      }
+      
+      // Filtrar ativos que atendem ao payout mínimo
+      const validAssets = assets.filter(asset => asset.payout >= minPayout);
+      if (validAssets.length === 0) {
+        throw new Error(`Nenhum ativo com payout >= ${minPayout}% encontrado`);
+      }
+      
+      // Selecionar o melhor ativo (primeiro da lista ordenada)
+      const bestAsset = validAssets[0];
+      safeLog(`Melhor ativo encontrado: ${bestAsset.name} (${bestAsset.payout}%)`, 'SUCCESS');
+      
+      // Passo 4: Selecionar o ativo
+      const assetSelected = AssetManager.selectAsset(bestAsset);
+      if (!assetSelected) {
+        throw new Error('Falha ao clicar no ativo');
+      }
+      
+      // Passo 5: Aguardar seleção e fechar modal
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Fechar modal (agora é assíncrono)
+      const modalClosed = await AssetManager.closeAssetModal();
+      if (!modalClosed) {
+        safeLog('Aviso: Modal pode não ter fechado corretamente', 'WARN');
+      }
+      
+      // Passo 6: Verificar se o ativo foi realmente selecionado
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const selectionVerified = await AssetManager.verifyAssetSelection(bestAsset.name);
+      
+      if (!selectionVerified) {
+        safeLog(`⚠️ Aviso: Não foi possível verificar se ${bestAsset.name} foi selecionado`, 'WARN');
+        // Não falhar aqui, pois a seleção pode ter funcionado mesmo sem verificação
+      }
+      
+      const finalAsset = AssetManager.getCurrentSelectedAsset();
+      safeLog(`Ativo final após troca: ${finalAsset || 'Não detectado'}`, 'INFO');
+      
+      safeLog(`✅ Troca de ativo concluída: ${bestAsset.name} (${bestAsset.payout}%)`, 'SUCCESS');
+      return {
+        success: true,
+        asset: bestAsset,
+        message: `Ativo alterado para ${bestAsset.name} com payout de ${bestAsset.payout}%`,
+        currentAsset: finalAsset,
+        verified: selectionVerified
+      };
+    } catch (error) {
+      // Tentar fechar modal em caso de erro
+      try {
+        await AssetManager.closeAssetModal();
+      } catch (closeError) {
+        safeLog(`Erro ao fechar modal durante tratamento de erro: ${closeError.message}`, 'WARN');
+      }
+      
+      const errorMsg = `Erro na troca de ativo: ${error.message}`;
+      safeLog(errorMsg, 'ERROR');
+      return {
+        success: false,
+        error: errorMsg
+      };
+    }
+  }
 };

@@ -11,7 +11,16 @@ const DEFAULT_CONFIG = {
     period: 1,
     minPayout: 80,
     payoutBehavior: 'cancel',
-    payoutTimeout: 60
+    payoutTimeout: 60,
+    // Novas configurações para troca de ativos
+    assetSwitching: {
+        enabled: true,                    // Se deve trocar ativos automaticamente
+        minPayout: 85,                   // Payout mínimo para operações
+        preferredCategory: 'crypto',     // Categoria preferida (crypto, currency, commodity, stock)
+        checkBeforeAnalysis: true,       // Verificar ativo antes de análise
+        checkBeforeTrade: true,          // Verificar ativo antes de operação
+        maxRetries: 3                    // Máximo de tentativas de troca
+    }
 };
 
 class StateManager {
@@ -136,6 +145,51 @@ class StateManager {
     // Obter estado da automação
     getAutomationState() {
         return this.state.automation;
+    }
+
+    // Obter configurações de troca de ativos
+    getAssetSwitchingConfig() {
+        const config = this.getConfig();
+        return config.assetSwitching || DEFAULT_CONFIG.assetSwitching;
+    }
+
+    // Atualizar configurações de troca de ativos
+    async updateAssetSwitchingConfig(newAssetConfig) {
+        try {
+            const currentConfig = this.getConfig();
+            const updatedConfig = {
+                ...currentConfig,
+                assetSwitching: {
+                    ...currentConfig.assetSwitching,
+                    ...newAssetConfig
+                }
+            };
+            
+            await this.saveConfig(updatedConfig);
+            console.log('[StateManager] Configurações de troca de ativos atualizadas:', newAssetConfig);
+            return true;
+        } catch (error) {
+            console.error('[StateManager] Erro ao atualizar configurações de troca de ativos:', error);
+            return false;
+        }
+    }
+
+    // Verificar se a troca de ativos está habilitada
+    isAssetSwitchingEnabled() {
+        const assetConfig = this.getAssetSwitchingConfig();
+        return assetConfig.enabled === true;
+    }
+
+    // Obter payout mínimo configurado para troca de ativos
+    getMinPayoutForAssets() {
+        const assetConfig = this.getAssetSwitchingConfig();
+        return assetConfig.minPayout || 85;
+    }
+
+    // Obter categoria preferida para ativos
+    getPreferredAssetCategory() {
+        const assetConfig = this.getAssetSwitchingConfig();
+        return assetConfig.preferredCategory || 'crypto';
     }
 
     // Adicionar listener
