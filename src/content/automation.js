@@ -805,6 +805,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                     } else {
                                         sendToLogSystem(`❌ Erro na verificação de payout: ${error}`, 'ERROR');
                                         toUpdateStatus(`Erro na verificação de payout: ${error}`, 'error', 5000);
+                                        
+                                        // Cancelar operação em caso de erro
+                                        if (typeof window.cancelCurrentOperation === 'function') {
+                                            window.cancelCurrentOperation(`Erro na verificação de payout: ${error}`);
+                                        }
                                     }
                                 });
                         }
@@ -812,6 +817,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     .catch(error => {
                         sendToLogSystem(`❌ Erro ao verificar payout: ${error.message}`, 'ERROR');
                         toUpdateStatus(`Erro na verificação de payout: ${error.message}`, 'error', 5000);
+                        
+                        // Cancelar operação em caso de erro crítico
+                        if (typeof window.cancelCurrentOperation === 'function') {
+                            window.cancelCurrentOperation(`Erro crítico na verificação de payout: ${error.message}`);
+                        }
                     });
             } else {
                 const resultMsg = `Automação: Meta de lucro atingida ou superada (${currentProfit} >= ${dailyProfitTarget}). Nenhuma análise necessária.`;

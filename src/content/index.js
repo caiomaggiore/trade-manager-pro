@@ -97,33 +97,39 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     };
     
     // ================== VERIFICAÇÃO DE ELEMENTOS ==================
-    const indexUI = {
-        settingsPanel:  document.querySelector('#settings-panel'),
-        settingsBtn:    document.querySelector('#settings-btn'),
-        backBtn:        document.querySelector('#back-btn'),
-        saveBtn:        document.querySelector('#save-settings'),
-        exportBtn:      document.querySelector('#export-csv'),
-        operationsBody: document.querySelector('#operations-body'),
-        version:        document.querySelector('#version'),
-        currentGale:    document.querySelector('#current-gale'),
-        currentProfit:  document.querySelector('#current-profit'),
-        currentStop:    document.querySelector('#current-stop'),
-        currentValue:   document.querySelector('#current-value'),
-        currentTime:    document.querySelector('#current-time'),
-        toggleAuto:     document.querySelector('#toggleAuto'),
-        toggleGale:     document.querySelector('#toggleGale'),
-        galeSelect:     document.querySelector('#gale-select'),
-        automationStatus:document.querySelector('#automation-status'),
-        startOperation: document.querySelector('#start-operation'),
-        analyzeBtn:     document.querySelector('#analyzeBtn'),
-        captureScreen:  document.querySelector('#captureBtn'),
-        cancelOperation: document.querySelector('#cancel-operation'),
-        statusProcesso: document.querySelector('#status-processo'),
-        dailyProfit:    document.querySelector('#daily-profit'),
-        stopLoss:       document.querySelector('#stop-loss'),
-        entryValue:     document.querySelector('#trade-value'),
-        timePeriod:     document.querySelector('#trade-time')
+    // Função para obter elementos da UI de forma segura
+    const getUIElements = () => {
+        return {
+            settingsPanel:  document.querySelector('#settings-panel'),
+            settingsBtn:    document.querySelector('#settings-btn'),
+            backBtn:        document.querySelector('#back-btn'),
+            saveBtn:        document.querySelector('#save-settings'),
+            exportBtn:      document.querySelector('#export-csv'),
+            operationsBody: document.querySelector('#operations-body'),
+            version:        document.querySelector('#version'),
+            currentGale:    document.querySelector('#current-gale'),
+            currentProfit:  document.querySelector('#current-profit'),
+            currentStop:    document.querySelector('#current-stop'),
+            currentValue:   document.querySelector('#current-value'),
+            currentTime:    document.querySelector('#current-time'),
+            toggleAuto:     document.querySelector('#toggleAuto'),
+            toggleGale:     document.querySelector('#toggleGale'),
+            galeSelect:     document.querySelector('#gale-select'),
+            automationStatus:document.querySelector('#automation-status'),
+            startOperation: document.querySelector('#start-operation'),
+            analyzeBtn:     document.querySelector('#analyzeBtn'),
+            captureScreen:  document.querySelector('#captureBtn'),
+            cancelOperation: document.querySelector('#cancel-operation'),
+            statusProcesso: document.querySelector('#status-processo'),
+            dailyProfit:    document.querySelector('#daily-profit'),
+            stopLoss:       document.querySelector('#stop-loss'),
+            entryValue:     document.querySelector('#trade-value'),
+            timePeriod:     document.querySelector('#trade-time')
+        };
     };
+    
+    // Inicializar elementos da UI
+    let indexUI = getUIElements();
     
     // ================== VARIÁVEIS GLOBAIS ==================
     let isAutomationRunning = false;
@@ -411,10 +417,26 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     // ================== NOVAS FUNÇÕES PARA AUTOMAÇÃO ==================
     // Função para atualizar os elementos de UI com as configurações atuais
     const updateCurrentSettings = (settings) => {
-        // Verificar se temos as configurações e elementos da UI
-        if (!settings || !indexUI) {
-            addLog('Não foi possível atualizar configurações na UI: dados ou elementos ausentes', 'WARN');
+        // Verificar se temos as configurações
+        if (!settings) {
+            addLog('Não foi possível atualizar configurações na UI: configurações ausentes', 'WARN');
             return;
+        }
+        
+        // Recarregar elementos da UI para garantir que estão atualizados
+        indexUI = getUIElements();
+        
+        // Verificar se conseguimos encontrar os elementos principais
+        const missingElements = [];
+        if (!indexUI.currentGale) missingElements.push('current-gale');
+        if (!indexUI.automationStatus) missingElements.push('automation-status');
+        if (!indexUI.currentProfit) missingElements.push('current-profit');
+        if (!indexUI.currentStop) missingElements.push('current-stop');
+        if (!indexUI.currentValue) missingElements.push('current-value');
+        if (!indexUI.currentTime) missingElements.push('current-time');
+        
+        if (missingElements.length > 0) {
+            addLog(`Elementos da UI não encontrados: ${missingElements.join(', ')}`, 'WARN');
         }
 
         try {
@@ -460,22 +482,12 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 addLog(`toggleGale atualizado para: ${settings.galeEnabled}`, 'DEBUG');
             }
             
-            if (indexUI.galeSelect && typeof settings.galeLevel !== 'undefined') {
-                indexUI.galeSelect.value = settings.galeLevel;
-                if (indexUI.currentGale) {
-                    if (settings.galeEnabled) {
-                        indexUI.currentGale.textContent = `Gale: ${settings.galeLevel}`;
-                        indexUI.currentGale.className = 'gale-status active';
-                    } else {
-                        indexUI.currentGale.textContent = 'Gale: Desativado';
-                        indexUI.currentGale.className = 'gale-status inactive';
-                    }
-                }
-            }
+            // Atualizar status do Gale na UI
+            updateGaleStatusUI(settings.galeEnabled, settings.galeLevel);
             
             // Atualizar status de automação (padronizado)
             if (indexUI.automationStatus && typeof settings.autoActive !== 'undefined') {
-                setAutomationStatusUI(settings.autoActive);
+                updateAutomationStatusUI(settings.autoActive);
             }
             
             // Salvar as configurações globalmente para acesso fácil
@@ -496,15 +508,9 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 if (indexUI.currentTime && typeof settings.tradeTime !== 'undefined') {
                     indexUI.currentTime.textContent = `${settings.tradeTime} min`;
                 }
-                if (indexUI.currentGale && typeof settings.galeLevel !== 'undefined') {
-                    // Atualizar texto e classe do indicador de Gale
-                    if (settings.galeEnabled) {
-                        indexUI.currentGale.textContent = `Gale: ${settings.galeLevel}`;
-                        indexUI.currentGale.className = 'gale-status active';
-                    } else {
-                        indexUI.currentGale.textContent = 'Gale: Desativado';
-                        indexUI.currentGale.className = 'gale-status inactive';
-                    }
+                // Atualizar status do Gale novamente para garantir
+                if (typeof settings.galeEnabled !== 'undefined' && typeof settings.galeLevel !== 'undefined') {
+                    updateGaleStatusUI(settings.galeEnabled, settings.galeLevel);
                 }
                 
                 addLog('Verificação adicional de atualização da UI realizada', 'DEBUG');
@@ -513,6 +519,46 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             addLog('Configurações atualizadas na UI com sucesso', 'SUCCESS');
         } catch (error) {
             addLog(`Erro ao atualizar configurações na UI: ${error.message}`, 'ERROR');
+        }
+    };
+
+    // Função para atualizar o status de automação na UI
+    const updateAutomationStatusUI = (isActive) => {
+        const automationStatusElement = document.querySelector('#automation-status');
+        if (automationStatusElement) {
+            automationStatusElement.textContent = `Automação: ${isActive ? 'Ativa' : 'Inativa'}`;
+            automationStatusElement.className = 'automation-status';
+            automationStatusElement.classList.add(isActive ? 'active' : 'inactive');
+            addLog(`Status de automação atualizado na UI: ${isActive ? 'Ativo' : 'Inativo'}`, 'DEBUG');
+        } else {
+            addLog('Elemento automation-status não encontrado na UI', 'WARN');
+        }
+    };
+
+    // Função para atualizar o status do Gale na UI
+    const updateGaleStatusUI = (galeEnabled, galeLevel) => {
+        const currentGaleElement = document.querySelector('#current-gale');
+        const galeSelectElement = document.querySelector('#gale-select');
+        
+        // Atualizar o select do Gale se disponível
+        if (galeSelectElement && typeof galeLevel !== 'undefined') {
+            galeSelectElement.value = galeLevel;
+            addLog(`galeSelect atualizado para: ${galeLevel}`, 'DEBUG');
+        }
+        
+        // Atualizar o display do status do Gale
+        if (currentGaleElement) {
+            if (galeEnabled && galeLevel) {
+                currentGaleElement.textContent = `Gale: ${galeLevel}`;
+                currentGaleElement.className = 'gale-status active';
+                addLog(`Status do Gale atualizado: Ativo (${galeLevel})`, 'DEBUG');
+            } else {
+                currentGaleElement.textContent = 'Gale: Desativado';
+                currentGaleElement.className = 'gale-status inactive';
+                addLog('Status do Gale atualizado: Desativado', 'DEBUG');
+            }
+        } else {
+            addLog('Elemento current-gale não encontrado na UI', 'WARN');
         }
     };
 
@@ -606,18 +652,55 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         }, 1000);
     };
 
-    // Função para cancelar o fechamento automático
-    const cancelAutoClose = () => {
-        if (automationTimeout) {
+    // Função para cancelar operações (pode ser chamada de qualquer lugar)
+    const cancelCurrentOperation = (reason = 'Cancelado pelo usuário') => {
+        addLog(`Cancelando operação atual: ${reason}`, 'INFO');
+        
+        // Limpar estado de operação no StateManager
+        if (window.StateManager) {
+            const currentConfig = window.StateManager.getConfig() || {};
+            const isAutomationActive = currentConfig.automation === true;
+            
+            // Atualizar estado para indicar que não há operação em andamento
+            window.StateManager.updateAutomationState(isAutomationActive, null);
+            
+            // Atualizar visibilidade dos botões
+            updateUserControlsVisibility(isAutomationActive, false);
+        }
+        
+        // Interromper monitoramento se disponível
+        if (window.TradeManager?.History) {
+            window.TradeManager.History.stopMonitoring()
+                .catch(error => {
+                    addLog(`Erro ao parar monitoramento: ${error.message}`, 'ERROR');
+                });
+        }
+        
+        // Cancelar timeouts
+        if (typeof automationTimeout !== 'undefined' && automationTimeout) {
             clearTimeout(automationTimeout);
             automationTimeout = null;
-            addLog('Temporizador de automação cancelado', 'INFO');
+            addLog('Temporizador de automação cancelado', 'DEBUG');
         }
-        isAutomationRunning = false;
-        updateAutomationStatus(false, false);
-        updateStatus('Operação cancelada pelo usuário', 'info');
-        addLog('Operação cancelada manualmente pelo usuário', 'INFO');
+        
+        // Cancelar monitoramento de payout
+        if (typeof cancelPayoutMonitoring === 'function') {
+            cancelPayoutMonitoring();
+            addLog('Monitoramento de payout cancelado', 'DEBUG');
+        }
+        
+        // Atualizar status
+        updateStatus(reason, 'info');
+        addLog(`Operação cancelada: ${reason}`, 'SUCCESS');
     };
+
+    // Função para cancelar o fechamento automático (compatibilidade)
+    const cancelAutoClose = () => {
+        cancelCurrentOperation('Operação cancelada pelo usuário');
+    };
+    
+    // Expor função globalmente para uso em outros módulos
+    window.cancelCurrentOperation = cancelCurrentOperation;
 
     // Função para capturar e analisar
     async function captureAndAnalyze() {
@@ -671,19 +754,47 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     // Verificar se o módulo História está disponível
                     if (window.TradeManager?.History) {
                         if (isAutomationActive) {
-                            // Se a automação já estiver ativa, apenas iniciar o monitoramento
-                            addLog('Iniciando monitoramento de operações...', 'INFO');
+                            // Marcar que uma operação está iniciando
+                            addLog('Iniciando operação automática...', 'INFO');
+                            updateStatus('Iniciando operação automática...', 'info');
+                            
+                            // Atualizar estado no StateManager para indicar operação em andamento
+                            window.StateManager.updateAutomationState(true, {
+                                id: Date.now(),
+                                type: 'automatic_monitoring',
+                                startTime: new Date().toISOString(),
+                                status: 'starting'
+                            });
+                            
+                            // Atualizar visibilidade dos botões imediatamente
+                            updateUserControlsVisibility(true, true);
+                            
+                            // Iniciar o monitoramento
                             window.TradeManager.History.startMonitoring()
                                 .then(() => {
-                                    updateStatus('Monitoramento de operações iniciado com sucesso', 'success');
+                                    addLog('Monitoramento de operações iniciado com sucesso', 'SUCCESS');
+                                    updateStatus('Operação automática em andamento', 'success');
+                                    
+                                    // Atualizar estado para operação em execução
+                                    const currentState = window.StateManager.getAutomationState();
+                                    if (currentState.currentOperation) {
+                                        window.StateManager.updateAutomationState(true, {
+                                            ...currentState.currentOperation,
+                                            status: 'running'
+                                        });
+                                    }
                                 })
                                 .catch(error => {
                                     addLog(`Erro ao iniciar monitoramento: ${error.message}`, 'ERROR');
-                                    updateStatus('Falha ao iniciar monitoramento', 'error');
+                                    updateStatus('Falha ao iniciar operação automática', 'error');
+                                    
+                                    // Limpar estado de operação em caso de erro
+                                    window.StateManager.updateAutomationState(true, null);
+                                    updateUserControlsVisibility(true, false);
                                 });
                         } else {
                             // Se não estiver ativa, apenas mostrar uma mensagem
-                            addLog('Tentativa de iniciar monitoramento com automação desativada', 'WARN');
+                            addLog('Tentativa de iniciar operação com automação desativada', 'WARN');
                             updateStatus('A automação está desativada. Ative-a nas configurações.', 'warn');
                         }
                     } else {
@@ -700,41 +811,48 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         
         if (elements.cancelOperation) {
             elements.cancelOperation.addEventListener('click', () => {
-                // Verificar o estado atual da automação no StateManager
-                if (window.StateManager && typeof window.StateManager.getConfig === 'function') {
+                addLog('Cancelando operação automática...', 'INFO');
+                updateStatus('Cancelando operação...', 'warn');
+                
+                // Limpar estado de operação no StateManager
+                if (window.StateManager) {
+                    const currentState = window.StateManager.getAutomationState();
                     const currentConfig = window.StateManager.getConfig() || {};
                     const isAutomationActive = currentConfig.automation === true;
                     
-                    if (window.TradeManager?.History) {
-                        if (isAutomationActive) {
-                            // Se a automação estiver ativa, apenas interromper o monitoramento sem alterar configuração
-                            addLog('Interrompendo monitoramento de operações...', 'INFO');
-                            window.TradeManager.History.stopMonitoring()
-                                .then(() => {
-                                    updateStatus('Monitoramento interrompido', 'info');
-                                })
-                                .catch(error => {
-                                    addLog(`Erro ao interromper monitoramento: ${error.message}`, 'ERROR');
-                                    updateStatus('Falha ao interromper monitoramento', 'error');
-                                });
-                        } else {
-                            // Se não estiver ativa, apenas mostrar uma mensagem
-                            addLog('Tentativa de interromper monitoramento com automação já desativada', 'WARN');
-                            updateStatus('A automação já está desativada', 'info');
-                        }
-                    } else {
-                        // Fallback para função anterior sem alterar configuração
-                        addLog('Cancelando operação via método fallback...', 'INFO');
-                        if (automationTimeout) {
-                            clearTimeout(automationTimeout);
-                            automationTimeout = null;
-                            addLog('Temporizador de automação cancelado', 'INFO');
-                        }
-                        updateStatus('Operação cancelada pelo usuário', 'info');
-                    }
+                    // Atualizar estado para indicar que não há operação em andamento
+                    window.StateManager.updateAutomationState(isAutomationActive, null);
+                    
+                    // Atualizar visibilidade dos botões imediatamente
+                    updateUserControlsVisibility(isAutomationActive, false);
+                }
+                
+                // Interromper monitoramento se disponível
+                if (window.TradeManager?.History) {
+                    window.TradeManager.History.stopMonitoring()
+                        .then(() => {
+                            addLog('Operação automática cancelada com sucesso', 'SUCCESS');
+                            updateStatus('Operação cancelada pelo usuário', 'info');
+                        })
+                        .catch(error => {
+                            addLog(`Erro ao cancelar operação: ${error.message}`, 'ERROR');
+                            updateStatus('Erro ao cancelar operação', 'error');
+                        });
                 } else {
-                    // Se não conseguir acessar o estado via StateManager
-                    updateStatus('Não foi possível verificar o status da automação', 'error');
+                    // Fallback para cancelamento direto
+                    addLog('Cancelando operação via método fallback...', 'INFO');
+                    if (typeof automationTimeout !== 'undefined' && automationTimeout) {
+                        clearTimeout(automationTimeout);
+                        automationTimeout = null;
+                        addLog('Temporizador de automação cancelado', 'INFO');
+                    }
+                    updateStatus('Operação cancelada pelo usuário', 'info');
+                }
+                
+                // Cancelar qualquer monitoramento de payout em andamento
+                if (typeof cancelPayoutMonitoring === 'function') {
+                    cancelPayoutMonitoring();
+                    addLog('Monitoramento de payout cancelado', 'DEBUG');
                 }
             });
         }
@@ -845,6 +963,9 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         // Configurar os botões de teste do sistema de Gale
         setupGaleTestButtons();
         
+        // Configurar botão de teste de análise no modo desenvolvedor
+        setupDevAnalysisButton();
+        
         // Inicializar o listener do StateManager para atualizações de configurações
         initStateManagerListener();
         
@@ -931,22 +1052,25 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     .then(config => {
                         addLog('Configurações carregadas via StateManager', 'SUCCESS');
                         
-                        // Log específico para status de automação
-                        addLog(`Status de automação carregado: ${config.automation}`, 'DEBUG');
+                        // Log específico para status de automação e gale
+                        addLog(`Status carregado - Gale: ${config.gale?.active} (${config.gale?.level}), Automação: ${config.automation}`, 'DEBUG');
                         
                         // Atualizar campos da página principal
                         updateCurrentSettings({
-                            galeEnabled: config.gale.active,
-                            galeLevel: config.gale.level,
-                            dailyProfit: config.dailyProfit,
-                            stopLoss: config.stopLoss,
-                            tradeValue: config.value,
-                            tradeTime: config.period,
-                            autoActive: config.automation
+                            galeEnabled: config.gale?.active || false,
+                            galeLevel: config.gale?.level || '1.2x',
+                            dailyProfit: config.dailyProfit || 150,
+                            stopLoss: config.stopLoss || 30,
+                            tradeValue: config.value || 10,
+                            tradeTime: config.period || 1,
+                            autoActive: config.automation || false
                         });
                         
                         // Atualizar visibilidade do painel de teste do Gale
                         updateGaleTestPanelVisibility(config.devMode);
+                        
+                        // Atualizar visibilidade dos botões principais
+                        updateUserControlsVisibility(config.automation, false);
                         
                         updateStatus('Configurações carregadas com sucesso', 'success');
                         resolve(config);
@@ -995,15 +1119,18 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         addLog('Configurações padrão salvas no storage.', 'INFO');
                         updateStatus('Configurações padrão salvas', 'success');
                         
+                        // Log das configurações padrão sendo aplicadas
+                        addLog(`Aplicando configurações padrão - Gale: ${indexDefaultConfig.gale?.active} (${indexDefaultConfig.gale?.level}), Automação: ${indexDefaultConfig.automation}`, 'DEBUG');
+                        
                         // Atualizar campos da página principal
                         updateCurrentSettings({
-                            galeEnabled: indexDefaultConfig.gale.active,
-                            galeLevel: indexDefaultConfig.gale.level,
-                            dailyProfit: indexDefaultConfig.dailyProfit,
-                            stopLoss: indexDefaultConfig.stopLoss,
-                            tradeValue: indexDefaultConfig.value,
-                            tradeTime: indexDefaultConfig.period,
-                            autoActive: indexDefaultConfig.automation
+                            galeEnabled: indexDefaultConfig.gale?.active || false,
+                            galeLevel: indexDefaultConfig.gale?.level || '1.2x',
+                            dailyProfit: indexDefaultConfig.dailyProfit || 150,
+                            stopLoss: indexDefaultConfig.stopLoss || 30,
+                            tradeValue: indexDefaultConfig.value || 10,
+                            tradeTime: indexDefaultConfig.period || 1,
+                            autoActive: indexDefaultConfig.automation || false
                         });
                         
                         resolve(indexDefaultConfig);
@@ -1017,15 +1144,18 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     addLog('Configuração do usuário encontrada e carregada.', 'INFO');
                     updateStatus('Configurações do usuário carregadas', 'success');
                     
+                    // Log das configurações do usuário sendo aplicadas
+                    addLog(`Aplicando configurações do usuário - Gale: ${result.userConfig.gale?.active} (${result.userConfig.gale?.level}), Automação: ${result.userConfig.automation}`, 'DEBUG');
+                    
                     // Atualizar campos da página principal
                     updateCurrentSettings({
-                        galeEnabled: result.userConfig.gale.active,
-                        galeLevel: result.userConfig.gale.level,
-                        dailyProfit: result.userConfig.dailyProfit,
-                        stopLoss: result.userConfig.stopLoss,
-                        tradeValue: result.userConfig.value,
-                        tradeTime: result.userConfig.period,
-                        autoActive: result.userConfig.automation
+                        galeEnabled: result.userConfig.gale?.active || false,
+                        galeLevel: result.userConfig.gale?.level || '1.2x',
+                        dailyProfit: result.userConfig.dailyProfit || 150,
+                        stopLoss: result.userConfig.stopLoss || 30,
+                        tradeValue: result.userConfig.value || 10,
+                        tradeTime: result.userConfig.period || 1,
+                        autoActive: result.userConfig.automation || false
                     });
                     
                     resolve(result.userConfig);
@@ -1049,19 +1179,34 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     
                     const config = state.config;
                     if (config) {
+                        // Log detalhado das configurações atualizadas
+                        addLog(`Configurações atualizadas - Gale: ${config.gale?.active} (${config.gale?.level}), Automação: ${config.automation}`, 'DEBUG');
+                        
                         // Atualizar campos da página principal
                         updateCurrentSettings({
-                            galeEnabled: config.gale.active,
-                            galeLevel: config.gale.level,
-                            dailyProfit: config.dailyProfit,
-                            stopLoss: config.stopLoss,
-                            tradeValue: config.value,
-                            tradeTime: config.period,
-                            autoActive: config.automation
+                            galeEnabled: config.gale?.active || false,
+                            galeLevel: config.gale?.level || '1.2x',
+                            dailyProfit: config.dailyProfit || 150,
+                            stopLoss: config.stopLoss || 30,
+                            tradeValue: config.value || 10,
+                            tradeTime: config.period || 1,
+                            autoActive: config.automation || false
                         });
                         
                         // Atualizar visibilidade do painel de teste do Gale baseado no modo desenvolvedor
                         updateGaleTestPanelVisibility(config.devMode);
+                        
+                        // Atualizar visibilidade dos botões principais baseado no estado da automação
+                        updateUserControlsVisibility(config.automation, false);
+                        
+                        // Se a automação foi desativada e havia uma operação em andamento, cancelar
+                        if (!config.automation) {
+                            const currentState = window.StateManager.getAutomationState();
+                            if (currentState.currentOperation) {
+                                addLog('Automação desativada com operação em andamento - cancelando operação', 'WARN');
+                                cancelCurrentOperation('Automação desativada nas configurações');
+                            }
+                        }
                                               
                         updateStatus('Configurações atualizadas', 'success', 2000);
                     }
@@ -1083,6 +1228,10 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         
                         // Log adicional para depuração
                         addLog(`Estado de automação atualizado na UI: isRunning=${isRunning}`, 'WARN');
+                        
+                        // Atualizar visibilidade dos botões baseado no estado da automação
+                        const operationInProgress = automationState.currentOperation ? true : false;
+                        updateUserControlsVisibility(isRunning, operationInProgress);
                         
                         // Se houver uma operação atual, podemos mostrar informações adicionais
                         if (automationState.currentOperation) {
@@ -2204,185 +2353,78 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         }
     };
 
-    // Adicionar um listener para mensagens do chrome.runtime
-    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-            console.log('index.js: Mensagem recebida:', message); 
+    // Função para controlar visibilidade dos botões principais (modo usuário)
+    const updateUserControlsVisibility = (automationActive = false, operationInProgress = false) => {
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const startOperationBtn = document.getElementById('start-operation');
+        const cancelOperationBtn = document.getElementById('cancel-operation');
+        
+        addLog(`Atualizando visibilidade dos controles: automação=${automationActive}, operação=${operationInProgress}`, 'DEBUG');
+        
+        if (!analyzeBtn || !startOperationBtn || !cancelOperationBtn) {
+            addLog('Botões de controle não encontrados para atualização de visibilidade', 'WARN');
+            return;
+        }
 
-            // Handler para o status global existente (usado por REQUEST_INDEX_DIRECT_UPDATE_STATUS)
-            if (message.type === 'REQUEST_INDEX_DIRECT_UPDATE_STATUS') {
-                console.log('index.js: Handler para REQUEST_INDEX_DIRECT_UPDATE_STATUS acionado.', message); 
-                addLog(`index.js: Recebido REQUEST_INDEX_DIRECT_UPDATE_STATUS ('${message.text}')`, 'DEBUG');
-                // Esta função já existe e deve ser usada para o status global
-                if (window.IndexUIFunctions && typeof window.IndexUIFunctions.updateStatus === 'function') {
-                    window.IndexUIFunctions.updateStatus(
-                        message.text,
-                        message.level || 'info',
-                        typeof message.duration === 'number' ? message.duration : 5000
-                    );
-                    sendResponse({ success: true, status_updated: true });
-                } else {
-                    addLog('index.js: window.IndexUIFunctions.updateStatus não disponível.', 'ERROR');
-                    sendResponse({ success: false, error: 'updateStatus function not found' });
-                }
-                return false; // Resposta síncrona.
-            }
+        // Resetar todas as classes hidden
+        analyzeBtn.classList.remove('hidden');
+        startOperationBtn.classList.remove('hidden');
+        cancelOperationBtn.classList.remove('hidden');
 
-            // Manter outros handlers existentes (UPDATE_STATUS_MESSAGE, REQUEST_UI_AUTOMATION_STATUS_UPDATE, configUpdated)
-            if (message.action === 'updateStatus' || message.type === 'UPDATE_STATUS_MESSAGE') {
-                // ... (código existente)
-                if (sendResponse) sendResponse({ success: true, received: true });
-                return true; 
-            }
+        if (operationInProgress) {
+            // Quando operação está em andamento: apenas botão cancelar
+            analyzeBtn.classList.add('hidden');
+            startOperationBtn.classList.add('hidden');
+            // cancelOperationBtn fica visível
+            addLog('✅ Controles atualizados: OPERAÇÃO EM ANDAMENTO - Apenas botão "Cancelar Operação" visível', 'INFO');
+        } else if (automationActive) {
+            // Quando automação ativa mas sem operação: apenas botão iniciar automático
+            analyzeBtn.classList.add('hidden');
+            cancelOperationBtn.classList.add('hidden');
+            // startOperationBtn fica visível
+            addLog('✅ Controles atualizados: AUTOMAÇÃO ATIVA - Apenas botão "Iniciar Automático" visível', 'INFO');
+        } else {
+            // Quando automação desativa: apenas botão análise manual
+            startOperationBtn.classList.add('hidden');
+            cancelOperationBtn.classList.add('hidden');
+            // analyzeBtn fica visível
+            addLog('✅ Controles atualizados: AUTOMAÇÃO INATIVA - Apenas botão "Iniciar Análise" visível', 'INFO');
+        }
+    };
 
-            if (message.type === 'REQUEST_UI_AUTOMATION_STATUS_UPDATE') {
-                // Atualizar status de automação quando solicitado externamente
+    // Função para adicionar botão de teste de análise no modo desenvolvedor
+    const setupDevAnalysisButton = () => {
+        const testAnalysisBtn = document.getElementById('test-analysis');
+        if (testAnalysisBtn) {
+            testAnalysisBtn.addEventListener('click', async () => {
+                addLog('Executando teste de análise (modo desenvolvedor)', 'INFO');
                 try {
-                    const isActive = message.data?.isActive === true;
+                    // Simular análise com dados mock
+                    const mockResult = {
+                        action: Math.random() > 0.5 ? 'BUY' : 'SELL',
+                        confidence: Math.floor(Math.random() * 40) + 60, // 60-100%
+                        period: '1m',
+                        value: 'R$ 10,00',
+                        reason: 'Análise de teste executada com dados simulados para desenvolvimento.',
+                        isTestMode: true
+                    };
                     
-                    // Atualizar apenas a UI
-                    const automationStatusElement = document.querySelector('#automation-status');
-                    if (automationStatusElement) {
-                        automationStatusElement.textContent = `Automação: ${isActive ? 'Ativa' : 'Inativa'}`;
-                        automationStatusElement.className = 'automation-status';
-                        automationStatusElement.classList.add(isActive ? 'active' : 'inactive');
-                        
-                        if (isActive) {
-                            automationStatusElement.style.color = '#4CAF50';
-                            automationStatusElement.style.fontWeight = 'bold';
-                        } else {
-                            automationStatusElement.style.color = '#F44336';
-                            automationStatusElement.style.fontWeight = 'normal';
-                        }
-                        
-                        addLog(`UI de status de automação atualizada via mensagem: ${isActive ? 'Ativo' : 'Inativo'}`, 'DEBUG');
+                    // Mostrar modal com resultado
+                    if (typeof showAnalysisModal === 'function') {
+                        showAnalysisModal(mockResult);
+                        addLog('Modal de análise de teste exibido com sucesso', 'SUCCESS');
+                    } else {
+                        addLog('Função showAnalysisModal não encontrada', 'ERROR');
                     }
-                    
-                    if (sendResponse) sendResponse({ success: true, updated: true });
-                } catch (err) {
-                    if (sendResponse) sendResponse({ success: false, error: err.message });
+                } catch (error) {
+                    addLog(`Erro no teste de análise: ${error.message}`, 'ERROR');
                 }
-                return false; 
-            }
-
-            if (message && message.action === 'configUpdated' && message.settings) {
-                // ... (código existente)
-                if (sendResponse) {
-                        sendResponse({ success: true, received: true });
-                }
-                return false; 
-            }
-            
-            // Fallback se nenhuma mensagem foi explicitamente tratada e esperava uma resposta síncrona.
-            // Se um sender envia uma mensagem sem esperar callback, e nenhum handler retorna true,
-            // não há problema. Se um sender espera callback, um dos handlers DEVE retornar true ou chamar sendResponse.
-            // Para segurança, se não foi tratado, e pode haver um sender esperando, logar.
-            // console.warn('index.js: Mensagem não tratada por nenhum handler específico que retorna síncronamente.', message);
-            // sendResponse({success: false, error: 'Message not handled by index.js'}); // Opcional: responder que não foi tratado
-            return false; // Default para evitar port closed se nenhum outro handler retornou true.
-        });
-    }
-
-    // Função para iniciar o monitoramento (usado como fallback)
-    const startTradeMonitoring = () => {
-        addLog('Iniciando monitoramento via método fallback...', 'INFO');
-        
-        // Atualizar o status de automação no StateManager primeiro, se disponível
-        if (window.StateManager && typeof window.StateManager.saveConfig === 'function') {
-            // Obter configuração atual
-            const currentConfig = window.StateManager.getConfig() || {};
-            
-            // Ativar automação na configuração
-            currentConfig.automation = true;
-            
-            // Salvar no StateManager (que notificará os listeners)
-            window.StateManager.saveConfig(currentConfig)
-                .then(() => {
-                    addLog('Status de automação atualizado com sucesso no StateManager (fallback)', 'SUCCESS');
-                    // Continuar com o startup da operação
-                    startAutomationProcess();
-                })
-                .catch(error => {
-                    addLog(`Erro ao atualizar configuração: ${error.message}`, 'ERROR');
-                    updateStatus('Falha ao iniciar automação', 'error');
-                });
-        } else {
-            // Caso não tenha StateManager, atualizar diretamente
-            isAutomationRunning = true;
-            updateAutomationStatus(true, false);
-            startAutomationProcess();
-        }
-    };
-    
-    // Função para realmente iniciar o processo de automação após configuração atualizada
-    const startAutomationProcess = () => {
-        // Verificar o estado atual da automação no StateManager
-        if (window.StateManager && typeof window.StateManager.getConfig === 'function') {
-            const currentConfig = window.StateManager.getConfig() || {};
-            const isAutomationActive = currentConfig.automation === true;
-            
-            if (isAutomationActive) {
-                // Se a automação já estiver ativa, apenas informar
-                updateStatus('Sistema de automação já está ativo', 'info');
-            } else {
-                // Informar que a automação está desativada
-                updateStatus('A automação está desativada. Ative-a nas configurações.', 'warn');
-            }
-        } else {
-            // Se não conseguir verificar o status via StateManager
-            updateStatus('Não foi possível verificar o status da automação', 'error');
-        }
-    };
-    
-    // Função para cancelar o monitoramento (usado como fallback)
-    const cancelAutomationFallback = () => {
-        addLog('Cancelando automação via método fallback...', 'INFO');
-        
-        // Atualizar o status de automação no StateManager primeiro, se disponível
-        if (window.StateManager && typeof window.StateManager.saveConfig === 'function') {
-            // Obter configuração atual
-            const currentConfig = window.StateManager.getConfig() || {};
-            
-            // Desativar automação na configuração
-            currentConfig.automation = false;
-            
-            // Salvar no StateManager (que notificará os listeners)
-            window.StateManager.saveConfig(currentConfig)
-                .then(() => {
-                    addLog('Status de automação (desativado) atualizado com sucesso no StateManager (fallback)', 'SUCCESS');
-                    updateStatus('Automação desativada', 'info');
-                })
-                .catch(error => {
-                    addLog(`Erro ao atualizar configuração: ${error.message}`, 'ERROR');
-                    updateStatus('Falha ao desativar automação', 'error');
-                });
-        } else {
-            // Caso não tenha StateManager, atualizar diretamente
-            if (automationTimeout) {
-                clearTimeout(automationTimeout);
-                automationTimeout = null;
-                addLog('Temporizador de automação cancelado', 'INFO');
-            }
-            isAutomationRunning = false;
-            updateAutomationStatus(false, false);
-            updateStatus('Operação cancelada pelo usuário', 'info');
-            addLog('Operação cancelada manualmente pelo usuário', 'INFO');
+            });
+            addLog('Botão de teste de análise configurado', 'DEBUG');
         }
     };
 
-    // Função para atualizar status de automação (padronizada, sem estilos inline)
-    function setAutomationStatusUI(isActive) {
-        const automationStatusElement = document.querySelector('#automation-status');
-        if (automationStatusElement) {
-            automationStatusElement.textContent = `Automação: ${isActive ? 'Ativa' : 'Inativa'}`;
-            automationStatusElement.className = 'automation-status ' + (isActive ? 'active' : 'inactive');
-        }
-    }
-
-    // Armazenar a última imagem capturada globalmente para uso entre módulos
-    window.lastCapturedImage = null;
-
-    // Listener para RUN_ANALYSIS
+    // Adicionar um listener para mensagens do chrome.runtime
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message.action === 'RUN_ANALYSIS') {
             runAnalysis()

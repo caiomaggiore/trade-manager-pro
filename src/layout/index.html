@@ -43,107 +43,163 @@
          </div>
        </div>
      </div>
-         <div class="settings-grid">
-         <button id="start-operation" class="action-button">          
-           <img src="../assets/icons/automation-icon.png" class="button-icon" alt="Analisar">
-           Iniciar Automatico</button>
-         <button id="cancel-operation" class="action-button" >
-           <img src="../assets/icons/close-icon.png" class="button-icon" alt="Cancelar">
-           Cancelar Operação</button>
-           <button id="captureBtn" class="action-button common-button" >
-             <img src="../assets/icons/screenshot.png" class="button-icon" alt="Capturar">
-             Capturar Grafico
-           </button>
-           <button id="analyzeBtn" class="action-button common-button">
-             <img src="../assets/icons/gemini-icon.png" class="button-icon" alt="Analisar">
-             Iniciar Analise
-           </button>
- 
-       <div class="settings-group">  
-         <strong>Ganhos e Perdas:</strong>  
-         <div id="last-profit" >Lucro atual: <span id="profitCurrent">0</span></div>
-       </div>
+
+     <!-- Área de Botões Principais - Modo Usuário -->
+     <div class="user-controls">
+       <!-- Botão para análise manual (quando automação desativada) -->
+       <button id="analyzeBtn" class="action-button common-button">
+         <img src="../assets/icons/gemini-icon.png" class="button-icon" alt="Analisar">
+         Iniciar Análise
+       </button>
+       
+       <!-- Botão para iniciar automação (quando automação desativada) -->
+       <button id="start-operation" class="action-button hidden">          
+         <img src="../assets/icons/automation-icon.png" class="button-icon" alt="Automação">
+         Iniciar Automático
+       </button>
+       
+       <!-- Botão para cancelar operação (quando automação ativa) -->
+       <button id="cancel-operation" class="action-button hidden">
+         <img src="../assets/icons/close-icon.png" class="button-icon" alt="Cancelar">
+         Cancelar Operação
+       </button>
      </div>
 
-     <!-- Sistema de Gale - Botões para teste -->
-     <div class="gale-test-panel hidden" id="gale-test-panel">
-        <h3>Sistema de Gale - Testes</h3>
-        <div class="gale-status-info">
-            <span>Status do Gale: </span>
+     <div class="settings-group">  
+       <strong>Ganhos e Perdas:</strong>  
+       <div id="last-profit" >Lucro atual: <span id="profitCurrent">0</span></div>
+     </div>
+
+     <!-- Sistema de Desenvolvimento - Área de Testes -->
+     <div class="dev-test-panel hidden" id="gale-test-panel">
+        <div class="dev-header">
+          <h3><i class="fas fa-code"></i> Painel de Desenvolvimento</h3>
+          <p class="dev-description">Ferramentas avançadas para testes e desenvolvimento do sistema</p>
+        </div>
+
+        <!-- Seção 1: Captura e Análise -->
+        <div class="dev-section">
+          <h4><i class="fas fa-camera"></i> Captura e Análise</h4>
+          <div class="dev-grid">
+            <button id="captureBtn" class="dev-button">
+              <i class="fas fa-camera"></i>
+              <span>Capturar Gráfico</span>
+              <small>Captura screenshot da plataforma</small>
+            </button>
+            <button id="test-analysis" class="dev-button">
+              <i class="fas fa-chart-line"></i>
+              <span>Teste de Análise</span>
+              <small>Executa análise com dados mock</small>
+            </button>
+          </div>
+        </div>
+
+        <!-- Seção 2: Sistema Gale -->
+        <div class="dev-section">
+          <h4><i class="fas fa-dice"></i> Sistema Gale</h4>
+          <div class="gale-status-info">
+            <span>Status: </span>
             <span id="gale-level">Nível 0</span> | 
-            <span id="gale-value">Valor atual: R$ 0</span>
-        </div>
-        <div class="gale-test-buttons">
-            <button id="simulate-loss" class="btn common-button">
-                <i class="fas fa-arrow-down"></i> Simular Perda (Aplicar Gale)
+            <span id="gale-value">Valor: R$ 0</span>
+          </div>
+          <div class="dev-grid">
+            <button id="simulate-loss" class="dev-button dev-danger">
+              <i class="fas fa-arrow-down"></i>
+              <span>Simular Perda</span>
+              <small>Aplica próximo nível Gale</small>
             </button>
-            <button id="simulate-win" class="btn common-button">
-                <i class="fas fa-arrow-up"></i> Simular Ganho (Resetar Gale)
+            <button id="simulate-win" class="dev-button dev-success">
+              <i class="fas fa-arrow-up"></i>
+              <span>Simular Ganho</span>
+              <small>Reseta sistema Gale</small>
             </button>
-            <button id="check-gale-status" class="btn secondary">
-                <i class="fas fa-info-circle"></i> Verificar Status
+            <button id="check-gale-status" class="dev-button dev-info">
+              <i class="fas fa-info-circle"></i>
+              <span>Status Gale</span>
+              <small>Verifica estado atual</small>
             </button>
-        </div>
-        <!-- Novo botão para teste de captura de payout -->
-        <div class="gale-test-buttons" style="margin-top: 10px;">
-            <button id="test-capture-payout" class="btn secondary">
-                <i class="fas fa-percentage"></i> Testar Captura de Payout
-            </button>
-            <div id="payout-result" class="payout-result" style="margin-top: 5px; padding: 5px; border: 1px solid #ddd; border-radius: 3px;">
-                Resultado: Nenhum teste executado
-            </div>
+          </div>
         </div>
 
-        <!-- Teste de Modal de Ativos -->
-        <div class="modal-test-buttons" style="margin-top: 15px; border-top: 1px solid #ccc; padding-top: 15px;">
-            <h4 style="margin: 0 0 10px 0; color: #333;">🔧 Debug Modal de Ativos</h4>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;">
-                <button id="debug-open-modal" class="btn secondary">
-                    <i class="fas fa-folder-open"></i> Abrir Modal
-                </button>
-                <button id="debug-close-modal" class="btn secondary">
-                    <i class="fas fa-times"></i> Fechar Modal
-                </button>
-                <button id="debug-check-status" class="btn secondary">
-                    <i class="fas fa-search"></i> Verificar Status
-                </button>
-                <button id="debug-toggle-modal" class="btn secondary" style="background-color: #ff9800;">
-                    <i class="fas fa-exchange-alt"></i> Toggle Modal
-                </button>
-            </div>
-            <div id="modal-debug-result" class="modal-debug-result" style="margin-top: 5px; padding: 8px; border: 1px solid #ddd; border-radius: 3px; background: #f9f9f9; font-size: 12px; max-height: 120px; overflow-y: auto; font-family: monospace;">
-                Debug: Nenhum teste executado
-            </div>
+        <!-- Seção 3: Payout e Ativos -->
+        <div class="dev-section">
+          <h4><i class="fas fa-percentage"></i> Payout e Ativos</h4>
+          <div class="dev-grid">
+            <button id="test-capture-payout" class="dev-button">
+              <i class="fas fa-percentage"></i>
+              <span>Capturar Payout</span>
+              <small>Testa captura do payout atual</small>
+            </button>
+            <button id="test-find-best-asset" class="dev-button">
+              <i class="fas fa-search"></i>
+              <span>Melhor Ativo</span>
+              <small>Busca ativo com maior payout</small>
+            </button>
+          </div>
+          <div class="dev-controls">
+            <label>Payout Mínimo:</label>
+            <input id="min-payout-input" type="number" value="85" min="50" max="100">
+            <span>%</span>
+          </div>
+          <div id="payout-result" class="dev-result">
+            Resultado: Nenhum teste executado
+          </div>
         </div>
-        
-        <!-- Novo painel para teste de troca de ativos -->
-        <div class="asset-test-buttons" style="margin-top: 15px; border-top: 1px solid #ccc; padding-top: 15px;">
-            <h4 style="margin: 0 0 10px 0; color: #333;">Teste de Troca de Ativos</h4>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;">
-                <button id="test-open-asset-modal" class="btn secondary">
-                    <i class="fas fa-list"></i> Abrir Modal de Ativos
-                </button>
-                <button id="test-find-best-asset" class="btn secondary">
-                    <i class="fas fa-search"></i> Buscar Melhor Ativo
-                </button>
-                <button id="test-switch-to-crypto" class="btn secondary">
-                    <i class="fab fa-bitcoin"></i> Mudar para Crypto
-                </button>
-                <button id="test-switch-to-currency" class="btn secondary">
-                    <i class="fas fa-dollar-sign"></i> Mudar para Moedas
-                </button>
-            </div>
-            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                <label style="font-size: 12px;">Payout Mínimo:</label>
-                <input id="min-payout-input" type="number" value="85" min="50" max="100" style="width: 60px; padding: 2px;">
-                <span style="font-size: 12px;">%</span>
-            </div>
-            <div id="asset-test-result" class="asset-test-result" style="margin-top: 5px; padding: 8px; border: 1px solid #ddd; border-radius: 3px; background: #f9f9f9; font-size: 12px; max-height: 120px; overflow-y: auto;">
-                Resultado: Nenhum teste executado
-            </div>
-        </div>
-        
 
+        <!-- Seção 4: Troca de Ativos -->
+        <div class="dev-section">
+          <h4><i class="fas fa-exchange-alt"></i> Troca de Ativos</h4>
+          <div class="dev-grid">
+            <button id="test-switch-to-crypto" class="dev-button">
+              <i class="fab fa-bitcoin"></i>
+              <span>Crypto</span>
+              <small>Troca para criptomoedas</small>
+            </button>
+            <button id="test-switch-to-currency" class="dev-button">
+              <i class="fas fa-dollar-sign"></i>
+              <span>Moedas</span>
+              <small>Troca para pares de moedas</small>
+            </button>
+            <button id="test-open-asset-modal" class="dev-button">
+              <i class="fas fa-list"></i>
+              <span>Modal Ativos</span>
+              <small>Abre modal de seleção</small>
+            </button>
+          </div>
+          <div id="asset-test-result" class="dev-result">
+            Resultado: Nenhum teste executado
+          </div>
+        </div>
+
+        <!-- Seção 5: Debug Modal -->
+        <div class="dev-section">
+          <h4><i class="fas fa-bug"></i> Debug Modal</h4>
+          <div class="dev-grid">
+            <button id="debug-open-modal" class="dev-button">
+              <i class="fas fa-folder-open"></i>
+              <span>Abrir Modal</span>
+              <small>Força abertura do modal</small>
+            </button>
+            <button id="debug-close-modal" class="dev-button">
+              <i class="fas fa-times"></i>
+              <span>Fechar Modal</span>
+              <small>Força fechamento do modal</small>
+            </button>
+            <button id="debug-check-status" class="dev-button">
+              <i class="fas fa-search"></i>
+              <span>Status Modal</span>
+              <small>Verifica estado do modal</small>
+            </button>
+            <button id="debug-toggle-modal" class="dev-button dev-warning">
+              <i class="fas fa-exchange-alt"></i>
+              <span>Toggle Modal</span>
+              <small>Alterna estado do modal</small>
+            </button>
+          </div>
+          <div id="modal-debug-result" class="dev-result">
+            Debug: Nenhum teste executado
+          </div>
+        </div>
      </div>
  
      <div class="operations-table">
@@ -244,65 +300,5 @@
    <script src="../content/capture-screen.js" defer></script>
    <script src="../content/index.js" defer></script>
    <script src="../content/automation.js" defer></script>
-
-   <style>
-    .gale-test-panel {
-        background-color: #f5f5f5;
-        border: 1px solid #ddd;
-        border-radius: 5px;
-        padding: 15px;
-        margin: 15px 0;
-    }
-    
-    .gale-test-panel h3 {
-        margin-top: 0;
-        margin-bottom: 10px;
-        color: #333;
-    }
-    
-    .gale-status-info {
-        margin-bottom: 15px;
-        font-size: 14px;
-    }
-    
-    .gale-test-buttons {
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-    }
-    
-    #simulate-loss {
-        background-color: #ff6b6b;
-    }
-    
-    #simulate-win {
-        background-color: #51cf66;
-    }
-    
-    #check-gale-status {
-        background-color: #339af0;
-    }
-    
-    /* Estilos para o botão WAIT */
-    .wait-btn {
-        background-color: #ff9800;
-        color: white;
-        font-weight: bold;
-        transition: background-color 0.3s;
-    }
-    
-    .wait-btn:hover {
-        background-color: #f57c00;
-    }
-    
-    /* Estilos para a ação WAIT no modal */
-    .result-action.wait {
-        background-color: #ff9800;
-        color: white;
-        padding: 4px 8px;
-        border-radius: 4px;
-        font-weight: bold;
-    }
-   </style>
 </body>
 </html>

@@ -435,16 +435,22 @@ function showAnalysisModal(result) {
         }
         modal.style.display = 'none';
         autoExecutionEnabled = false;
-        // Apenas logar e mostrar mensagem ao usuário
-        if (typeof logAndUpdateStatus === 'function') {
-            logAndUpdateStatus('Operação cancelada pelo usuário', 'INFO', 'trade-execution', true);
-        } else if (typeof addLog === 'function') {
-            addLog('Operação cancelada pelo usuário', 'INFO', 'trade-execution');
-        }
-        if (typeof updateStatus === 'function') {
-            updateStatus('Operação cancelada pelo usuário', 'info', 3000);
-        } else if (typeof toUpdateStatus === 'function') {
-            toUpdateStatus('Operação cancelada pelo usuário', 'info', 3000);
+        
+        // Usar a função global de cancelamento para garantir consistência
+        if (typeof window.cancelCurrentOperation === 'function') {
+            window.cancelCurrentOperation('Operação cancelada pelo usuário no modal de análise');
+        } else {
+            // Fallback para o comportamento anterior
+            if (typeof logAndUpdateStatus === 'function') {
+                logAndUpdateStatus('Operação cancelada pelo usuário', 'INFO', 'trade-execution', true);
+            } else if (typeof addLog === 'function') {
+                addLog('Operação cancelada pelo usuário', 'INFO', 'trade-execution');
+            }
+            if (typeof updateStatus === 'function') {
+                updateStatus('Operação cancelada pelo usuário', 'info', 3000);
+            } else if (typeof toUpdateStatus === 'function') {
+                toUpdateStatus('Operação cancelada pelo usuário', 'info', 3000);
+            }
         }
     };
     closeButton.onclick = () => {
@@ -459,8 +465,15 @@ function showAnalysisModal(result) {
         }
         modal.style.display = 'none';
         autoExecutionEnabled = false;
-        if (typeof logAndUpdateStatus === 'function') {
-            logAndUpdateStatus('Modal fechado pelo usuário (operação cancelada)', 'INFO', 'ui', true);
+        
+        // Usar a função global de cancelamento para garantir consistência
+        if (typeof window.cancelCurrentOperation === 'function') {
+            window.cancelCurrentOperation('Modal de análise fechado pelo usuário');
+        } else {
+            // Fallback para o comportamento anterior
+            if (typeof logAndUpdateStatus === 'function') {
+                logAndUpdateStatus('Modal fechado pelo usuário (operação cancelada)', 'INFO', 'ui', true);
+            }
         }
     };
     countdownElement.ondblclick = () => {
@@ -485,8 +498,15 @@ function showAnalysisModal(result) {
             }
             modal.style.display = 'none';
             autoExecutionEnabled = false;
-            if (typeof logAndUpdateStatus === 'function') {
-                logAndUpdateStatus('Modal fechado ao clicar fora (operação cancelada)', 'INFO', 'ui', true);
+            
+            // Usar a função global de cancelamento para garantir consistência
+            if (typeof window.cancelCurrentOperation === 'function') {
+                window.cancelCurrentOperation('Modal de análise fechado ao clicar fora');
+            } else {
+                // Fallback para o comportamento anterior
+                if (typeof logAndUpdateStatus === 'function') {
+                    logAndUpdateStatus('Modal fechado ao clicar fora (operação cancelada)', 'INFO', 'ui', true);
+                }
             }
         }
     };
