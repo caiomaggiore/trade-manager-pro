@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
+   <!-- Header com título e controles -->
    <div class="header">
        <h1 class="app-title">TRADE MANAGER PRO</h1>
        <div class="header-controls">
@@ -23,69 +24,179 @@
    </div>
  
    <div class="container">
-     <!-- Conteúdo Principal -->
-     <div class="current-settings">
-       <div class="settings-grid">      
-         <!-- Coluna 1 -->
-         <div class="dev-section">
-           <h4><i class="fas fa-chart-line"></i> Estratégia de Operações</h4>
-           <div id="current-gale" class="gale-status">Gale: Desativado</div>
-           <div id="current-profit">Lucro Diário: R$ 0</div>
-           <div id="current-stop">Stop Loss: R$ 0</div>
+     <!-- Dashboard Principal -->
+     <div class="main-panel">
+       <div class="main-panel-header">
+         <h3><i class="fas fa-tachometer-alt"></i> Dashboard</h3>
+         <p class="main-panel-description">Painel de controle e monitoramento do sistema de trading</p>
+       </div>
+
+       <!-- Status do Sistema (3 LEDs) -->
+       <div class="sub-panel">
+         <h4 class="sub-panel-header"><i class="fas fa-signal"></i> Status do Sistema</h4>
+         <div class="panel-grid-3">
+           <div class="panel-content-row">
+             <div class="status-led system-led" id="system-led"></div>
+             <div class="status-info">
+               <span class="status-label">Sistema:</span>
+               <span class="status-value" id="system-status">Pronto</span>
+             </div>
+           </div>
+           <div class="panel-content-row">
+             <div class="status-led gale-led" id="gale-led"></div>
+             <div class="status-info">
+               <span class="status-label">Gale:</span>
+               <span class="status-value" id="gale-status">Desativado</span>
+             </div>
+           </div>
+           <div class="panel-content-row">
+             <div class="status-led automation-led" id="automation-led"></div>
+             <div class="status-info">
+               <span class="status-label">Automação:</span>
+               <span class="status-value" id="automation-status">Desativado</span>
+             </div>
+           </div>
          </div>
-       
-         <!-- Coluna 2 -->
-         <div class="dev-section">
-           <h4><i class="fas fa-cogs"></i> Controle de Operações</h4>
-           <div id="automation-status" class="automation-status">Automação: Inativa</div>
-           <div id="current-value">Valor de entrada: R$ 0</div>
-           <div id="current-time">Periodo: 0m</div>
+       </div>
+
+       <!-- Estratégia e Controle (2 colunas) -->
+       <div class="panel-grid-2">
+         <!-- Coluna 1: Estratégia de Operações -->
+         <div class="sub-panel">
+           <h4 class="sub-panel-header"><i class="fas fa-chart-line"></i> Estratégia</h4>
+           <div class="panel-item">
+             <span class="panel-item-label">Lucro diário:</span>
+             <span class="panel-item-value" id="current-profit">R$ 100</span>
+           </div>
+           <div class="panel-item">
+             <span class="panel-item-label">Stop loss:</span>
+             <span class="panel-item-value" id="current-stop">R$ 30</span>
+           </div>
+           <div class="panel-item">
+             <span class="panel-item-label">Payout Mínimo:</span>
+             <span class="panel-item-value" id="min-payout">80%</span>
+           </div>
+           <div class="panel-item">
+             <span class="panel-item-label">Payout Atual:</span>
+             <span class="panel-item-value" id="current-payout">86%</span>
+           </div>
+         </div>
+
+         <!-- Coluna 2: Controle de Operações -->
+         <div class="sub-panel">
+           <h4 class="sub-panel-header"><i class="fas fa-cogs"></i> Controle</h4>
+           <div class="panel-item">
+             <span class="panel-item-label">Nível de Gale:</span>
+             <span class="panel-item-value" id="current-gale">01</span>
+           </div>
+           <div class="panel-item">
+             <span class="panel-item-label">Valor de entrada:</span>
+             <span class="panel-item-value" id="current-value">R$ 2,00</span>
+           </div>
+           <div class="panel-item">
+             <span class="panel-item-label">Período:</span>
+             <span class="panel-item-value" id="current-time">1min</span>
+           </div>
+           <div class="panel-item">
+             <span class="panel-item-label">Ganhos e perdas:</span>
+             <span class="panel-item-value" id="last-profit">R$ 50</span>
+           </div>
+         </div>
+       </div>
+
+       <!-- Análise e Controle -->
+       <div class="sub-panel">
+         <h4 class="sub-panel-header"><i class="fas fa-brain"></i> Análise e Controle</h4>
+         <div class="panel-content-center">
+           <!-- Botão para análise manual (quando automação desativada) -->
+           <button id="analyzeBtn" class="action-button common-button">
+             <i class="fas fa-brain"></i>
+             <span>Iniciar Análise</span>
+           </button>
+           
+           <!-- Botão para iniciar automação (quando automação desativada) -->
+           <button id="start-operation" class="action-button hidden">          
+             <i class="fas fa-play"></i>
+             <span>Iniciar Automático</span>
+           </button>
+           
+           <!-- Botão para cancelar operação (quando automação ativa) -->
+           <button id="cancel-operation" class="action-button hidden">
+             <i class="fas fa-stop"></i>
+             <span>Cancelar Operação</span>
+           </button>
          </div>
        </div>
      </div>
 
-     <!-- Área de Botões Principais - Modo Usuário -->
-     <div class="user-controls">
-       <div class="dev-section">
-         <h4><i class="fas fa-brain"></i> Análise e Controle</h4>
-         <!-- Botão para análise manual (quando automação desativada) -->
-         <button id="analyzeBtn" class="action-button common-button">
-           <i class="fas fa-brain"></i>
-           Iniciar Análise
-         </button>
-         
-         <!-- Botão para iniciar automação (quando automação desativada) -->
-         <button id="start-operation" class="action-button hidden">          
-           <i class="fas fa-play"></i>
-           Iniciar Automático
-         </button>
-         
-         <!-- Botão para cancelar operação (quando automação ativa) -->
-         <button id="cancel-operation" class="action-button hidden">
-           <i class="fas fa-stop"></i>
-           Cancelar Operação
-         </button>
+     <!-- Histórico de Operações -->
+     <div class="main-panel">
+       <div class="main-panel-header">
+         <h3><i class="fas fa-history"></i> Histórico de Operações</h3>
+         <p class="main-panel-description">Registro completo de todas as operações realizadas</p>
+       </div>
+
+       <!-- Tabela de Operações -->
+       <div class="sub-panel">
+         <h4 class="sub-panel-header"><i class="fas fa-table"></i> Operações Recentes</h4>
+         <div class="operations-table">
+           <table>
+               <thead>
+                   <tr>
+                       <th>Hora</th>
+                       <th>Moeda</th>
+                       <th>Operação</th>
+                       <th>Valor</th>
+                       <th>Lucro</th>                    
+                   </tr>
+               </thead>
+               <tbody id="operations-body">
+                 <!-- Exemplo de linha para visualização -->
+                 <tr class="perdeu">
+                   <td>01:24:10</td>
+                   <td>Avalanche OTC</td>
+                   <td>PERDEU</td>
+                   <td>10,00</td>
+                   <td>10,00</td>
+                 </tr>
+               </tbody>
+           </table>
+         </div>
+       </div>
+
+       <!-- Botões de Ação da Tabela -->
+       <div class="sub-panel">
+         <h4 class="sub-panel-header"><i class="fas fa-tools"></i> Ações do Histórico</h4>
+         <div class="panel-grid-2">
+           <button id="export-csv" class="btn secondary">
+             <i class="fas fa-download"></i>
+             <div class="button-content">
+               <span>Exportar CSV</span>
+               <small>Salvar histórico em arquivo</small>
+             </div>
+           </button>
+           <button id="clear-history" class="btn secondary">
+             <i class="fas fa-trash"></i>
+             <div class="button-content">
+               <span>Limpar Histórico</span>
+               <small>Remove todas as operações</small>
+             </div>
+           </button>
+         </div>
        </div>
      </div>
 
-     <div class="profits-container">
-       <div class="dev-section">  
-         <h4><i class="fas fa-trophy"></i> Ganhos e Perdas</h4>
-         <div id="last-profit">Lucro atual: <span id="profitCurrent">0</span></div>
-       </div>
-     </div>
-
-     <!-- Sistema de Desenvolvimento - Área de Testes -->
-     <div class="dev-test-panel hidden" id="gale-test-panel">
-        <div class="dev-header">
+     <!-- Sistema de Desenvolvimento - Área de Testes (mantido oculto) -->
+     <div class="main-panel hidden" id="gale-test-panel">
+        <div class="main-panel-header">
           <h3><i class="fas fa-code"></i> Painel de Desenvolvimento</h3>
-          <p class="dev-description">Ferramentas avançadas para testes e desenvolvimento do sistema</p>
+          <p class="main-panel-description">Ferramentas avançadas para testes e desenvolvimento do sistema</p>
         </div>
 
         <!-- Seção 1: Captura e Análise -->
-        <div class="dev-section">
-          <h4><i class="fas fa-camera"></i> Captura e Análise</h4>
-          <div class="dev-grid">
+        <div class="sub-panel">
+          <h4 class="sub-panel-header"><i class="fas fa-camera"></i> Captura e Análise</h4>
+          <div class="panel-grid">
             <button id="captureBtn" class="dev-button">
               <i class="fas fa-camera"></i>
               <div class="button-content">
@@ -104,14 +215,14 @@
         </div>
 
         <!-- Seção 2: Sistema Gale -->
-        <div class="dev-section">
-          <h4><i class="fas fa-dice"></i> Sistema Gale</h4>
+        <div class="sub-panel">
+          <h4 class="sub-panel-header"><i class="fas fa-dice"></i> Sistema Gale</h4>
           <div class="gale-status-info">
             <span>Status: </span>
             <span id="gale-level">Nível 0</span> | 
             <span id="gale-value">Valor: R$ 0</span>
           </div>
-          <div class="dev-grid">
+          <div class="panel-grid">
             <button id="simulate-loss" class="dev-button dev-danger">
               <i class="fas fa-arrow-down"></i>
               <div class="button-content">
@@ -137,9 +248,9 @@
         </div>
 
         <!-- Seção 3: Payout e Ativos -->
-        <div class="dev-section">
-          <h4><i class="fas fa-percentage"></i> Payout e Ativos</h4>
-          <div class="dev-grid">
+        <div class="sub-panel">
+          <h4 class="sub-panel-header"><i class="fas fa-percentage"></i> Payout e Ativos</h4>
+          <div class="panel-grid">
             <button id="test-capture-payout" class="dev-button">
               <i class="fas fa-percentage"></i>
               <div class="button-content">
@@ -166,9 +277,9 @@
         </div>
 
         <!-- Seção 4: Troca de Ativos e Debug Modal -->
-        <div class="dev-section">
-          <h4><i class="fas fa-exchange-alt"></i> Troca de Ativos e Debug Modal</h4>
-          <div class="dev-grid">
+        <div class="sub-panel">
+          <h4 class="sub-panel-header"><i class="fas fa-exchange-alt"></i> Troca de Ativos e Debug Modal</h4>
+          <div class="panel-grid">
             <button id="test-switch-to-currency" class="dev-button">
               <i class="fas fa-dollar-sign"></i>
               <div class="button-content">
@@ -221,38 +332,7 @@
         </div>
      </div>
  
-     <div class="operations-table">
-         <table>
-             <thead>
-                 <tr>
-                     <th>Hora</th>
-                     <th>Moeda</th>
-                     <th>Operação</th>
-                     <th>Valor</th>
-                     <th>Lucro</th>                    
-                 </tr>
-             </thead>
-             <tbody id="operations-body"></tbody>
-         </table>
-     </div>
- 
      <div id="historyList" class="history-list"></div>
-     <div class="btn-group">
-         <button id="export-csv" class="btn secondary">
-           <i class="fas fa-download"></i>
-           <div class="button-content">
-             <span>Exportar CSV</span>
-             <small>Salvar histórico em arquivo</small>
-           </div>
-         </button>
-         <button id="clear-history" class="btn secondary">
-           <i class="fas fa-trash"></i>
-           <div class="button-content">
-             <span>Limpar Histórico</span>
-             <small>Remove todas as operações</small>
-           </div>
-         </button>
-     </div>
    </div>
  
    <div class="global-footer">

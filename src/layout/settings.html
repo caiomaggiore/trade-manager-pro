@@ -18,74 +18,94 @@
     </div>
 
     <div class="content">
-        <div class="subpage-grid settings-grid">
-            <!-- Coluna 1 -->
-            <div class="subpage-group settings-group">
-                <h3>Controle de Risco</h3>
-                
-                <div class="automation-control">
-                    <div class="automation-wrapper">
-                        <label class="switch">
-                            <input type="checkbox" id="toggleGale" checked>
-                            <span class="slider"></span>
-                        </label>
-                        <span class="automation-label">Gale Ativo</span>
-                    </div>
-                </div>
-
-                <div class="setting-item">
-                    <label>Lucro de Gale (%)</label>
-                    <select id="gale-select" class="styled-select">
-                        <option value="0%">0% (Sem Lucro)</option>
-                        <option value="5%">5%</option>
-                        <option value="10%">10%</option>
-                        <option value="15%">15%</option>
-                        <option value="20%" selected>20%</option>
-                        <option value="25%">25%</option>
-                        <option value="30%">30%</option>
-                        <option value="40%">40%</option>
-                        <option value="50%">50%</option>
-                    </select>
-                </div>
-
-                <div class="setting-item">
-                    <label>Lucro Diário (R$)</label>
-                    <input type="number" id="daily-profit" class="styled-select" min="0">
-                </div>
-
-                <div class="setting-item">
-                    <label>Stop Loss (R$)</label>
-                    <input type="number" id="stop-loss" class="styled-select" min="0">
-                </div>
+        <!-- Configurações de Risco e Operação -->
+        <div class="main-panel">
+            <div class="main-panel-header">
+                <h3><i class="fas fa-shield-alt"></i> Configurações de Trading</h3>
+                <p class="main-panel-description">Parâmetros principais para controle de risco e operações</p>
             </div>
 
-            <!-- Coluna 2 -->
-            <div class="subpage-group settings-group">
-                <h3>Parâmetros de Operação</h3>
-                <div class="automation-control">
-                    <div class="automation-wrapper">
-                        <label class="switch">
-                            <input type="checkbox" id="toggleAuto">
-                            <span class="slider"></span>
-                        </label>
-                        <span class="automation-label">Automação</span>
+            <!-- Controle de Risco e Parâmetros de Operação (2 colunas) -->
+            <div class="panel-grid-2">
+                <!-- Coluna 1: Controle de Risco -->
+                <div class="sub-panel">
+                    <h4 class="sub-panel-header"><i class="fas fa-shield-alt"></i> Controle de Risco</h4>
+                    
+                    <div class="automation-control">
+                        <div class="automation-wrapper">
+                            <label class="switch">
+                                <input type="checkbox" id="toggleGale" checked>
+                                <span class="slider"></span>
+                            </label>
+                            <span class="automation-label">Gale Ativo</span>
+                        </div>
+                    </div>
+
+                    <div class="panel-item">
+                        <span class="panel-item-label">Lucro de Gale (%):</span>
+                        <select id="gale-select" class="styled-select">
+                            <option value="0%">0% (Sem Lucro)</option>
+                            <option value="5%">5%</option>
+                            <option value="10%">10%</option>
+                            <option value="15%">15%</option>
+                            <option value="20%" selected>20%</option>
+                            <option value="25%">25%</option>
+                            <option value="30%">30%</option>
+                            <option value="40%">40%</option>
+                            <option value="50%">50%</option>
+                        </select>
+                    </div>
+
+                    <div class="panel-item">
+                        <span class="panel-item-label">Lucro Diário (R$):</span>
+                        <input type="number" id="daily-profit" class="styled-select" min="0">
+                    </div>
+
+                    <div class="panel-item">
+                        <span class="panel-item-label">Stop Loss (R$):</span>
+                        <input type="number" id="stop-loss" class="styled-select" min="0">
                     </div>
                 </div>
-                <div class="setting-item">
-                    <label>Valor</label>
-                    <input type="number" id="trade-value" class="styled-select" min="1">
-                </div>
-                <div class="setting-item">
-                    <label>Período</label>
-                    <input type="number" id="trade-time" class="styled-select" min="5">
+
+                <!-- Coluna 2: Parâmetros de Operação -->
+                <div class="sub-panel">
+                    <h4 class="sub-panel-header"><i class="fas fa-cogs"></i> Parâmetros de Operação</h4>
+                    
+                    <div class="automation-control">
+                        <div class="automation-wrapper">
+                            <label class="switch">
+                                <input type="checkbox" id="toggleAuto">
+                                <span class="slider"></span>
+                            </label>
+                            <span class="automation-label">Automação</span>
+                        </div>
+                    </div>
+                    
+                    <div class="panel-item">
+                        <span class="panel-item-label">Valor:</span>
+                        <input type="number" id="trade-value" class="styled-select" min="1">
+                    </div>
+                    
+                    <div class="panel-item">
+                        <span class="panel-item-label">Período:</span>
+                        <input type="number" id="trade-time" class="styled-select" min="5">
+                    </div>
                 </div>
             </div>
         </div>
         
-        <div class="subpage-grid settings-grid">
-            <div class="subpage-group settings-group" style="grid-column: 1 / -1;">
-                <div class="setting-item">
-                    <label>Payout Mínimo (%)</label>
+        <!-- Configurações de Payout -->
+        <div class="main-panel">
+            <div class="main-panel-header">
+                <h3><i class="fas fa-percentage"></i> Configurações de Payout</h3>
+                <p class="main-panel-description">Controle de payout mínimo e comportamento do sistema</p>
+            </div>
+
+            <div class="sub-panel">
+                <h4 class="sub-panel-header"><i class="fas fa-chart-bar"></i> Controle de Payout</h4>
+                
+                <div class="panel-item">
+                    <span class="panel-item-label">Payout Mínimo (%):</span>
                     <select id="min-payout-select" class="styled-select">
                         <option value="50">50%</option>
                         <option value="55">55%</option>
@@ -99,8 +119,8 @@
                     </select>
                 </div>
 
-                <div class="setting-item">
-                    <label>Comportamento com Payout Insuficiente</label>
+                <div class="panel-item">
+                    <span class="panel-item-label">Comportamento com Payout Insuficiente:</span>
                     <select id="payout-behavior-select" class="styled-select">
                         <option value="cancel" selected>Cancelar Operação</option>
                         <option value="wait">Esperar Payout Adequado</option>
@@ -108,14 +128,14 @@
                     </select>
                 </div>
 
-                <div class="setting-item" id="payout-timeout-container" style="display:none;">
-                    <label>Intervalo de verificação (segundos)</label>
+                <div class="panel-item" id="payout-timeout-container" style="display:none;">
+                    <span class="panel-item-label">Intervalo de verificação (segundos):</span>
                     <input type="number" id="payout-timeout" class="styled-select" min="1" max="60" value="5" placeholder="5">
                 </div>
 
                 <!-- Configurações de Troca de Ativos -->
-                <div class="setting-item" id="asset-switching-container" style="display:none;">
-                    <label>Categoria Preferida para Troca</label>
+                <div class="panel-item" id="asset-switching-container" style="display:none;">
+                    <span class="panel-item-label">Categoria Preferida para Troca:</span>
                     <select id="asset-preferred-category" class="styled-select">
                         <option value="crypto" selected>Criptomoedas</option>
                         <option value="currency">Moedas</option>
@@ -127,9 +147,16 @@
             </div>
         </div>
 
-        <div class="subpage-grid settings-grid">
-            <div class="subpage-group settings-group" style="grid-column: 1 / -1;">
-                <h3>Configurações Avançadas</h3>
+        <!-- Configurações Avançadas -->
+        <div class="main-panel">
+            <div class="main-panel-header">
+                <h3><i class="fas fa-tools"></i> Configurações Avançadas</h3>
+                <p class="main-panel-description">Opções para desenvolvedores e testes do sistema</p>
+            </div>
+
+            <div class="sub-panel">
+                <h4 class="sub-panel-header"><i class="fas fa-flask"></i> Modos de Teste e Desenvolvimento</h4>
+                
                 <div class="automation-control">
                     <div class="automation-wrapper">
                         <label class="switch">

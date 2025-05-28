@@ -18,10 +18,18 @@
     </div>
     
     <div class="content">
-        <div class="subpage-grid">
-            <div class="subpage-group" style="grid-column: 1 / -1;">
-                <h3>Filtro de Logs</h3>
-                <div class="filter-container">
+        <!-- Sistema de Logs -->
+        <div class="main-panel">
+            <div class="main-panel-header">
+                <h3><i class="fas fa-list-alt"></i> Sistema de Logs</h3>
+                <p class="main-panel-description">Visualização e controle dos registros do sistema de trading</p>
+            </div>
+
+            <!-- Filtro de Logs -->
+            <div class="sub-panel">
+                <h4 class="sub-panel-header"><i class="fas fa-filter"></i> Filtro de Logs</h4>
+                <div class="panel-item">
+                    <span class="panel-item-label">Nível de Log:</span>
                     <select id="log-level-filter" class="styled-select">
                         <option value="ALL">Todos os logs</option>
                         <option value="DEBUG">Debug</option>
@@ -32,16 +40,20 @@
                     </select>
                 </div>
             </div>
-        </div>
-        
-        <div class="subpage-grid">
-            <div class="subpage-group" style="grid-column: 1 / -1;">
+
+            <!-- Visualização dos Logs -->
+            <div class="sub-panel">
+                <h4 class="sub-panel-header"><i class="fas fa-terminal"></i> Registros do Sistema</h4>
                 <div id="log-container" class="log-container">
                     <!-- Os logs serão inseridos aqui dinamicamente -->
                     <div class="log-entry log-info">Carregando logs...</div>
                 </div>
-                
-                <div class="log-actions">
+            </div>
+
+            <!-- Ações dos Logs -->
+            <div class="sub-panel">
+                <h4 class="sub-panel-header"><i class="fas fa-tools"></i> Ações dos Logs</h4>
+                <div class="panel-grid-3">
                     <button id="copy-logs" class="btn secondary">
                         <i class="fas fa-copy"></i>
                         <div class="button-content">

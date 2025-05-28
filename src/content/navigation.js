@@ -75,12 +75,12 @@ class NavigationManager {
         // Ajusta o container da subpágina
         if (hasScrollbar) {
             // Reduz a largura da subpágina quando há barra de rolagem
-            this.currentPage.style.width = '460px';
+            this.currentPage.style.width = '465px';
             // Ajusta a altura para não cobrir o rodapé
             this.currentPage.style.height = `calc(100% - ${footerHeight}px)`;
         } else {
             // Restaura a largura original quando não há barra de rolagem
-            this.currentPage.style.width = '480px';
+            this.currentPage.style.width = '475px';
             this.currentPage.style.height = `calc(100% - ${footerHeight}px)`;
         }
         
@@ -191,12 +191,13 @@ class NavigationManager {
 
     // Atualiza a UI principal com as novas configurações
     updateMainUI(config) {
-        // Atualiza o display de Gale
-        const currentGale = document.getElementById('current-gale');
+        // Atualiza o status de Gale
+        const currentGale = document.getElementById('gale-status');
+        const galeLed = document.getElementById('gale-led');
         if (currentGale) {
-            // Verifica se temos config.gale.active direto ou config.galeEnabled
-            const galeActive = typeof config.gale?.active !== 'undefined' ? 
-                config.gale.active : 
+            // Verifica se temos config.gale.enabled direto ou config.galeEnabled
+            const galeActive = typeof config.gale?.enabled !== 'undefined' ? 
+                config.gale.enabled : 
                 (typeof config.galeEnabled !== 'undefined' ? config.galeEnabled : false);
                 
             // Verifica se temos config.gale.level direto ou config.galeLevel
@@ -205,35 +206,52 @@ class NavigationManager {
                 (typeof config.galeLevel !== 'undefined' ? config.galeLevel : 1);
                 
             if (galeActive) {
-                currentGale.textContent = `Gale: ${galeLevel}`;
-                currentGale.className = 'gale-status active';
+                currentGale.textContent = 'Ativado';
+                currentGale.className = 'status-value';
+                // Atualizar LED
+                if (galeLed) {
+                    galeLed.className = 'status-led gale-led active';
+                }
             } else {
-                currentGale.textContent = 'Gale: Desativado';
-                currentGale.className = 'gale-status inactive';
+                currentGale.textContent = 'Desativado';
+                currentGale.className = 'status-value';
+                // Atualizar LED
+                if (galeLed) {
+                    galeLed.className = 'status-led gale-led inactive';
+                }
             }
         }
 
         // Atualiza o display de Lucro Diário
         const currentProfit = document.getElementById('current-profit');
         if (currentProfit) {
-            currentProfit.textContent = `Lucro Diário: R$ ${config.dailyProfit}`;
+            currentProfit.textContent = `R$ ${config.dailyProfit}`;
         }
 
         // Atualiza o display de Stop Loss
         const currentStop = document.getElementById('current-stop');
         if (currentStop) {
-            currentStop.textContent = `Stop Loss: R$ ${config.stopLoss}`;
+            currentStop.textContent = `R$ ${config.stopLoss}`;
         }
 
         // Atualiza o status de automação
         const automationStatus = document.getElementById('automation-status');
+        const automationLed = document.getElementById('automation-led');
         if (automationStatus) {
             if (config.autoActive) {
-                automationStatus.textContent = 'Automação: Ativa';
-                automationStatus.className = 'automation-status active';
+                automationStatus.textContent = 'Ativado';
+                automationStatus.className = 'status-value';
+                // Atualizar LED
+                if (automationLed) {
+                    automationLed.className = 'status-led automation-led active';
+                }
             } else {
-                automationStatus.textContent = 'Automação: Inativa';
-                automationStatus.className = 'automation-status inactive';
+                automationStatus.textContent = 'Desativado';
+                automationStatus.className = 'status-value';
+                // Atualizar LED
+                if (automationLed) {
+                    automationLed.className = 'status-led automation-led inactive';
+                }
             }
         }
     }
@@ -253,7 +271,7 @@ class NavigationManager {
                 position: fixed;
                 right: 0;
                 top: 0;
-                width: 480px;
+                width: 475px; /* Ajustando para nova largura */
                 height: calc(100% - 65px); /* Ajuste padrão para o rodapé */
                 z-index: 9999999;
                 display: flex;
@@ -267,7 +285,7 @@ class NavigationManager {
             }
 
             .subpage-container.active {
-                transform: translateX(0);
+                transform: translateX(5px);
             }
 
             .subpage-iframe {

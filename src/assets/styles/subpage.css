@@ -1,9 +1,10 @@
 /* Estilos da página interna */
 body.subpage {
-    background: #fff;
+    background: #f8f9fa;
     margin: 0px;
     padding: 10px;
-    width: 480px;
+    width: 430px;
+    max-width: 460px;
     height: 100vh;
     box-sizing: border-box;
     overflow-y: auto;
@@ -16,7 +17,66 @@ body.subpage * {
     box-sizing: border-box;
 }
 
-/* Classes genéricas para subpáginas */
+/* Scrollbar personalizada para subpáginas */
+body.subpage::-webkit-scrollbar {
+    width: 8px;
+}
+
+body.subpage::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+body.subpage::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+    transition: background 0.3s ease;
+}
+
+body.subpage::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* Controle de overflow para elementos das subpáginas */
+body.subpage .main-panel,
+body.subpage .sub-panel {
+    overflow-x: hidden;
+    word-wrap: break-word;
+}
+
+body.subpage input,
+body.subpage select,
+body.subpage textarea {
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+body.subpage .panel-item-label,
+body.subpage .panel-item-value {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* Ajustes para o novo sistema de containers */
+body.subpage .main-panel {
+    margin: 8px 0;
+    padding: 10px;
+}
+
+body.subpage .sub-panel {
+    margin-bottom: 8px;
+    padding: 10px;
+}
+
+body.subpage .panel-grid-2 {
+    gap: 8px;
+}
+
+body.subpage .panel-grid-3 {
+    gap: 8px;
+}
+
+/* Classes genéricas para subpáginas (mantidas para compatibilidade) */
 .subpage-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -53,7 +113,7 @@ body.subpage * {
 .page-header {
     margin: 0px;
     padding: 10px;
-    width: calc(100% + 40px);
+    width: calc(100% + 20px);
     box-sizing: border-box;
     background: #fff;
     border-bottom: 1px solid #e0e0e0;
@@ -65,7 +125,6 @@ body.subpage * {
     color: #333;
 }
 
-
 /* Ajustes para o conteúdo */
 .settings-group h3, .subpage-group h3 {
     margin-top: 0;
@@ -74,6 +133,22 @@ body.subpage * {
 
 .setting-item {
     margin-bottom: 15px;
+}
+
+/* Ajustes específicos para inputs e selects nas subpáginas */
+body.subpage .panel-item input,
+body.subpage .panel-item select {
+    font-size: 12px;
+    padding: 6px 8px;
+}
+
+body.subpage .automation-control {
+    margin: 12px 0;
+}
+
+body.subpage .setting-description {
+    margin: 8px 0;
+    font-size: 11px;
 }
 
 #test-results {

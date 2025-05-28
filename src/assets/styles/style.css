@@ -9,7 +9,7 @@
 }
 
 body {
-  width: 100% !important;
+  width: 480px !important; /* Aumentando de 464px para 480px */
   height: auto !important;
   min-height: 100vh;
   margin: 0;
@@ -23,8 +23,253 @@ body {
   color: #2c3e50;
   display: flex;
   flex-direction: column;
+  overflow-x: hidden; /* Previne scroll horizontal */
+  max-width: 480px;
 }
 
+/* ================== SISTEMA DE CONTAINERS GENÉRICOS ================== */
+/* 
+DOCUMENTAÇÃO DO SISTEMA DE CONTAINERS:
+
+1. CONTAINER PRINCIPAL (.main-panel):
+   - Usado para seções principais como Dashboard, Histórico, etc.
+   - Inclui header com título e descrição
+   - Estrutura:
+     <div class="main-panel">
+       <div class="main-panel-header">
+         <h3><i class="fas fa-icon"></i> Título</h3>
+         <p class="main-panel-description">Descrição</p>
+       </div>
+       <!-- Conteúdo -->
+     </div>
+
+2. CONTAINER SECUNDÁRIO (.sub-panel):
+   - Usado para grupos dentro dos painéis principais
+   - Inclui header opcional
+   - Estrutura:
+     <div class="sub-panel">
+       <h4 class="sub-panel-header"><i class="fas fa-icon"></i> Título</h4>
+       <!-- Conteúdo -->
+     </div>
+
+3. CONTAINER COMPACTO (.compact-panel):
+   - Para seções menores sem header elaborado
+   - Estrutura:
+     <div class="compact-panel">
+       <h4 class="compact-panel-header"><i class="fas fa-icon"></i> Título</h4>
+       <!-- Conteúdo -->
+     </div>
+
+4. GRIDS DE LAYOUT:
+   - .panel-grid: Grid responsivo automático
+   - .panel-grid-2: Grid fixo de 2 colunas
+   - .panel-grid-3: Grid fixo de 3 colunas
+
+5. ITENS DE INFORMAÇÃO (.panel-item):
+   - Para exibir pares label/valor
+   - Estrutura:
+     <div class="panel-item">
+       <span class="panel-item-label">Label:</span>
+       <span class="panel-item-value">Valor</span>
+     </div>
+
+6. CONTAINERS DE CONTEÚDO:
+   - .panel-content-center: Centraliza conteúdo
+   - .panel-content-row: Organiza em linha
+*/
+
+/* Container Principal - Usado para seções principais como Dashboard, Histórico, etc. */
+.main-panel {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border: 2px solid #dee2e6;
+  border-radius: 12px;
+  padding: 12px;
+  margin: 12px 0;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  max-width: 100%;
+  overflow-x: hidden;
+  word-wrap: break-word;
+}
+
+/* Header do Container Principal */
+.main-panel-header {
+  text-align: center;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #dee2e6;
+}
+
+.main-panel-header h3 {
+  margin: 0 0 4px 0;
+  color: #495057;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: 'Montserrat', sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.main-panel-header h3 i {
+  color: var(--primary);
+  font-size: 16px;
+}
+
+.main-panel-description {
+  margin: 0;
+  color: #6c757d;
+  font-size: 12px;
+  font-weight: 300;
+  font-style: italic;
+  font-family: 'Montserrat', sans-serif;
+}
+
+/* Container Secundário - Usado para grupos dentro dos painéis principais */
+.sub-panel {
+  margin-bottom: 12px;
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+  max-width: 100%;
+  overflow-x: hidden;
+  word-wrap: break-word;
+}
+
+/* Header do Container Secundário */
+.sub-panel-header {
+  margin: 0 0 10px 0;
+  color: #495057;
+  font-size: 14px;
+  font-weight: 400;
+  padding-bottom: 7px;
+  border-bottom: 1px solid #e9ecef;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: 'Montserrat', sans-serif;
+}
+
+.sub-panel-header i {
+  color: var(--primary);
+  font-size: 14px;
+}
+
+/* Container Compacto - Para seções menores sem header elaborado */
+.compact-panel {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 12px 0;
+  border: 2px solid #dee2e6;
+  max-width: 100%;
+  overflow-x: hidden;
+  word-wrap: break-word;
+}
+
+.compact-panel-header {
+  margin: 0 0 12px 0;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: #495057;
+  text-align: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #dee2e6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.compact-panel-header i {
+  color: var(--primary);
+  font-size: 14px;
+}
+
+/* Grid para organizar sub-painéis */
+.panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+/* Grid para 2 colunas específicas */
+.panel-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+/* Grid para 3 colunas específicas */
+.panel-grid-3 {
+  display: grid;
+  grid-template-columns: 30% 30% 40%; /* Sistema: 30%, Gale: 30%, Automação: 40% */
+  gap: 8px;
+}
+
+/* Itens de informação dentro dos painéis */
+.panel-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.panel-item:last-child {
+  border-bottom: none;
+}
+
+/* Ajustes para panel-item com inputs e selects */
+.panel-item input,
+.panel-item select {
+  flex: 1;
+  max-width: 60%;
+  margin: 0;
+}
+
+.panel-item-label {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 11px;
+  font-weight: 400;
+  color: #495057;
+  flex: 0 0 auto;
+  margin-right: 8px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+
+.panel-item-value {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--primary);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+
+/* Container para conteúdo centralizado */
+.panel-content-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Container para conteúdo em linha */
+.panel-content-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
 
 /* ================== HEADER ================== */
 .header {
@@ -32,12 +277,13 @@ body {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+  margin-top: 12px;
   border-bottom: 1px solid #e0e0e0;
   position: static; 
-  top: 0; /* Fixar no topo */
-  background: #f8f9fa; /* Fundo sólido */
-  z-index: 1001; /* Acima do settings-panel */
-  padding: 8px;
+  top: 0;
+  background: #f8f9fa;
+  z-index: 1001;
+  padding: 12px 8px 8px 8px;
   flex-shrink: 0;
 }
 
@@ -47,21 +293,112 @@ body {
     font-weight: 700;
     color: var(--primary);
     margin: 0;
+    line-height: 1;
 }
 
 .header-controls {
   position: absolute;
   right: 5px;
+  top: 8px;
   display: flex;
   gap: 8px;
+  align-items: center;
 }
 
 /* ================== MAIN CONTENT ================== */
 .container {
   height: auto;
   padding: 0 8px 60px 8px;
+  width: 100%;
+  max-width: 464px; /* Ajustando para a nova largura: 480px - 16px de padding */
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
+/* ================== SYSTEM STATUS (3 LEDs) - AJUSTADO PARA NOVA ESTRUTURA ================== */
+.status-led {
+  width: 12px; /* Reduzindo 2px conforme solicitado */
+  height: 12px;
+  border-radius: 50%;
+  margin-bottom: 0;
+  border: none; /* Removendo borda para ficar mais limpo */
+  flex-shrink: 0;
+}
+
+.status-led.system-led {
+  background: #ffc107; /* Amarelo para "Operando" */
+}
+
+.status-led.gale-led.active {
+  background: #28a745; /* Verde para "Ativado" */
+}
+
+.status-led.gale-led.inactive {
+  background: #6c757d; /* Cinza para "Desativado" */
+}
+
+.status-led.automation-led.active {
+  background: #28a745; /* Verde para "Ativa" */
+}
+
+.status-led.automation-led.inactive {
+  background: #6c757d; /* Cinza para "Inativa" */
+}
+
+/* Fallback para LEDs sem classe de status específica */
+.status-led.gale-led {
+  background: #6c757d;
+}
+
+.status-led.automation-led {
+  background: #6c757d;
+}
+
+.status-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  flex: 1;
+}
+
+.status-label {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 12px; /* Aumentando um pouco */
+  font-weight: 600; /* Mais peso para destaque */
+  color: #495057;
+  line-height: 1;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+
+.status-value {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 11px;
+  font-weight: 400; /* Peso médio */
+  color: #6c757d;
+  line-height: 1;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+
+/* ================== OPERATIONS TABLE ================== */
+.operations-table {
+    position: relative;
+    max-height: 200px; /* Reduzido para o novo layout */
+    overflow-y: auto;
+    margin: 0; /* Removendo margin pois agora está dentro de sub-panel */
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    border: 1px solid #e0e0e0;
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+/* ================== MANTER ESTILOS EXISTENTES ================== */
 .current-settings {
     background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
     padding: 12px;
@@ -96,6 +433,8 @@ body {
 }
 
 /* ================== DEVELOPER PANEL ================== */
+/* NOTA: As classes abaixo são mantidas para compatibilidade com código existente.
+   Para novos desenvolvimentos, use o sistema de containers genéricos acima. */
 .dev-test-panel {
   background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
   border: 2px solid #dee2e6;
@@ -177,6 +516,8 @@ body {
   min-height: 38px;
   font-family: 'Montserrat', sans-serif;
   gap: 12px;
+  max-width: 100%;
+  word-wrap: break-word;
 }
 
 .dev-button:hover {
@@ -331,16 +672,6 @@ body {
 }
 
 /* ================== TABLE ================== */
-.operations-table {
-    position: relative;
-    max-height: 230px;
-    overflow-y: auto;
-    margin: 8px 0;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-    border-bottom: 0.02em solid #e0e0e0;
-}
-
 table {
     width: 100%;
     border-collapse: collapse;
@@ -348,6 +679,7 @@ table {
     font-family: 'Montserrat', sans-serif;
     font-weight: 300;
     table-layout: auto;
+    min-width: 100%;
 }
 
 td {
@@ -405,15 +737,15 @@ tr:hover td {
 }
 
 th:nth-child(1),
-td:nth-child(1) { width: 15%; }
+td:nth-child(1) { width: 18%; }
 th:nth-child(2),
-td:nth-child(2) { width: 20%; }
+td:nth-child(2) { width: 25%; }
 th:nth-child(3),
 td:nth-child(3) { width: 20%; }
 th:nth-child(4),
-td:nth-child(4) { width: 20%; }
+td:nth-child(4) { width: 17%; }
 th:nth-child(5),
-td:nth-child(5) { width: 25%; }
+td:nth-child(5) { width: 20%; }
 
 /* ================== SETTINGS PANEL ================== */
 .settings-panel {
@@ -436,6 +768,7 @@ td:nth-child(5) { width: 25%; }
 .settings-panel.active {
     transform: translateX(0);
 }
+
 /* ================== SETTINGS GROUP SPACING ================== */
 .settings-group > div:not(:first-child) {
   margin-top: 8px;
@@ -448,7 +781,7 @@ td:nth-child(5) { width: 25%; }
 }
 
 .settings-group {
-    width: 100%; /* Força ocupar toda a largura */
+    width: 100%;
     max-width: 100%;
     box-sizing: border-box;
     background: #f8f9fa;
@@ -466,7 +799,7 @@ td:nth-child(5) { width: 25%; }
 
 .settings-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr)); /* Divisão igual */
+  grid-template-columns: 50% 50%; /* Proporções exatas para 2 colunas */
   gap: 8px;
   padding: 4px;
 }
@@ -503,6 +836,8 @@ select:disabled {
     text-decoration: none;
     font-size: 13px;
     font-weight: 500;
+    max-width: 100%;
+    word-wrap: break-word;
 }
 
 .btn:hover {
@@ -629,6 +964,8 @@ select:disabled {
   font-weight: 500;
   font-family: 'Montserrat', sans-serif;
   margin: 4px 0;
+  max-width: 100%;
+  word-wrap: break-word;
 }
 
 .action-button:hover {
@@ -727,15 +1064,16 @@ select:disabled {
   bottom: 0;
   left: 0;
   right: 0;
+  width: 480px !important; /* Ajustando para a nova largura de 480px */
   background: #ffffff;
   border-top: 1px solid #e0e0e0;
   border-radius: 8px;
   padding: 4px 2px;
   display: grid;
-
-  z-index: 1002; /* Acima de tudo */
+  z-index: 1002;
   box-shadow: 0 -2px 10px rgba(0,0,0,0.03);
-  margin-top: auto; /* Fixar no final */
+  margin: 0; /* Remove margin auto para layout fixo */
+  box-sizing: border-box;
 }
 
 /* ================== STATUS PROCESSO ================== */
@@ -812,7 +1150,6 @@ select:disabled {
 .status-error { background: #fdedee; color: #c0392b; }
 
 /* ================== EXPORTAÇÃO CSV ================== */
-/* Remove acentos e formata valores */
 @keyframes highlight {
   0% { background-color: rgba(46, 204, 113, 0.2); }
   100% { background-color: transparent; }
@@ -833,6 +1170,32 @@ select:disabled {
 }
 
 /* ================== SCROLL PERSONALIZADO ================== */
+/* Scrollbar para toda a aplicação */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+  transition: background 0.3s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+::-webkit-scrollbar-corner {
+  background: #f1f1f1;
+}
+
+/* Scrollbar específica para tabelas */
 .operations-table::-webkit-scrollbar {
   width: 6px;
 }
@@ -842,19 +1205,29 @@ select:disabled {
   border-radius: 3px;
 }
 
-/* ================== AUTOMATION STATUS ================== */
-.automation-control {
-  display: flex;
-  align-items: center;
-  background: #ffffff;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-  grid-column: 1 / -1; /* Ocupa todas as colunas */
-  width: 100%;
-  justify-content: space-between; /* Distribui os elementos */
-  padding: 10px !important;
+.operations-table::-webkit-scrollbar-thumb:hover {
+  background: #95a5a6;
 }
 
+/* Scrollbar para container de logs */
+.log-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.log-container::-webkit-scrollbar-thumb {
+  background: #bdc3c7;
+  border-radius: 3px;
+}
+
+.log-container::-webkit-scrollbar-thumb:hover {
+  background: #95a5a6;
+}
+
+/* ================== AUTOMATION STATUS ================== */
+/* NOTA: Classes automation-status e gale-status comentadas pois foram substituídas por status-value
+   no novo sistema de containers. Mantidas apenas para compatibilidade com outras partes do sistema. */
+
+/*
 .automation-status {
   font-size: 12px;
   font-weight: 300;
@@ -894,97 +1267,7 @@ select:disabled {
 .automation-status.inactive::before {
   background: #95a5a6;
 }
-
-/* Alinhamento do switch */
-.switch {
-  position: relative;
-  display: inline-block;
-  width: 30px;  /* Aumentado */
-  height: 20px; /* Aumentado */
-}
-
-.slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: #ccc;
-  transition: .4s;
-  height: 18px; /* Ajustado */
-  border-radius: 30px;
-}
-
-.slider:before {
-  position: absolute;
-  content: "";
-  width: 12px;  /* Aumentado */
-  height: 12px; /* Aumentado */
-  left: 3px;
-  bottom: 3px;
-  background-color: white;
-  transition: .4s;
-  border-radius: 50%;
-}
-
-input:checked + .slider {
-  background-color: #2ecc71;
-}
-
-input:checked + .slider:before {
-  transform: translateX(12px);
-}
-
-/* ================== AUTOMATION CONTROL FIX ================== */
-.automation-control {
-  width: 100%;
-  margin-top: 15px;
-  padding: 10px 10px !important;
-  margin: 0;
-  box-sizing: border-box;
-}
-
-.automation-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  width: 100%;
-  max-width: 100%;
-}
-
-.automation-label {
-  flex-grow: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-
-.log-entry {
-  padding: 5px;
-  border-bottom: 1px solid #333;
-  animation: fadeIn 0.3s ease-in;
-  word-wrap: break-word;
-  white-space: pre-wrap;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-#analysis-results {
-  background: #1e1e1e;
-  color: #00ff88;
-  padding: 10px;
-  border-radius: 5px;
-  font-family: 'Courier New', monospace;
-  max-height: 200px;
-  overflow-y: auto;
-  word-wrap: break-word;
-  white-space: pre-wrap;
-}
+*/
 
 /* ================== MODAL DE ANÁLISE ================== */
 .modal {
@@ -1011,6 +1294,9 @@ input:checked + .slider:before {
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     animation: slideIn 0.3s ease-out;
     font-family: 'Montserrat', sans-serif;
+    max-width: calc(100vw - 40px);
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
 }
 
 .modal-header {
@@ -1143,17 +1429,6 @@ input:checked + .slider:before {
     font-weight: 300;
     line-height: 1.4;
     font-family: 'Montserrat', sans-serif;
-}
-
-/* Animações */
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
-@keyframes slideIn {
-    from { transform: translateY(-20px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
 }
 
 /* Ajuste para o menu lateral */
@@ -1335,6 +1610,10 @@ input:checked + .slider:before {
 }
 
 /* ================== GALE STATUS INDICATOR ================== */
+/* NOTA: Classes automation-status e gale-status comentadas pois foram substituídas por status-value
+   no novo sistema de containers. Mantidas apenas para compatibilidade com outras partes do sistema. */
+
+/*
 .gale-status {
   font-size: 12px;
   font-weight: 300;
@@ -1374,13 +1653,9 @@ input:checked + .slider:before {
 .gale-status.inactive::before {
   background: #95a5a6;
 }
+*/
 
 /* ================== ANIMAÇÕES PARA HISTÓRICO DE OPERAÇÕES ================== */
-@keyframes highlight {
-  0% { background-color: rgba(46, 204, 113, 0.2); }
-  100% { background-color: transparent; }
-}
-
 .new-operation {
   animation: highlight 1.5s;
 }
@@ -1424,16 +1699,16 @@ input:checked + .slider:before {
 /* Ajustar espaçamento interno dos containers - CORRIGIDO */
 .user-controls .dev-section {
   margin-bottom: 0;
-  padding: 0; /* Remove padding extra */
-  background: transparent; /* Remove background duplicado */
-  box-shadow: none; /* Remove sombra duplicada */
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .profits-container .dev-section {
   margin-bottom: 0;
-  padding: 0; /* Remove padding extra */
-  background: transparent; /* Remove background duplicado */
-  box-shadow: none; /* Remove sombra duplicada */
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 /* Melhorar tipografia dos textos informativos */
@@ -1451,6 +1726,10 @@ input:checked + .slider:before {
 }
 
 /* Ajustar textos dos status */
+/* NOTA: Classes automation-status e gale-status comentadas pois foram substituídas por status-value
+   no novo sistema de containers. Mantidas apenas para compatibilidade com outras partes do sistema. */
+
+/*
 .gale-status, .automation-status {
   font-family: 'Montserrat', sans-serif;
   font-size: 13px;
@@ -1458,9 +1737,10 @@ input:checked + .slider:before {
   padding: 8px 12px;
   color: #495057;
 }
+*/
 
 /* Ajustar textos dos valores atuais */
-#current-gale, #current-profit, #current-stop, #current-value, #current-time, #automation-status {
+#current-gale, #current-profit, #current-stop, #current-value, #current-time {
   font-family: 'Montserrat', sans-serif;
   font-size: 13px;
   font-weight: 400;
@@ -1518,4 +1798,199 @@ input:checked + .slider:before {
 /* Ajuste para botões que não têm texto secundário */
 .btn:not(.menu) span:only-child {
     margin-bottom: 0;
+}
+
+/* ================== AJUSTES PARA CLASSES EXISTENTES NO NOVO LAYOUT ================== */
+/* NOTA: Classes gale-status e automation-status removidas do layout principal.
+   Agora usamos apenas status-value para consistência visual. */
+
+/* Removendo estilos conflitantes que não são mais necessários */
+.panel-content-row {
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-right: 1px solid #dee2e6;
+}
+
+.panel-content-row:last-child {
+  border-right: none;
+}
+
+/* Ajustes para o grid de 3 colunas do status */
+.panel-grid-3 .panel-content-row {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+/* ================== AUTOMATION CONTROL ================== */
+.automation-control {
+  display: flex;
+  align-items: center;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  width: 100%;
+  justify-content: space-between;
+  padding: 10px !important;
+  margin: 8px 0;
+  border: 1px solid #e9ecef;
+}
+
+/* Automation control dentro de sub-panels */
+.sub-panel .automation-control {
+  background: #f8f9fa;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  border: 1px solid #dee2e6;
+}
+
+/* Alinhamento do switch */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 30px;
+  height: 20px;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: .4s;
+  height: 18px;
+  border-radius: 30px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  width: 12px;
+  height: 12px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: #2ecc71;
+}
+
+input:checked + .slider:before {
+  transform: translateX(12px);
+}
+
+/* ================== AUTOMATION CONTROL FIX ================== */
+.automation-control {
+  width: 100%;
+  margin-top: 15px;
+  padding: 10px 10px !important;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+.automation-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  width: 100%;
+  max-width: 100%;
+}
+
+.automation-label {
+  flex-grow: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.log-entry {
+  padding: 5px;
+  border-bottom: 1px solid #333;
+  animation: fadeIn 0.3s ease-in;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+#analysis-results {
+  background: #1e1e1e;
+  color: #00ff88;
+  padding: 10px;
+  border-radius: 5px;
+  font-family: 'Courier New', monospace;
+  max-height: 200px;
+  overflow-y: auto;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+/* ================== CONTROLE DE OVERFLOW E RESPONSIVIDADE ================== */
+/* Garantir que nenhum elemento saia da página */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  overflow-x: hidden; /* Previne scroll horizontal */
+  max-width: 464px;
+}
+
+/* Containers principais */
+.container {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.main-panel,
+.sub-panel,
+.compact-panel {
+  max-width: 100%;
+  overflow-x: hidden;
+  word-wrap: break-word;
+}
+
+/* Tabelas responsivas */
+.operations-table {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+table {
+  min-width: 100%;
+  table-layout: fixed;
+}
+
+/* Inputs e selects */
+input, select, textarea {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Textos longos */
+.panel-item-value,
+.panel-item-label,
+.status-value,
+.status-label {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+
+/* Modal responsivo */
+.modal-content {
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+
+/* Botões responsivos */
+.btn,
+.action-button,
+.dev-button {
+  max-width: 100%;
+  word-wrap: break-word;
 }

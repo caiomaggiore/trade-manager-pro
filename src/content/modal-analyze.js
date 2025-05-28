@@ -218,24 +218,24 @@ function showAnalysisModal(result) {
                 const analyzeButton = document.getElementById('analyzeBtn');
                 
                 if (analyzeButton) {
-                    if (typeof addLog === 'function') {
+                        if (typeof addLog === 'function') {
                         addLog('Simulando clique no botão "Iniciar Análise" após espera', 'INFO', 'automation');
-                    } else if (typeof sendToLogSystem === 'function') {
+                        } else if (typeof sendToLogSystem === 'function') {
                         sendToLogSystem('Simulando clique no botão "Iniciar Análise" após espera', 'INFO');
-                    }
+                        }
                     
                     // Simular clique no botão existente
                     analyzeButton.click();
-                } else {
-                    if (typeof addLog === 'function') {
+                    } else {
+                        if (typeof addLog === 'function') {
                         addLog('Erro: Botão "Iniciar Análise" não encontrado para simulação de clique', 'ERROR', 'automation');
-                    } else if (typeof sendToLogSystem === 'function') {
+                        } else if (typeof sendToLogSystem === 'function') {
                         sendToLogSystem('Erro: Botão "Iniciar Análise" não encontrado para simulação de clique', 'ERROR');
-                    }
+                        }
                     
-                    if (typeof updateStatus === 'function') {
+                        if (typeof updateStatus === 'function') {
                         updateStatus('Erro: Botão de análise não encontrado', 'error', 5000);
-                    } else if (typeof toUpdateStatus === 'function') {
+                        } else if (typeof toUpdateStatus === 'function') {
                         toUpdateStatus('Erro: Botão de análise não encontrado', 'error', 5000);
                     }
                 }
@@ -441,15 +441,15 @@ function showAnalysisModal(result) {
             window.cancelCurrentOperation('Operação cancelada pelo usuário no modal de análise');
         } else {
             // Fallback para o comportamento anterior
-            if (typeof logAndUpdateStatus === 'function') {
-                logAndUpdateStatus('Operação cancelada pelo usuário', 'INFO', 'trade-execution', true);
-            } else if (typeof addLog === 'function') {
-                addLog('Operação cancelada pelo usuário', 'INFO', 'trade-execution');
-            }
-            if (typeof updateStatus === 'function') {
-                updateStatus('Operação cancelada pelo usuário', 'info', 3000);
-            } else if (typeof toUpdateStatus === 'function') {
-                toUpdateStatus('Operação cancelada pelo usuário', 'info', 3000);
+        if (typeof logAndUpdateStatus === 'function') {
+            logAndUpdateStatus('Operação cancelada pelo usuário', 'INFO', 'trade-execution', true);
+        } else if (typeof addLog === 'function') {
+            addLog('Operação cancelada pelo usuário', 'INFO', 'trade-execution');
+        }
+        if (typeof updateStatus === 'function') {
+            updateStatus('Operação cancelada pelo usuário', 'info', 3000);
+        } else if (typeof toUpdateStatus === 'function') {
+            toUpdateStatus('Operação cancelada pelo usuário', 'info', 3000);
             }
         }
     };
@@ -471,8 +471,8 @@ function showAnalysisModal(result) {
             window.cancelCurrentOperation('Modal de análise fechado pelo usuário');
         } else {
             // Fallback para o comportamento anterior
-            if (typeof logAndUpdateStatus === 'function') {
-                logAndUpdateStatus('Modal fechado pelo usuário (operação cancelada)', 'INFO', 'ui', true);
+        if (typeof logAndUpdateStatus === 'function') {
+            logAndUpdateStatus('Modal fechado pelo usuário (operação cancelada)', 'INFO', 'ui', true);
             }
         }
     };
@@ -504,8 +504,8 @@ function showAnalysisModal(result) {
                 window.cancelCurrentOperation('Modal de análise fechado ao clicar fora');
             } else {
                 // Fallback para o comportamento anterior
-                if (typeof logAndUpdateStatus === 'function') {
-                    logAndUpdateStatus('Modal fechado ao clicar fora (operação cancelada)', 'INFO', 'ui', true);
+            if (typeof logAndUpdateStatus === 'function') {
+                logAndUpdateStatus('Modal fechado ao clicar fora (operação cancelada)', 'INFO', 'ui', true);
                 }
             }
         }

@@ -100,31 +100,31 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     // Função para obter elementos da UI de forma segura
     const getUIElements = () => {
         return {
-            settingsPanel:  document.querySelector('#settings-panel'),
-            settingsBtn:    document.querySelector('#settings-btn'),
-            backBtn:        document.querySelector('#back-btn'),
-            saveBtn:        document.querySelector('#save-settings'),
-            exportBtn:      document.querySelector('#export-csv'),
-            operationsBody: document.querySelector('#operations-body'),
-            version:        document.querySelector('#version'),
-            currentGale:    document.querySelector('#current-gale'),
-            currentProfit:  document.querySelector('#current-profit'),
-            currentStop:    document.querySelector('#current-stop'),
-            currentValue:   document.querySelector('#current-value'),
-            currentTime:    document.querySelector('#current-time'),
-            toggleAuto:     document.querySelector('#toggleAuto'),
-            toggleGale:     document.querySelector('#toggleGale'),
-            galeSelect:     document.querySelector('#gale-select'),
-            automationStatus:document.querySelector('#automation-status'),
-            startOperation: document.querySelector('#start-operation'),
-            analyzeBtn:     document.querySelector('#analyzeBtn'),
-            captureScreen:  document.querySelector('#captureBtn'),
-            cancelOperation: document.querySelector('#cancel-operation'),
-            statusProcesso: document.querySelector('#status-processo'),
-            dailyProfit:    document.querySelector('#daily-profit'),
-            stopLoss:       document.querySelector('#stop-loss'),
-            entryValue:     document.querySelector('#trade-value'),
-            timePeriod:     document.querySelector('#trade-time')
+        settingsPanel:  document.querySelector('#settings-panel'),
+        settingsBtn:    document.querySelector('#settings-btn'),
+        backBtn:        document.querySelector('#back-btn'),
+        saveBtn:        document.querySelector('#save-settings'),
+        exportBtn:      document.querySelector('#export-csv'),
+        operationsBody: document.querySelector('#operations-body'),
+        version:        document.querySelector('#version'),
+        currentGale:    document.querySelector('#current-gale'),
+        currentProfit:  document.querySelector('#current-profit'),
+        currentStop:    document.querySelector('#current-stop'),
+        currentValue:   document.querySelector('#current-value'),
+        currentTime:    document.querySelector('#current-time'),
+        toggleAuto:     document.querySelector('#toggleAuto'),
+        toggleGale:     document.querySelector('#toggleGale'),
+        galeSelect:     document.querySelector('#gale-select'),
+        automationStatus:document.querySelector('#automation-status'),
+        startOperation: document.querySelector('#start-operation'),
+        analyzeBtn:     document.querySelector('#analyzeBtn'),
+        captureScreen:  document.querySelector('#captureBtn'),
+        cancelOperation: document.querySelector('#cancel-operation'),
+        statusProcesso: document.querySelector('#status-processo'),
+        dailyProfit:    document.querySelector('#daily-profit'),
+        stopLoss:       document.querySelector('#stop-loss'),
+        entryValue:     document.querySelector('#trade-value'),
+        timePeriod:     document.querySelector('#trade-time')
         };
     };
     
@@ -381,9 +381,8 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 const automationStatus = config.automation || false;
                 const automationStatusElement = document.querySelector('#automation-status');
                 if (automationStatusElement) {
-                    automationStatusElement.textContent = `Automação: ${automationStatus ? 'Ativa' : 'Inativa'}`;
-                    automationStatusElement.className = 'automation-status';
-                    automationStatusElement.classList.add(automationStatus ? 'active' : 'inactive');
+                    automationStatusElement.textContent = automationStatus ? 'Ativado' : 'Desativado';
+                    automationStatusElement.className = 'status-value';
                     
                     addLog(`UI de status de automação atualizada via postMessage: ${automationStatus ? 'Ativo' : 'Inativo'}`, 'DEBUG');
                 }
@@ -525,40 +524,45 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     // Função para atualizar o status de automação na UI
     const updateAutomationStatusUI = (isActive) => {
         const automationStatusElement = document.querySelector('#automation-status');
+        const automationLed = document.querySelector('#automation-led');
+        
         if (automationStatusElement) {
-            automationStatusElement.textContent = `Automação: ${isActive ? 'Ativa' : 'Inativa'}`;
-            automationStatusElement.className = 'automation-status';
-            automationStatusElement.classList.add(isActive ? 'active' : 'inactive');
+            automationStatusElement.textContent = isActive ? 'Ativado' : 'Desativado';
+            automationStatusElement.className = 'status-value';
             addLog(`Status de automação atualizado na UI: ${isActive ? 'Ativo' : 'Inativo'}`, 'DEBUG');
         } else {
             addLog('Elemento automation-status não encontrado na UI', 'WARN');
         }
+        
+        // Atualizar LED de automação
+        if (automationLed) {
+            automationLed.className = 'status-led automation-led';
+            automationLed.classList.add(isActive ? 'active' : 'inactive');
+        }
     };
 
-    // Função para atualizar o status do Gale na UI
+    // Função para atualizar o status de Gale na UI
     const updateGaleStatusUI = (galeEnabled, galeLevel) => {
-        const currentGaleElement = document.querySelector('#current-gale');
-        const galeSelectElement = document.querySelector('#gale-select');
+        const galeStatusElement = document.querySelector('#gale-status');
+        const galeLed = document.querySelector('#gale-led');
         
-        // Atualizar o select do Gale se disponível
-        if (galeSelectElement && typeof galeLevel !== 'undefined') {
-            galeSelectElement.value = galeLevel;
-            addLog(`galeSelect atualizado para: ${galeLevel}`, 'DEBUG');
+        if (galeStatusElement) {
+            if (galeEnabled) {
+                galeStatusElement.textContent = 'Ativado';
+                addLog(`Status de Gale atualizado na UI: Ativo (Nível ${galeLevel})`, 'DEBUG');
+            } else {
+                galeStatusElement.textContent = 'Desativado';
+                addLog('Status de Gale atualizado na UI: Inativo', 'DEBUG');
+            }
+            galeStatusElement.className = 'status-value';
+        } else {
+            addLog('Elemento gale-status não encontrado na UI', 'WARN');
         }
         
-        // Atualizar o display do status do Gale
-        if (currentGaleElement) {
-            if (galeEnabled && galeLevel) {
-                currentGaleElement.textContent = `Gale: ${galeLevel}`;
-                currentGaleElement.className = 'gale-status active';
-                addLog(`Status do Gale atualizado: Ativo (${galeLevel})`, 'DEBUG');
-            } else {
-                currentGaleElement.textContent = 'Gale: Desativado';
-                currentGaleElement.className = 'gale-status inactive';
-                addLog('Status do Gale atualizado: Desativado', 'DEBUG');
-            }
-        } else {
-            addLog('Elemento current-gale não encontrado na UI', 'WARN');
+        // Atualizar LED de Gale
+        if (galeLed) {
+            galeLed.className = 'status-led gale-led';
+            galeLed.classList.add(galeEnabled ? 'active' : 'inactive');
         }
     };
 
@@ -828,26 +832,26 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 }
                 
                 // Interromper monitoramento se disponível
-                if (window.TradeManager?.History) {
-                    window.TradeManager.History.stopMonitoring()
-                        .then(() => {
+                    if (window.TradeManager?.History) {
+                            window.TradeManager.History.stopMonitoring()
+                                .then(() => {
                             addLog('Operação automática cancelada com sucesso', 'SUCCESS');
                             updateStatus('Operação cancelada pelo usuário', 'info');
-                        })
-                        .catch(error => {
+                                })
+                                .catch(error => {
                             addLog(`Erro ao cancelar operação: ${error.message}`, 'ERROR');
                             updateStatus('Erro ao cancelar operação', 'error');
-                        });
-                } else {
+                                });
+                        } else {
                     // Fallback para cancelamento direto
-                    addLog('Cancelando operação via método fallback...', 'INFO');
+                        addLog('Cancelando operação via método fallback...', 'INFO');
                     if (typeof automationTimeout !== 'undefined' && automationTimeout) {
-                        clearTimeout(automationTimeout);
-                        automationTimeout = null;
-                        addLog('Temporizador de automação cancelado', 'INFO');
+                            clearTimeout(automationTimeout);
+                            automationTimeout = null;
+                            addLog('Temporizador de automação cancelado', 'INFO');
+                        }
+                        updateStatus('Operação cancelada pelo usuário', 'info');
                     }
-                    updateStatus('Operação cancelada pelo usuário', 'info');
-                }
                 
                 // Cancelar qualquer monitoramento de payout em andamento
                 if (typeof cancelPayoutMonitoring === 'function') {
@@ -1221,9 +1225,8 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         const isRunning = automationState.isRunning || false;
                         const automationStatusElement = document.querySelector('#automation-status');
                         if (automationStatusElement) {
-                            automationStatusElement.textContent = `Automação: ${isRunning ? 'Ativa' : 'Inativa'}`;
-                            automationStatusElement.className = 'automation-status';
-                            automationStatusElement.classList.add(isRunning ? 'active' : 'inactive');
+                            automationStatusElement.textContent = isRunning ? 'Ativado' : 'Desativado';
+                            automationStatusElement.className = 'status-value';
                         }
                         
                         // Log adicional para depuração
@@ -2113,7 +2116,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                             resultText += `<strong>Ativos de ${response.category}:</strong><br>`;
                             resultText += formatAssetsList(response.assets);
                             updateAssetTestResult(resultText);
-                        } else {
+        } else {
                             updateAssetTestResult(`❌ ${response?.error || 'Falha ao mudar categoria'}`, true);
                         }
                     });
@@ -2155,7 +2158,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         
                         if (response && response.success) {
                             updateModalDebugResult(`✅ SUCESSO: ${response.message}`);
-                        } else {
+                } else {
                             updateModalDebugResult(`❌ FALHA: ${response?.error || 'Erro desconhecido'}`, true);
                         }
                     });
@@ -2324,7 +2327,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         if (devModeEnabled) {
             galeTestPanel.classList.remove('hidden');
             addLog('Painel de teste do Gale exibido (Modo Desenvolvedor ativo)', 'INFO');
-        } else {
+            } else {
             galeTestPanel.classList.add('hidden');
             addLog('Painel de teste do Gale ocultado', 'DEBUG');
         }
