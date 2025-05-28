@@ -818,56 +818,61 @@ function toUpdateStatus(message, type = 'info', duration = 5000) {
       }
     }
 
-    // Handler para mudar categoria de ativo
+        // Handler para mudar categoria de ativo
     if (message.action === 'TEST_SWITCH_ASSET_CATEGORY') {
       try {
         safeLog(`Recebida solicitação para mudar categoria: ${message.category}`, 'INFO');
         
-        // Primeiro abrir o modal
-        AssetManager.openAssetModal()
-          .then(modalOpened => {
+        // Executar de forma assíncrona
+        const executeCategorySwitch = async () => {
+          try {
+            // Primeiro abrir o modal
+            const modalOpened = await AssetManager.openAssetModal();
             if (!modalOpened) {
               throw new Error('Falha ao abrir modal de ativos');
             }
             
-            // Aguardar modal carregar e mudar categoria
-            setTimeout(() => {
-              AssetManager.switchToAssetCategory(message.category)
-                .then(categoryChanged => {
-                  // Aguardar lista atualizar e obter ativos
-                  setTimeout(() => {
-                    try {
-                      const assets = AssetManager.getAvailableAssets();
-                      
-                      // Fechar modal
-                      AssetManager.closeAssetModal();
-                      
-                      sendResponse({
-                        success: categoryChanged,
-                        category: message.category,
-                        assets: assets,
-                        message: categoryChanged 
-                          ? `Categoria alterada para ${message.category}. Encontrados ${assets.length} ativos.`
-                          : `Falha ao alterar categoria para ${message.category}`
-                      });
-                    } catch (error) {
-                      AssetManager.closeAssetModal();
-                      sendResponse({ success: false, error: error.message });
-                    }
-                  }, 500);
-                })
-                .catch(error => {
-                  AssetManager.closeAssetModal();
-                  sendResponse({ success: false, error: error.message });
-                });
-            }, 800);
-          })
-          .catch(error => {
+            // Aguardar modal carregar
+            await new Promise(resolve => setTimeout(resolve, 800));
+            
+            // Mudar categoria
+            const categoryChanged = await AssetManager.switchToAssetCategory(message.category);
+            
+            // Aguardar lista atualizar
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Obter ativos
+            const assets = AssetManager.getAvailableAssets();
+            
+            // Fechar modal
+            const modalClosed = await AssetManager.closeAssetModal();
+            if (!modalClosed) {
+              safeLog('Aviso: Modal pode não ter fechado corretamente', 'WARN');
+            }
+            
+            sendResponse({
+              success: categoryChanged,
+              category: message.category,
+              assets: assets,
+              message: categoryChanged 
+                ? `Categoria alterada para ${message.category}. Encontrados ${assets.length} ativos. Modal fechado.`
+                : `Falha ao alterar categoria para ${message.category}`
+            });
+          } catch (error) {
+            // Tentar fechar modal em caso de erro
+            try {
+              await AssetManager.closeAssetModal();
+            } catch (closeError) {
+              safeLog(`Erro ao fechar modal durante tratamento de erro: ${closeError.message}`, 'WARN');
+            }
             sendResponse({ success: false, error: error.message });
-          });
+          }
+        };
+        
+        executeCategorySwitch();
         
         return true; // Manter canal aberto para resposta assíncrona
-  } catch (error) {
+      } catch (error) {
         safeLog(`Erro ao mudar categoria: ${error.message}`, 'ERROR');
         sendResponse({ success: false, error: error.message });
         return true;

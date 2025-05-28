@@ -1862,7 +1862,6 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             // =================== CONFIGURAR BOTÕES DE TESTE DE ATIVOS ===================
             
             // Obter elementos dos botões de teste de ativos
-            const testOpenAssetModalBtn = document.getElementById('test-open-asset-modal');
             const testFindBestAssetBtn = document.getElementById('test-find-best-asset');
             const testSwitchToCryptoBtn = document.getElementById('test-switch-to-crypto');
             const testSwitchToCurrencyBtn = document.getElementById('test-switch-to-currency');
@@ -1887,27 +1886,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 ).join('<br>');
             };
             
-            // Event listener para abrir modal de ativos
-            if (testOpenAssetModalBtn) {
-                testOpenAssetModalBtn.addEventListener('click', () => {
-                    updateAssetTestResult('Abrindo modal de ativos...');
-                    
-                    chrome.runtime.sendMessage({
-                        action: 'TEST_OPEN_ASSET_MODAL'
-                    }, (response) => {
-                        if (chrome.runtime.lastError) {
-                            updateAssetTestResult(`Erro: ${chrome.runtime.lastError.message}`, true);
-                            return;
-                        }
-                        
-                        if (response && response.success) {
-                            updateAssetTestResult(`✅ ${response.message}`);
-                        } else {
-                            updateAssetTestResult(`❌ ${response?.error || 'Falha ao abrir modal'}`, true);
-                        }
-                    });
-                });
-            }
+
             
             // Event listener para buscar melhor ativo
             if (testFindBestAssetBtn) {
