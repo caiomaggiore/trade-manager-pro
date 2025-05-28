@@ -1834,45 +1834,48 @@ const AssetManager = {
 
   // Função para mudar para a categoria de ativos (Crypto, Currency, etc.)
   switchToAssetCategory: (category) => {
-    try {
-      safeLog(`Tentando mudar para categoria: ${category}`, 'INFO');
-      
-      // Mapear categorias para seletores
-      const categorySelectors = {
-        'crypto': '.assets-block__nav-item--cryptocurrency',
-        'cryptocurrency': '.assets-block__nav-item--cryptocurrency',
-        'currency': '.assets-block__nav-item--currency',
-        'currencies': '.assets-block__nav-item--currency',
-        'commodity': '.assets-block__nav-item--commodity',
-        'commodities': '.assets-block__nav-item--commodity',
-        'stock': '.assets-block__nav-item--stock',
-        'stocks': '.assets-block__nav-item--stock',
-        'index': '.assets-block__nav-item--index',
-        'indices': '.assets-block__nav-item--index'
-      };
-      
-      const selector = categorySelectors[category.toLowerCase()];
-      if (!selector) {
-        throw new Error(`Categoria não reconhecida: ${category}`);
-      }
-      
-      const categoryButton = document.querySelector(selector);
-      if (!categoryButton) {
-        throw new Error(`Botão da categoria ${category} não encontrado`);
-      }
-      
-      // Verificar se já está ativo
-      if (categoryButton.classList.contains('assets-block__nav-item--active')) {
-        safeLog(`Categoria ${category} já está ativa`, 'INFO');
-        return true;
-      }
-      
-      // Clicar na categoria
-      categoryButton.click();
-      safeLog(`Mudança para categoria ${category} executada`, 'SUCCESS');
-      
-      // Aguardar um momento para a lista atualizar
-      return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
+      try {
+        safeLog(`Tentando mudar para categoria: ${category}`, 'INFO');
+        
+        // Mapear categorias para seletores
+        const categorySelectors = {
+          'crypto': '.assets-block__nav-item--cryptocurrency',
+          'cryptocurrency': '.assets-block__nav-item--cryptocurrency',
+          'currency': '.assets-block__nav-item--currency',
+          'currencies': '.assets-block__nav-item--currency',
+          'commodity': '.assets-block__nav-item--commodity',
+          'commodities': '.assets-block__nav-item--commodity',
+          'stock': '.assets-block__nav-item--stock',
+          'stocks': '.assets-block__nav-item--stock',
+          'index': '.assets-block__nav-item--index',
+          'indices': '.assets-block__nav-item--index'
+        };
+        
+        const selector = categorySelectors[category.toLowerCase()];
+        if (!selector) {
+          reject(new Error(`Categoria não reconhecida: ${category}`));
+          return;
+        }
+        
+        const categoryButton = document.querySelector(selector);
+        if (!categoryButton) {
+          reject(new Error(`Botão da categoria ${category} não encontrado`));
+          return;
+        }
+        
+        // Verificar se já está ativo
+        if (categoryButton.classList.contains('assets-block__nav-item--active')) {
+          safeLog(`Categoria ${category} já está ativa`, 'INFO');
+          resolve(true);
+          return;
+        }
+        
+        // Clicar na categoria
+        categoryButton.click();
+        safeLog(`Mudança para categoria ${category} executada`, 'SUCCESS');
+        
+        // Aguardar um momento para a lista atualizar
         setTimeout(() => {
           if (categoryButton.classList.contains('assets-block__nav-item--active')) {
             safeLog(`Categoria ${category} ativada com sucesso`, 'SUCCESS');
@@ -1882,11 +1885,11 @@ const AssetManager = {
             resolve(false);
           }
         }, 300);
-      });
-    } catch (error) {
-      safeLog(`Erro ao mudar categoria: ${error.message}`, 'ERROR');
-      return Promise.resolve(false);
-    }
+      } catch (error) {
+        safeLog(`Erro ao mudar categoria: ${error.message}`, 'ERROR');
+        reject(error);
+      }
+    });
   },
 
   // Função para obter lista de ativos disponíveis com seus payouts

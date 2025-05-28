@@ -1,6 +1,6 @@
 {
   "name": "trade-manager-pro",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "Uma extensão Chrome profissional para análise e automação de operações de trading",
   "main": "src/background/background.js",
   "scripts": {
