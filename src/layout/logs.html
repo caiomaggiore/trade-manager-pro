@@ -25,12 +25,12 @@
                 <p class="main-panel-description">Visualização e controle dos registros do sistema de trading</p>
             </div>
 
-            <!-- Filtro de Logs -->
+            <!-- Filtro de Logs - Layout melhorado -->
             <div class="sub-panel">
                 <h4 class="sub-panel-header"><i class="fas fa-filter"></i> Filtro de Logs</h4>
-                <div class="panel-item">
-                    <span class="panel-item-label">Nível de Log:</span>
-                    <select id="log-level-filter" class="styled-select">
+                <div class="filter-controls">
+                    <label for="log-level-filter">Nível:</label>
+                    <select id="log-level-filter" class="filter-select">
                         <option value="ALL">Todos os logs</option>
                         <option value="DEBUG">Debug</option>
                         <option value="INFO">Info</option>
@@ -50,38 +50,25 @@
                 </div>
             </div>
 
-            <!-- Ações dos Logs -->
+            <!-- Ações dos Logs - Botões compactos -->
             <div class="sub-panel">
                 <h4 class="sub-panel-header"><i class="fas fa-tools"></i> Ações dos Logs</h4>
-                <div class="panel-grid-3">
-                    <button id="copy-logs" class="btn secondary">
+                <div class="log-actions-grid">
+                    <button id="copy-logs" class="log-action-btn">
                         <i class="fas fa-copy"></i>
-                        <div class="button-content">
-                          <span>Copiar Logs</span>
-                          <small>Copia para área de transferência</small>
-                        </div>
+                        <span>Copiar</span>
                     </button>
-                    <button id="export-logs" class="btn secondary">
+                    <button id="export-logs" class="log-action-btn">
                         <i class="fas fa-download"></i>
-                        <div class="button-content">
-                          <span>Exportar Logs</span>
-                          <small>Salva logs em arquivo</small>
-                        </div>
+                        <span>Exportar</span>
                     </button>
-                    <button id="clear-logs" class="btn secondary">
+                    <button id="clear-logs" class="log-action-btn clear-btn">
                         <i class="fas fa-trash"></i>
-                        <div class="button-content">
-                          <span>Limpar Logs</span>
-                          <small>Remove todos os registros</small>
-                        </div>
+                        <span>Limpar</span>
                     </button>
                 </div>
             </div>
         </div>
-    </div>
-    
-    <div class="footer">
-        <p>Sistema de Logs - Trade Manager Pro</p>
     </div>
 
     <!-- Carrega o StateManager primeiro -->

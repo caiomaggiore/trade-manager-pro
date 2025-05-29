@@ -243,6 +243,52 @@ function formatTimestamp(date = new Date()) {
     return `[${day}/${month}/${year}, ${hours}:${minutes}:${seconds}]`;
 }
 
+// Função para reportar erro ao StateManager
+const reportSystemError = (errorMessage, errorDetails = null) => {
+    console.error('ERRO DO SISTEMA (Background):', errorMessage);
+    
+    try {
+        // Tentar notificar as abas sobre o erro
+        chrome.tabs.query({}, (tabs) => {
+            for (const tab of tabs) {
+                if (tab.url && tab.url.includes('chrome-extension://')) {
+                    chrome.tabs.sendMessage(tab.id, {
+                        action: 'SYSTEM_ERROR_OCCURRED',
+                        error: {
+                            message: errorMessage,
+                            details: errorDetails,
+                            timestamp: Date.now(),
+                            source: 'background.js'
+                        }
+                    }, () => {
+                        // Silenciar erros de comunicação
+                        if (chrome.runtime.lastError) {
+                            // Ignore
+                        }
+                    });
+                }
+            }
+        });
+    } catch (e) {
+        console.warn('Erro ao notificar abas sobre erro do sistema:', e.message);
+    }
+};
+
+// Wrapper para funções críticas do background
+const safeExecuteBackground = async (fn, functionName, ...args) => {
+    try {
+        return await fn(...args);
+    } catch (error) {
+        reportSystemError(`Erro em ${functionName}: ${error.message}`, {
+            function: functionName,
+            args: args,
+            stack: error.stack,
+            module: 'background.js'
+        });
+        throw error;
+    }
+};
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Remover o log que causa poluição no console
     // console.log('Mensagem recebida no background:', message);

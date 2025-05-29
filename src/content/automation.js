@@ -195,96 +195,43 @@ async function ensureBestAsset(minPayout = 85, preferredCategory = 'crypto') {
  * @returns {Promise<Object>} Resultado da operação
  */
 async function executeTradeWithAssetCheck(action, config = {}, autoSwitchAsset = true) {
-    try {
-        sendToLogSystem(`🚀 Iniciando operação ${action} com verificação de ativo`, 'INFO');
-        
-        // Configurações padrão
-        const operationConfig = {
-            tradeValue: config.tradeValue || 10,
-            tradeTime: config.tradeTime || 1,
-            minPayout: config.minPayout || 85,
-            preferredCategory: config.preferredCategory || 'crypto',
-            analysisResult: config.analysisResult || null,
-            useDynamicPeriod: config.useDynamicPeriod || false,
-            ...config
-        };
-        
-        sendToLogSystem(`📋 Configurações: Valor=${operationConfig.tradeValue}, Tempo=${operationConfig.tradeTime}min, PayoutMin=${operationConfig.minPayout}%`, 'INFO');
-        
-        // Etapa 1: Verificar e trocar ativo se necessário
-        if (autoSwitchAsset) {
-            toUpdateStatus('Verificando ativo ideal...', 'info', 2000);
+    return safeExecuteAutomation(async () => {
+        // Verificar se a troca automática de ativos está habilitada
+        if (autoSwitchAsset && window.StateManager?.isAssetSwitchingEnabled()) {
+            const minPayout = window.StateManager.getMinPayoutForAssets();
+            const preferredCategory = window.StateManager.getPreferredAssetCategory();
             
-            const assetResult = await ensureBestAsset(
-                operationConfig.minPayout, 
-                operationConfig.preferredCategory
-            );
+            sendToLogSystem(`Verificando ativo antes da operação (min payout: ${minPayout}%, categoria: ${preferredCategory})`, 'INFO');
             
-            if (!assetResult.success) {
-                throw new Error(`Falha na verificação de ativo: ${assetResult.error}`);
-            }
-            
-            // Log do resultado da verificação de ativo
-            if (assetResult.action === 'switched') {
-                sendToLogSystem(`🔄 Ativo alterado para: ${assetResult.asset.name} (${assetResult.asset.payout}%)`, 'SUCCESS');
-            } else {
-                sendToLogSystem(`✅ Ativo atual mantido (${assetResult.currentPayout}%)`, 'INFO');
-            }
-            
-            // Aguardar um momento após troca de ativo
-            if (assetResult.action === 'switched') {
-                await new Promise(resolve => setTimeout(resolve, 1000));
+            try {
+                // Garantir que estamos no melhor ativo
+                await ensureBestAsset(minPayout, preferredCategory);
+            } catch (assetError) {
+                sendToLogSystem(`Erro ao verificar/trocar ativo: ${assetError.message}`, 'ERROR');
+                throw new Error(`Falha na verificação de ativo: ${assetError.message}`);
             }
         }
         
-        // Etapa 2: Executar a operação
-        toUpdateStatus(`Executando ${action}...`, 'info', 2000);
-        
-        const tradeResult = await new Promise((resolve, reject) => {
-            chrome.runtime.sendMessage({
+        // Executar a operação de trade
+        try {
+            const result = await chrome.runtime.sendMessage({
                 action: 'EXECUTE_TRADE_ACTION',
                 tradeAction: action,
-                tradeData: {
-                    tradeValue: operationConfig.tradeValue,
-                    tradeTime: operationConfig.tradeTime,
-                    analysisResult: operationConfig.analysisResult,
-                    useDynamicPeriod: operationConfig.useDynamicPeriod,
-                    minPayout: operationConfig.minPayout,
-                    isFromAutomation: true
-                }
-            }, (response) => {
-                if (chrome.runtime.lastError) {
-                    reject(new Error(chrome.runtime.lastError.message));
-                    return;
-                }
-                
-                if (response && response.success) {
-                    resolve(response);
-                } else {
-                    reject(new Error(response?.error || 'Falha na execução da operação'));
-                }
+                tradeData: config,
+                source: 'automation'
             });
-        });
-        
-        sendToLogSystem(`✅ Operação ${action} executada com sucesso`, 'SUCCESS');
-        toUpdateStatus(`${action} executado com sucesso!`, 'success', 3000);
-        
-        return {
-            success: true,
-            action: action,
-            tradeResult: tradeResult,
-            message: `Operação ${action} concluída com sucesso`
-        };
-        
-    } catch (error) {
-        sendToLogSystem(`❌ Erro na operação ${action}: ${error.message}`, 'ERROR');
-        toUpdateStatus(`Erro: ${error.message}`, 'error', 5000);
-        
-        return {
-            success: false,
-            error: error.message
-        };
-    }
+            
+            if (!result || !result.success) {
+                throw new Error(result?.error || 'Falha na execução do trade');
+            }
+            
+            sendToLogSystem(`Trade executado com sucesso: ${action}`, 'SUCCESS');
+            return result;
+        } catch (tradeError) {
+            sendToLogSystem(`Erro ao executar trade: ${tradeError.message}`, 'ERROR');
+            throw tradeError;
+        }
+    }, 'executeTradeWithAssetCheck', action, config, autoSwitchAsset);
 }
 
 /**
@@ -293,71 +240,45 @@ async function executeTradeWithAssetCheck(action, config = {}, autoSwitchAsset =
  * @returns {Promise<Object>} Resultado da análise e operação
  */
 async function executeAnalysisWithAssetCheck(config = {}) {
-    try {
-        sendToLogSystem(`🔍 Iniciando análise com verificação de ativo`, 'INFO');
+    return safeExecuteAutomation(async () => {
+        const autoSwitchAsset = config.autoSwitchAsset !== false; // default true
         
-        const analysisConfig = {
-            minPayout: config.minPayout || 85,
-            preferredCategory: config.preferredCategory || 'crypto',
-            autoExecute: config.autoExecute !== false, // Padrão true
-            ...config
-        };
-        
-        // Etapa 1: Verificar e trocar ativo se necessário
-        toUpdateStatus('Verificando ativo para análise...', 'info', 2000);
-        
-        const assetResult = await ensureBestAsset(
-            analysisConfig.minPayout, 
-            analysisConfig.preferredCategory
-        );
-        
-        if (!assetResult.success) {
-            throw new Error(`Falha na verificação de ativo: ${assetResult.error}`);
+        // Verificar se a troca automática de ativos está habilitada
+        if (autoSwitchAsset && window.StateManager?.isAssetSwitchingEnabled()) {
+            const minPayout = window.StateManager.getMinPayoutForAssets();
+            const preferredCategory = window.StateManager.getPreferredAssetCategory();
+            
+            sendToLogSystem(`Verificando ativo antes da análise (min payout: ${minPayout}%, categoria: ${preferredCategory})`, 'INFO');
+            
+            try {
+                // Garantir que estamos no melhor ativo
+                await ensureBestAsset(minPayout, preferredCategory);
+            } catch (assetError) {
+                sendToLogSystem(`Erro ao verificar/trocar ativo: ${assetError.message}`, 'ERROR');
+                // Para análise, não interromper se falhar ao trocar ativo
+                sendToLogSystem('Continuando análise com ativo atual', 'WARN');
+            }
         }
         
-        // Aguardar um momento após troca de ativo
-        if (assetResult.action === 'switched') {
-            await new Promise(resolve => setTimeout(resolve, 1500));
-        }
-        
-        // Etapa 2: Executar análise
-        toUpdateStatus('Executando análise...', 'info', 2000);
-        
-        const analysisResult = await new Promise((resolve, reject) => {
-            chrome.runtime.sendMessage({
-                action: 'ANALYZE_GRAPH'
-            }, (response) => {
-                if (chrome.runtime.lastError) {
-                    reject(new Error(chrome.runtime.lastError.message));
-                    return;
-                }
-                
-                if (response && response.success) {
-                    resolve(response);
-                } else {
-                    reject(new Error(response?.error || 'Falha na análise'));
-                }
+        // Executar a análise
+        try {
+            const result = await chrome.runtime.sendMessage({
+                action: 'START_ANALYSIS',
+                source: 'automation',
+                config: config
             });
-        });
-        
-        sendToLogSystem(`✅ Análise concluída com sucesso`, 'SUCCESS');
-        
-        return {
-            success: true,
-            assetResult: assetResult,
-            analysisResult: analysisResult,
-            message: 'Análise com verificação de ativo concluída'
-        };
-        
-    } catch (error) {
-        sendToLogSystem(`❌ Erro na análise com verificação de ativo: ${error.message}`, 'ERROR');
-        toUpdateStatus(`Erro na análise: ${error.message}`, 'error', 5000);
-        
-        return {
-            success: false,
-            error: error.message
-        };
-    }
+            
+            if (!result || !result.success) {
+                throw new Error(result?.error || 'Falha na análise');
+            }
+            
+            sendToLogSystem('Análise executada com sucesso', 'SUCCESS');
+            return result;
+        } catch (analysisError) {
+            sendToLogSystem(`Erro ao executar análise: ${analysisError.message}`, 'ERROR');
+            throw analysisError;
+        }
+    }, 'executeAnalysisWithAssetCheck', config);
 }
 
 // Função para obter o payout atual da plataforma (solicita ao content.js) - VERSÃO ROBUSTA
@@ -895,3 +816,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     sendToLogSystem('Módulo de Automação carregado e configurado para controle direto e escuta de operationResult.', 'INFO');
 })(); 
+
+// Função para reportar erro ao StateManager
+function reportSystemError(errorMessage, errorDetails = null) {
+    sendToLogSystem(`ERRO DO SISTEMA: ${errorMessage}`, 'ERROR');
+    
+    if (window.StateManager) {
+        const errorInfo = window.StateManager.reportError(errorMessage, errorDetails);
+        toUpdateStatus(`Sistema parou por erro: ${errorMessage}`, 'error');
+        return errorInfo;
+    } else {
+        sendToLogSystem('StateManager não disponível para reportar erro', 'ERROR');
+        toUpdateStatus(`Sistema parou por erro: ${errorMessage}`, 'error');
+        return null;
+    }
+}
+
+// Função wrapper para try-catch automático nas funções críticas
+async function safeExecuteAutomation(fn, functionName, ...args) {
+    try {
+        return await fn(...args);
+    } catch (error) {
+        reportSystemError(`Erro em ${functionName}: ${error.message}`, {
+            function: functionName,
+            args: args,
+            stack: error.stack,
+            module: 'automation.js'
+        });
+        throw error;
+    }
+} 

@@ -45,7 +45,7 @@
            <div class="panel-content-row">
              <div class="status-led gale-led" id="gale-led"></div>
              <div class="status-info">
-               <span class="status-label">Gale:</span>
+               <span class="status-label">Gale: <span id="gale-profit-percent" style="display: none;">lucro 25%</span></span>
                <span class="status-value" id="gale-status">Desativado</span>
              </div>
            </div>
@@ -65,20 +65,16 @@
          <div class="sub-panel">
            <h4 class="sub-panel-header"><i class="fas fa-chart-line"></i> Estratégia</h4>
            <div class="panel-item">
-             <span class="panel-item-label">Lucro diário:</span>
+             <span class="panel-item-label">Meta diária:</span>
              <span class="panel-item-value" id="current-profit">R$ 100</span>
            </div>
            <div class="panel-item">
-             <span class="panel-item-label">Stop loss:</span>
+             <span class="panel-item-label">Stop Loss:</span>
              <span class="panel-item-value" id="current-stop">R$ 30</span>
            </div>
            <div class="panel-item">
-             <span class="panel-item-label">Payout Mínimo:</span>
+             <span class="panel-item-label">Payout Min.:</span>
              <span class="panel-item-value" id="min-payout">80%</span>
-           </div>
-           <div class="panel-item">
-             <span class="panel-item-label">Payout Atual:</span>
-             <span class="panel-item-value" id="current-payout">86%</span>
            </div>
          </div>
 
@@ -86,19 +82,19 @@
          <div class="sub-panel">
            <h4 class="sub-panel-header"><i class="fas fa-cogs"></i> Controle</h4>
            <div class="panel-item">
-             <span class="panel-item-label">Nível de Gale:</span>
+             <span class="panel-item-label">Gale:</span>
              <span class="panel-item-value" id="current-gale">01</span>
            </div>
            <div class="panel-item">
-             <span class="panel-item-label">Valor de entrada:</span>
+             <span class="panel-item-label">Entrada:</span>
              <span class="panel-item-value" id="current-value">R$ 2,00</span>
            </div>
            <div class="panel-item">
-             <span class="panel-item-label">Período:</span>
+             <span class="panel-item-label">Tempo:</span>
              <span class="panel-item-value" id="current-time">1min</span>
            </div>
            <div class="panel-item">
-             <span class="panel-item-label">Ganhos e perdas:</span>
+             <span class="panel-item-label">Saldo:</span>
              <span class="panel-item-value" id="last-profit">R$ 50</span>
            </div>
          </div>
@@ -240,8 +236,15 @@
             <button id="check-gale-status" class="dev-button dev-info">
               <i class="fas fa-info-circle"></i>
               <div class="button-content">
-                <span>Status Gale</span>
-                <small>Verifica estado atual</small>
+                <span>Status do Gale</span>
+                <small>Mostra informações detalhadas</small>
+              </div>
+            </button>
+            <button id="reset-system-error" class="dev-button dev-warning">
+              <i class="fas fa-refresh"></i>
+              <div class="button-content">
+                <span>Reset Status Erro</span>
+                <small>Limpa status de erro do sistema</small>
               </div>
             </button>
           </div>
@@ -348,17 +351,15 @@
    <div id="analysis-modal" class="modal">
      <div class="modal-content">
          <div class="modal-header">
-             <div class="modal-title">
-                 <h2>Resultado da Análise</h2>
-             </div>
-             <div class="modal-controls">
-                 <div class="countdown-info">
-                     <span id="countdown">15s</span>
-                     <span id="info-icon" class="info-icon" title="Clique duas vezes para cancelar o fechamento automático">i</span>
-                 </div>
-                 <button id="close-modal" class="btn menu">
-                     <img src="../assets/icons/close-icon.png" class="close-icon" alt="Fechar">
+             <div class="modal-title-row">
+                 <h2>📊 Resultado da Análise</h2>
+                 <button id="close-modal" class="modal-close-btn">
+                     <span>×</span>
                  </button>
+             </div>
+             <div class="modal-countdown-row">
+                 <i class="fas fa-info-circle" title="Clique duas vezes no tempo para cancelar o fechamento automático"></i>
+                 <span>Janela fecha em </span><span id="countdown">5s</span>
              </div>
          </div>
          <div class="modal-body">
@@ -366,47 +367,43 @@
                  <i class="fas fa-exclamation-triangle"></i> MODO TESTE ATIVADO
                  <p>Esta análise usa um algoritmo simplificado e pode não ser precisa para operações reais. Use apenas para fins de teste e desenvolvimento.</p>
              </div>
-             <div class="result-item">
-                 <strong>Ação:</strong>
-                 <span id="result-action" class="result-action">-</span>
+             
+             <div class="analysis-result">
+                 <div class="result-row">
+                     <span class="result-label">Ação:</span>
+                     <span id="result-action" class="action-badge">-</span>
+                 </div>
+                 
+                 <div class="result-row">
+                     <span class="result-label">Confiança:</span>
+                     <span id="result-confidence" class="result-value">-</span>
+                 </div>
+                 
+                 <div class="result-row">
+                     <span class="result-label">Período:</span>
+                     <span id="result-period" class="result-value">-</span>
+                 </div>
+                 
+                 <div class="result-row">
+                     <span class="result-label">Valor de Entrada:</span>
+                     <span id="result-value" class="result-value">-</span>
+                 </div>
+                 
+                 <div class="result-summary">
+                     <div class="summary-label">Resumo:</div>
+                     <div id="result-reason" class="summary-content">-</div>
+                 </div>
              </div>
-             <div class="result-item">
-                 <strong>Confiança:</strong>
-                 <span id="result-confidence">-</span>
-             </div>
-             <div class="result-item">
-                 <strong>Período:</strong>
-                 <span id="result-period">-</span>
-             </div>
-             <div class="result-item">
-                 <strong>Valor de Entrada:</strong>
-                 <span id="result-value">-</span>
-             </div>
-             <div class="result-item">
-                 <strong>Resumo:</strong>
-                 <div id="result-reason" class="result-reason">-</div>
-             </div>
+             
              <div class="modal-actions">
-                 <button id="execute-action" class="btn confirm-btn">
-                     <i class="fas fa-check"></i>
-                     <div class="button-content">
-                       <span>Executar Operação</span>
-                       <small>Confirma e executa a ação</small>
-                     </div>
+                 <button id="execute-action" class="action-btn execute-btn">
+                     EXECUTAR OPERAÇÃO
                  </button>
-                 <button id="cancel-action" class="btn secondary">
-                     <i class="fas fa-times"></i>
-                     <div class="button-content">
-                       <span>Cancelar</span>
-                       <small>Ignora a recomendação</small>
-                     </div>
+                 <button id="cancel-action" class="action-btn cancel-btn">
+                     CANCELAR OPERAÇÃO
                  </button>
-                 <button id="wait-action" class="btn wait-btn" style="display: none;">
-                     <i class="fas fa-clock"></i>
-                     <div class="button-content">
-                       <span id="wait-text">Aguardar</span>
-                       <small>Espera condições melhores</small>
-                     </div>
+                 <button id="wait-action" class="action-btn wait-btn" style="display: none;">
+                     AGUARDAR
                  </button>
              </div>
          </div>

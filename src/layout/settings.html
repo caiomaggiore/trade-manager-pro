@@ -29,7 +29,7 @@
             <div class="panel-grid-2">
                 <!-- Coluna 1: Controle de Risco -->
                 <div class="sub-panel">
-                    <h4 class="sub-panel-header"><i class="fas fa-shield-alt"></i> Controle de Risco</h4>
+                    <h4 class="sub-panel-header"><i class="fas fa-shield-alt"></i> <span class="title-break">Controle de<br>Risco</span></h4>
                     
                     <div class="automation-control">
                         <div class="automation-wrapper">
@@ -69,7 +69,7 @@
 
                 <!-- Coluna 2: Parâmetros de Operação -->
                 <div class="sub-panel">
-                    <h4 class="sub-panel-header"><i class="fas fa-cogs"></i> Parâmetros de Operação</h4>
+                    <h4 class="sub-panel-header"><i class="fas fa-cogs"></i> <span class="title-break">Parâmetros de<br>Operação</span></h4>
                     
                     <div class="automation-control">
                         <div class="automation-wrapper">
@@ -101,8 +101,9 @@
                 <p class="main-panel-description">Controle de payout mínimo e comportamento do sistema</p>
             </div>
 
+            <!-- Configurações de Payout (coluna única) -->
             <div class="sub-panel">
-                <h4 class="sub-panel-header"><i class="fas fa-chart-bar"></i> Controle de Payout</h4>
+                <h4 class="sub-panel-header"><i class="fas fa-chart-bar"></i> <span class="title-break">Controle de<br>Payout</span></h4>
                 
                 <div class="panel-item">
                     <span class="panel-item-label">Payout Mínimo (%):</span>
@@ -120,7 +121,7 @@
                 </div>
 
                 <div class="panel-item">
-                    <span class="panel-item-label">Comportamento com Payout Insuficiente:</span>
+                    <span class="panel-item-label">Ação Payout Baixo:</span>
                     <select id="payout-behavior-select" class="styled-select">
                         <option value="cancel" selected>Cancelar Operação</option>
                         <option value="wait">Esperar Payout Adequado</option>
@@ -129,13 +130,12 @@
                 </div>
 
                 <div class="panel-item" id="payout-timeout-container" style="display:none;">
-                    <span class="panel-item-label">Intervalo de verificação (segundos):</span>
+                    <span class="panel-item-label">Intervalo verificação (seg):</span>
                     <input type="number" id="payout-timeout" class="styled-select" min="1" max="60" value="5" placeholder="5">
                 </div>
 
-                <!-- Configurações de Troca de Ativos -->
                 <div class="panel-item" id="asset-switching-container" style="display:none;">
-                    <span class="panel-item-label">Categoria Preferida para Troca:</span>
+                    <span class="panel-item-label">Categoria Troca Ativos:</span>
                     <select id="asset-preferred-category" class="styled-select">
                         <option value="crypto" selected>Criptomoedas</option>
                         <option value="currency">Moedas</option>
@@ -166,11 +166,12 @@
                         <span class="automation-label">Modo Teste de Análise</span>
                     </div>
                 </div>
-                <p class="setting-description">
-                    Quando ativado, o sistema usará um algoritmo de análise simplificado que produz resultados mais diretos, mas potencialmente menos precisos.
-                    <br>
-                    <small><strong>Atenção:</strong> Este modo é para testes e desenvolvimento. Os resultados podem não ser confiáveis para operações reais.</small>
-                </p>
+                <div class="setting-description">
+                    <p>Quando ativado, o sistema usará um algoritmo de análise simplificado que produz resultados mais diretos, mas potencialmente menos precisos.</p>
+                    <p class="warning-text">
+                        <strong>Atenção:</strong> Este modo é para testes e desenvolvimento. Os resultados podem não ser confiáveis para operações reais.
+                    </p>
+                </div>
 
                 <div class="automation-control">
                     <div class="automation-wrapper">
@@ -181,11 +182,12 @@
                         <span class="automation-label">Modo Desenvolvedor</span>
                     </div>
                 </div>
-                <p class="setting-description">
-                    Quando ativado, exibe ferramentas e controles especiais para desenvolvedores, como o painel de testes do sistema de Gale.
-                    <br>
-                    <small><strong>Nota:</strong> Esta configuração destina-se apenas a desenvolvedores e não afeta o funcionamento normal do sistema.</small>
-                </p>
+                <div class="setting-description">
+                    <p>Quando ativado, exibe ferramentas e controles especiais para desenvolvedores, como o painel de testes do sistema de Gale.</p>
+                    <p class="info-text">
+                        <strong>Nota:</strong> Esta configuração destina-se apenas a desenvolvedores e não afeta o funcionamento normal do sistema.
+                    </p>
+                </div>
             </div>
         </div>
     </div>

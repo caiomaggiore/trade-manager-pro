@@ -94,7 +94,7 @@ function showAnalysisModal(result) {
 
     // Atualiza o conteúdo do modal
     actionElement.textContent = result.action;
-    actionElement.className = `result-action ${result.action.toLowerCase()}`;
+    actionElement.className = `action-badge ${result.action.toLowerCase()}`;
     confidenceElement.textContent = `${result.trust}%`;
     reasonElement.textContent = result.reason;
     periodElement.textContent = result.period || 'Não especificado';
@@ -245,7 +245,7 @@ function showAnalysisModal(result) {
     };
 
     const updateCountdown = () => {
-        countdownElement.textContent = `Janela fecha em ${countdown}s`;
+        countdownElement.textContent = `${countdown}s`;
         if (countdown <= 0) {
             clearInterval(countdownInterval);
             modal.style.display = 'none';

@@ -40,8 +40,17 @@ class StateManager {
             }
         };
 
+        // Novo sistema de status operacional
+        this.operationalStatus = {
+            status: 'Pronto', // 'Pronto', 'Operando...', 'Parado Erro'
+            lastUpdate: Date.now(),
+            errorDetails: null,
+            operationStartTime: null
+        };
+        
         this.listeners = new Set();
         this.loadConfig();
+        this.loadOperationalStatus();
         
         // Log de inicialização
         console.log('[StateManager] Inicializado');
@@ -219,6 +228,159 @@ class StateManager {
         });
         
         console.log(`[StateManager] Notificação completada para tipo: ${type}`);
+    }
+
+    // Novo método para carregar status operacional
+    async loadOperationalStatus() {
+        try {
+            const result = await new Promise((resolve) => {
+                chrome.storage.sync.get(['operationalStatus'], resolve);
+            });
+            
+            if (result.operationalStatus) {
+                this.operationalStatus = {
+                    ...this.operationalStatus,
+                    ...result.operationalStatus
+                };
+                console.log('Status operacional carregado:', this.operationalStatus);
+            } else {
+                // Se não houver status salvo, garantir que está como "Pronto"
+                this.operationalStatus.status = 'Pronto';
+                this.operationalStatus.lastUpdate = Date.now();
+                this.saveOperationalStatus();
+            }
+        } catch (error) {
+            console.error('Erro ao carregar status operacional:', error);
+            this.operationalStatus.status = 'Pronto';
+        }
+    }
+
+    // Novo método para salvar status operacional
+    async saveOperationalStatus() {
+        try {
+            await new Promise((resolve, reject) => {
+                chrome.storage.sync.set({ 
+                    operationalStatus: this.operationalStatus 
+                }, () => {
+                    if (chrome.runtime.lastError) {
+                        reject(chrome.runtime.lastError);
+                    } else {
+                        resolve();
+                    }
+                });
+            });
+            console.log('Status operacional salvo:', this.operationalStatus);
+        } catch (error) {
+            console.error('Erro ao salvar status operacional:', error);
+        }
+    }
+
+    // Novo método para atualizar status operacional
+    updateOperationalStatus(newStatus, errorDetails = null) {
+        const validStatuses = ['Pronto', 'Operando...', 'Parado Erro'];
+        
+        if (!validStatuses.includes(newStatus)) {
+            console.error('Status inválido:', newStatus);
+            return false;
+        }
+
+        const previousStatus = this.operationalStatus.status;
+        
+        this.operationalStatus.status = newStatus;
+        this.operationalStatus.lastUpdate = Date.now();
+        
+        if (newStatus === 'Parado Erro' && errorDetails) {
+            this.operationalStatus.errorDetails = errorDetails;
+        } else if (newStatus !== 'Parado Erro') {
+            this.operationalStatus.errorDetails = null;
+        }
+        
+        if (newStatus === 'Operando...') {
+            this.operationalStatus.operationStartTime = Date.now();
+        } else {
+            this.operationalStatus.operationStartTime = null;
+        }
+
+        // Salvar mudança
+        this.saveOperationalStatus();
+        
+        // Notificar listeners
+        this.notifyListeners('operationalStatus');
+        
+        console.log(`Status operacional atualizado: ${previousStatus} → ${newStatus}`);
+        
+        return true;
+    }
+
+    // Novo método para obter status operacional
+    getOperationalStatus() {
+        return { ...this.operationalStatus };
+    }
+
+    // Novo método para registrar erro e alterar status
+    reportError(errorMessage, errorDetails = null) {
+        console.error('Erro reportado ao StateManager:', errorMessage);
+        
+        const errorInfo = {
+            message: errorMessage,
+            details: errorDetails,
+            timestamp: Date.now(),
+            stack: new Error().stack
+        };
+        
+        this.updateOperationalStatus('Parado Erro', errorInfo);
+        
+        // Notificar via chrome.runtime para outros módulos
+        try {
+            chrome.runtime.sendMessage({
+                action: 'SYSTEM_ERROR_REPORTED',
+                error: errorInfo
+            });
+        } catch (e) {
+            console.warn('Não foi possível notificar erro via runtime:', e.message);
+        }
+        
+        return errorInfo;
+    }
+
+    // Novo método para iniciar operação
+    startOperation(operationType = 'analysis') {
+        this.updateOperationalStatus('Operando...');
+        
+        // Atualizar estado de automação também
+        this.updateAutomationState(true, {
+            id: Date.now(),
+            type: operationType,
+            startTime: new Date().toISOString(),
+            status: 'running'
+        });
+        
+        console.log(`Operação ${operationType} iniciada`);
+    }
+
+    // Novo método para finalizar operação
+    stopOperation(reason = 'completed') {
+        const wasInError = this.operationalStatus.status === 'Parado Erro';
+        
+        if (!wasInError) {
+            this.updateOperationalStatus('Pronto');
+        }
+        
+        // Limpar estado de automação
+        const config = this.getConfig();
+        this.updateAutomationState(config.automation || false, null);
+        
+        console.log(`Operação finalizada: ${reason}`);
+    }
+
+    // Novo método para reset manual do status de erro
+    resetErrorStatus() {
+        if (this.operationalStatus.status === 'Parado Erro') {
+            this.updateOperationalStatus('Pronto');
+            console.log('Status de erro resetado manualmente');
+            return true;
+        }
+        return false;
     }
 }
 

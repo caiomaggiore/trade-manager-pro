@@ -151,7 +151,13 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
      * @returns {Promise<Object>} Resultado da análise
      */
     const runAnalysis = async () => {
-        try {
+        return safeExecute(async () => {
+            // Iniciar status operacional
+            if (window.StateManager) {
+                window.StateManager.startOperation('analysis');
+            }
+            updateSystemOperationalStatus('Operando...');
+            
             updateStatus('Iniciando análise...', 'info');
             addLog('Iniciando análise do gráfico...');
             
@@ -225,6 +231,12 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         results: analysisResult
                     };
                     
+                    // Finalizar operação com sucesso
+                    if (window.StateManager) {
+                        window.StateManager.stopOperation('completed');
+                    }
+                    updateSystemOperationalStatus('Pronto');
+                    
                     // Registrar sucesso
                     addLog(`Análise concluída com sucesso: ${analysisResult.action}`, 'SUCCESS');
                     updateStatus(`Análise: ${analysisResult.action}`, 'success');
@@ -272,6 +284,12 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                             results: analysisResult
                         };
                         
+                        // Finalizar operação com sucesso
+                        if (window.StateManager) {
+                            window.StateManager.stopOperation('completed');
+                        }
+                        updateSystemOperationalStatus('Pronto');
+                        
                         // Registrar sucesso
                         addLog(`Análise concluída com sucesso: ${analysisResult.action}`, 'SUCCESS');
                         updateStatus(`Análise: ${analysisResult.action}`, 'success');
@@ -293,11 +311,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 updateStatus('Erro ao analisar o gráfico', 'error');
                 throw analysisError;
             }
-        } catch (error) {
-            addLog(`Erro na análise: ${error.message}`, 'ERROR');
-            updateStatus('Erro ao realizar análise', 'error');
-            throw error;
-        }
+        }, 'runAnalysis');
     };
 
     // Função para analisar na aba
@@ -353,6 +367,29 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         // Inicializar listener para StateManager
         initStateManagerListener();
         
+        // Configurar listener para sistema de Gale
+        setupGaleListener();
+        
+        // Atualização inicial do dashboard e status operacional
+        setTimeout(() => {
+            if (window.StateManager) {
+                const config = window.StateManager.getConfig();
+                const operationalStatus = window.StateManager.getOperationalStatus();
+                
+                if (config) {
+                    updateMinPayoutDisplay(config);
+                    updateProfitLossDisplay();
+                    updateGaleLevelDisplay();
+                    addLog('Dashboard atualizado com configurações iniciais', 'DEBUG');
+                }
+                
+                if (operationalStatus) {
+                    updateSystemOperationalStatus(operationalStatus.status);
+                    addLog(`Status operacional carregado: ${operationalStatus.status}`, 'DEBUG');
+                }
+            }
+        }, 1500);
+        
         // Inicializar módulo de histórico
         initHistoryModule();
         
@@ -368,13 +405,14 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 const config = event.data.settings;
                 // Atualizar campos da página principal
                 updateCurrentSettings({
-                    galeEnabled: config.gale.active,
-                    galeLevel: config.gale.level,
-                    dailyProfit: config.dailyProfit,
-                    stopLoss: config.stopLoss,
-                    tradeValue: config.value,
-                    tradeTime: config.period,
-                    autoActive: config.automation
+                    galeEnabled: config.gale?.active || false,
+                    galeLevel: config.gale?.level || '1.2x',
+                    galeProfit: config.gale?.level || '20%', // Adicionando galeProfit
+                    dailyProfit: config.dailyProfit || 150,
+                    stopLoss: config.stopLoss || 30,
+                    tradeValue: config.value || 10,
+                    tradeTime: config.period || 1,
+                    autoActive: config.automation || false
                 });
                 
                 // Atualizar apenas a UI de status de automação, sem alterar o estado
@@ -482,7 +520,13 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             }
             
             // Atualizar status do Gale na UI
-            updateGaleStatusUI(settings.galeEnabled, settings.galeLevel);
+            updateGaleStatusUI(settings.galeEnabled, settings.galeLevel, settings.galeProfit);
+            
+            // Atualizar payout mínimo no dashboard
+            updateMinPayoutDisplay(settings);
+            
+            // Atualizar ganhos e perdas no dashboard
+            updateProfitLossDisplay();
             
             // Atualizar status de automação (padronizado)
             if (indexUI.automationStatus && typeof settings.autoActive !== 'undefined') {
@@ -509,7 +553,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 }
                 // Atualizar status do Gale novamente para garantir
                 if (typeof settings.galeEnabled !== 'undefined' && typeof settings.galeLevel !== 'undefined') {
-                    updateGaleStatusUI(settings.galeEnabled, settings.galeLevel);
+                    updateGaleStatusUI(settings.galeEnabled, settings.galeLevel, settings.galeProfit);
                 }
                 
                 addLog('Verificação adicional de atualização da UI realizada', 'DEBUG');
@@ -542,9 +586,10 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     };
 
     // Função para atualizar o status de Gale na UI
-    const updateGaleStatusUI = (galeEnabled, galeLevel) => {
+    const updateGaleStatusUI = (galeEnabled, galeLevel, galeProfit) => {
         const galeStatusElement = document.querySelector('#gale-status');
         const galeLed = document.querySelector('#gale-led');
+        const galeProfitElement = document.querySelector('#gale-profit-percent');
         
         if (galeStatusElement) {
             if (galeEnabled) {
@@ -559,10 +604,132 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             addLog('Elemento gale-status não encontrado na UI', 'WARN');
         }
         
+        // Atualizar porcentagem de lucro do Gale
+        if (galeProfitElement) {
+            if (galeEnabled && galeProfit) {
+                // Extrair apenas o número da porcentagem (ex: "25%" -> "25")
+                const profitNumber = galeProfit.toString().replace(/[^\d]/g, '');
+                if (profitNumber && profitNumber !== '0') {
+                    galeProfitElement.textContent = `lucro ${profitNumber}%`;
+                    galeProfitElement.style.display = 'inline';
+                } else {
+                    galeProfitElement.style.display = 'none';
+                }
+            } else {
+                galeProfitElement.style.display = 'none';
+            }
+        }
+        
         // Atualizar LED de Gale
         if (galeLed) {
             galeLed.className = 'status-led gale-led';
             galeLed.classList.add(galeEnabled ? 'active' : 'inactive');
+        }
+        
+        // Atualizar nível de Gale no dashboard
+        updateGaleLevelDisplay();
+    };
+
+    // Função para atualizar o nível de Gale no dashboard
+    const updateGaleLevelDisplay = () => {
+        const currentGaleElement = document.querySelector('#current-gale');
+        if (!currentGaleElement) {
+            addLog('Elemento current-gale não encontrado na UI', 'WARN');
+            return;
+        }
+
+        // Verificar se o GaleSystem está disponível
+        if (window.GaleSystem && typeof window.GaleSystem.getStatus === 'function') {
+            try {
+                const galeStatus = window.GaleSystem.getStatus();
+                if (galeStatus) {
+                    const level = galeStatus.level || 0;
+                    currentGaleElement.textContent = level.toString().padStart(2, '0');
+                    addLog(`Nível de Gale atualizado no dashboard: ${level}`, 'DEBUG');
+                } else {
+                    currentGaleElement.textContent = '00';
+                    addLog('Status do Gale não disponível, definindo nível como 00', 'DEBUG');
+                }
+            } catch (error) {
+                addLog(`Erro ao obter status do Gale: ${error.message}`, 'ERROR');
+                currentGaleElement.textContent = '00';
+            }
+        } else {
+            // Fallback: tentar via chrome.runtime.sendMessage
+            try {
+                chrome.runtime.sendMessage({
+                    action: 'GET_GALE_STATUS'
+                }, (response) => {
+                    if (chrome.runtime.lastError) {
+                        addLog(`Erro ao obter status do Gale via runtime: ${chrome.runtime.lastError.message}`, 'ERROR');
+                        currentGaleElement.textContent = '00';
+                        return;
+                    }
+                    
+                    if (response && response.success && response.data) {
+                        const level = response.data.level || 0;
+                        currentGaleElement.textContent = level.toString().padStart(2, '0');
+                        addLog(`Nível de Gale atualizado via runtime: ${level}`, 'DEBUG');
+                    } else {
+                        currentGaleElement.textContent = '00';
+                        addLog('Status do Gale não disponível via runtime, definindo nível como 00', 'DEBUG');
+                    }
+                });
+            } catch (error) {
+                addLog(`Erro ao solicitar status do Gale via runtime: ${error.message}`, 'ERROR');
+                currentGaleElement.textContent = '00';
+            }
+        }
+    };
+
+    // Função para atualizar o payout mínimo no dashboard
+    const updateMinPayoutDisplay = (config) => {
+        const minPayoutElement = document.querySelector('#min-payout');
+        if (!minPayoutElement) {
+            addLog('Elemento min-payout não encontrado na UI', 'WARN');
+            return;
+        }
+
+        const minPayout = config.minPayout || 80;
+        minPayoutElement.textContent = `${minPayout}%`;
+        addLog(`Payout mínimo atualizado no dashboard: ${minPayout}%`, 'DEBUG');
+    };
+
+    // Função para atualizar ganhos e perdas no dashboard
+    const updateProfitLossDisplay = () => {
+        const lastProfitElement = document.querySelector('#last-profit');
+        if (!lastProfitElement) {
+            addLog('Elemento last-profit não encontrado na UI', 'WARN');
+            return;
+        }
+
+        try {
+            // Calcular lucro/prejuízo total das operações
+            let totalProfit = 0;
+            const savedOperations = localStorage.getItem('tradeOperations');
+            
+            if (savedOperations) {
+                const operations = JSON.parse(savedOperations);
+                operations.forEach(op => {
+                    if (op.status === 'Closed') {
+                        if (op.success) {
+                            totalProfit += parseFloat(op.profit || 0);
+                        } else {
+                            totalProfit -= parseFloat(op.amount || 0);
+                        }
+                    }
+                });
+            }
+
+            // Formatar e exibir o valor
+            const formattedProfit = totalProfit.toFixed(2);
+            const displayValue = totalProfit >= 0 ? `+R$ ${formattedProfit}` : `-R$ ${Math.abs(totalProfit).toFixed(2)}`;
+            lastProfitElement.textContent = displayValue;
+            
+            addLog(`Ganhos e perdas atualizados no dashboard: ${displayValue}`, 'DEBUG');
+        } catch (error) {
+            addLog(`Erro ao calcular ganhos e perdas: ${error.message}`, 'ERROR');
+            lastProfitElement.textContent = 'R$ 0,00';
         }
     };
 
@@ -660,6 +827,12 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     const cancelCurrentOperation = (reason = 'Cancelado pelo usuário') => {
         addLog(`Cancelando operação atual: ${reason}`, 'INFO');
         
+        // Finalizar operação no StateManager
+        if (window.StateManager) {
+            window.StateManager.stopOperation('cancelled');
+        }
+        updateSystemOperationalStatus('Pronto');
+        
         // Limpar estado de operação no StateManager
         if (window.StateManager) {
             const currentConfig = window.StateManager.getConfig() || {};
@@ -698,11 +871,6 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         addLog(`Operação cancelada: ${reason}`, 'SUCCESS');
     };
 
-    // Função para cancelar o fechamento automático (compatibilidade)
-    const cancelAutoClose = () => {
-        cancelCurrentOperation('Operação cancelada pelo usuário');
-    };
-    
     // Expor função globalmente para uso em outros módulos
     window.cancelCurrentOperation = cancelCurrentOperation;
 
@@ -762,13 +930,9 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                             addLog('Iniciando operação automática...', 'INFO');
                             updateStatus('Iniciando operação automática...', 'info');
                             
-                            // Atualizar estado no StateManager para indicar operação em andamento
-                            window.StateManager.updateAutomationState(true, {
-                                id: Date.now(),
-                                type: 'automatic_monitoring',
-                                startTime: new Date().toISOString(),
-                                status: 'starting'
-                            });
+                            // Iniciar status operacional
+                            window.StateManager.startOperation('automatic_monitoring');
+                            updateSystemOperationalStatus('Operando...');
                             
                             // Atualizar visibilidade dos botões imediatamente
                             updateUserControlsVisibility(true, true);
@@ -790,6 +954,13 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                                 })
                                 .catch(error => {
                                     addLog(`Erro ao iniciar monitoramento: ${error.message}`, 'ERROR');
+                                    
+                                    // Reportar erro ao sistema
+                                    reportSystemError(`Falha ao iniciar monitoramento: ${error.message}`, {
+                                        operation: 'start_monitoring',
+                                        error: error
+                                    });
+                                    
                                     updateStatus('Falha ao iniciar operação automática', 'error');
                                     
                                     // Limpar estado de operação em caso de erro
@@ -804,10 +975,17 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     } else {
                         // Fallback para mensagem de erro
                         addLog('Módulo de histórico não disponível', 'ERROR');
+                        reportSystemError('Módulo de histórico não disponível', {
+                            operation: 'start_operation',
+                            missing_module: 'TradeManager.History'
+                        });
                         updateStatus('Módulo de histórico não disponível', 'error');
                     }
                 } else {
                     // Se não conseguir acessar o estado via StateManager
+                    reportSystemError('StateManager não disponível', {
+                        operation: 'start_operation'
+                    });
                     updateStatus('Não foi possível verificar o status da automação', 'error');
                 }
             });
@@ -973,6 +1151,9 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         // Inicializar o listener do StateManager para atualizações de configurações
         initStateManagerListener();
         
+        // Configurar listener para sistema de Gale
+        setupGaleListener();
+        
         // Adicionar listener direto para mensagens da página de configurações (mecanismo alternativo)
         window.addEventListener('message', (event) => {
             // Verificar se é uma mensagem de atualização de configurações
@@ -982,13 +1163,14 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 const config = event.data.settings;
                 // Atualizar campos da página principal
                 updateCurrentSettings({
-                    galeEnabled: config.gale.active,
-                    galeLevel: config.gale.level,
-                    dailyProfit: config.dailyProfit,
-                    stopLoss: config.stopLoss,
-                    tradeValue: config.value,
-                    tradeTime: config.period,
-                    autoActive: config.automation
+                    galeEnabled: config.gale?.active || false,
+                    galeLevel: config.gale?.level || '1.2x',
+                    galeProfit: config.gale?.level || '20%', // Adicionando galeProfit
+                    dailyProfit: config.dailyProfit || 150,
+                    stopLoss: config.stopLoss || 30,
+                    tradeValue: config.value || 10,
+                    tradeTime: config.period || 1,
+                    autoActive: config.automation || false
                 });
                                 
                 updateStatus('Configurações atualizadas via mensagem direta', 'success', 2000);
@@ -1063,6 +1245,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         updateCurrentSettings({
                             galeEnabled: config.gale?.active || false,
                             galeLevel: config.gale?.level || '1.2x',
+                            galeProfit: config.gale?.level || '20%', // Adicionando galeProfit
                             dailyProfit: config.dailyProfit || 150,
                             stopLoss: config.stopLoss || 30,
                             tradeValue: config.value || 10,
@@ -1190,6 +1373,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         updateCurrentSettings({
                             galeEnabled: config.gale?.active || false,
                             galeLevel: config.gale?.level || '1.2x',
+                            galeProfit: config.gale?.level || '20%', // Adicionando galeProfit
                             dailyProfit: config.dailyProfit || 150,
                             stopLoss: config.stopLoss || 30,
                             tradeValue: config.value || 10,
@@ -1240,6 +1424,22 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         if (automationState.currentOperation) {
                             addLog(`Operação atual: ${JSON.stringify(automationState.currentOperation)}`, 'DEBUG');
                         }
+                    }
+                }
+                else if (type === 'operationalStatus') {
+                    // Tratar atualizações do status operacional
+                    addLog(`Recebida atualização de STATUS OPERACIONAL (${new Date(timestamp).toLocaleTimeString()})`, 'INFO');
+                    
+                    const operationalStatus = state.operationalStatus;
+                    if (operationalStatus) {
+                        updateSystemOperationalStatus(operationalStatus.status);
+                        
+                        // Se for erro, mostrar detalhes no log
+                        if (operationalStatus.status === 'Parado Erro' && operationalStatus.errorDetails) {
+                            addLog(`Detalhes do erro: ${operationalStatus.errorDetails.message}`, 'ERROR');
+                        }
+                        
+                        addLog(`Status operacional atualizado via listener: ${operationalStatus.status}`, 'INFO');
                     }
                 }
             });
@@ -2009,6 +2209,28 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 }
             });
             
+            // Botão para resetar status de erro do sistema
+            const resetSystemErrorBtn = document.getElementById('reset-system-error');
+            if (resetSystemErrorBtn) {
+                resetSystemErrorBtn.addEventListener('click', () => {
+                    if (window.StateManager) {
+                        const wasReset = window.StateManager.resetErrorStatus();
+                        if (wasReset) {
+                            updateSystemOperationalStatus('Pronto');
+                            updateStatus('Status de erro resetado com sucesso', 'success');
+                            addLog('Status de erro do sistema resetado manualmente', 'INFO');
+                        } else {
+                            updateStatus('Sistema não estava em estado de erro', 'info');
+                            addLog('Tentativa de reset, mas sistema não estava em erro', 'DEBUG');
+                        }
+                    } else {
+                        updateStatus('StateManager não disponível', 'error');
+                        addLog('StateManager não disponível para reset de erro', 'ERROR');
+                    }
+                });
+                addLog('Botão de reset de status de erro configurado', 'DEBUG');
+            }
+            
             addLog('Botões de teste do sistema de Gale configurados', 'INFO');
             
             // =================== CONFIGURAR BOTÕES DE TESTE DE ATIVOS ===================
@@ -2116,7 +2338,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                             resultText += `<strong>Ativos de ${response.category}:</strong><br>`;
                             resultText += formatAssetsList(response.assets);
                             updateAssetTestResult(resultText);
-        } else {
+                        } else {
                             updateAssetTestResult(`❌ ${response?.error || 'Falha ao mudar categoria'}`, true);
                         }
                     });
@@ -2158,7 +2380,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         
                         if (response && response.success) {
                             updateModalDebugResult(`✅ SUCESSO: ${response.message}`);
-                } else {
+                        } else {
                             updateModalDebugResult(`❌ FALHA: ${response?.error || 'Erro desconhecido'}`, true);
                         }
                     });
@@ -2290,12 +2512,6 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 });
             }
 
-
-
-
-
-
-
             addLog('Botões de debug do modal configurados', 'INFO');
             
             // =================== CONFIGURAÇÕES DE ATIVOS MOVIDAS PARA SETTINGS.HTML ===================
@@ -2414,6 +2630,120 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         }
         // ... outros handlers ...
     });
+
+    // Listener para mensagens do sistema de Gale
+    const setupGaleListener = () => {
+        chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+            // Atualizar nível de Gale quando houver mudanças
+            if (message.action === 'GALE_UPDATED' || message.action === 'GALE_RESET') {
+                addLog(`Recebida atualização do sistema de Gale: ${message.action}`, 'DEBUG');
+                updateGaleLevelDisplay();
+                
+                // Também atualizar ganhos e perdas quando houver operações
+                updateProfitLossDisplay();
+                
+                sendResponse({ success: true });
+                return true;
+            }
+            
+            // Atualizar ganhos e perdas quando houver nova operação
+            if (message.type === 'TRADE_RESULT' || message.action === 'OPERATION_ADDED') {
+                addLog('Recebida nova operação, atualizando ganhos e perdas', 'DEBUG');
+                updateProfitLossDisplay();
+                
+                sendResponse({ success: true });
+                return true;
+            }
+            
+            // Tratar erros do sistema reportados por outros módulos
+            if (message.action === 'SYSTEM_ERROR_OCCURRED') {
+                const { error } = message;
+                addLog(`ERRO DO SISTEMA (${error.source}): ${error.message}`, 'ERROR');
+                
+                // Se o StateManager estiver disponível, reportar o erro
+                if (window.StateManager) {
+                    window.StateManager.reportError(error.message, {
+                        ...error.details,
+                        originalSource: error.source,
+                        receivedAt: Date.now()
+                    });
+                } else {
+                    // Fallback: atualizar status diretamente
+                    updateSystemOperationalStatus('Parado Erro');
+                    updateStatus(`Sistema parou por erro: ${error.message}`, 'error');
+                }
+                
+                sendResponse({ success: true });
+                return true;
+            }
+            
+            return false;
+        });
+        
+        addLog('Listener do sistema de Gale configurado', 'DEBUG');
+    };
+
+    // Função para atualizar o status operacional do sistema na UI
+    const updateSystemOperationalStatus = (status) => {
+        const systemStatusElement = document.querySelector('#system-status');
+        const systemLed = document.querySelector('#system-led');
+        
+        if (systemStatusElement) {
+            systemStatusElement.textContent = status;
+            addLog(`Status operacional do sistema atualizado: ${status}`, 'INFO');
+        }
+        
+        if (systemLed) {
+            // Remover todas as classes de status
+            systemLed.classList.remove('ready', 'operating', 'error');
+            
+            // Adicionar classe apropriada baseada no status
+            switch (status) {
+                case 'Pronto':
+                    systemLed.classList.add('ready');
+                    break;
+                case 'Operando...':
+                    systemLed.classList.add('operating');
+                    break;
+                case 'Parado Erro':
+                    systemLed.classList.add('error');
+                    break;
+                default:
+                    systemLed.classList.add('ready');
+            }
+        }
+    };
+
+    // Função para reportar erro ao StateManager e atualizar UI
+    const reportSystemError = (errorMessage, errorDetails = null) => {
+        addLog(`ERRO DO SISTEMA: ${errorMessage}`, 'ERROR');
+        
+        if (window.StateManager) {
+            const errorInfo = window.StateManager.reportError(errorMessage, errorDetails);
+            updateSystemOperationalStatus('Parado Erro');
+            updateStatus(`Sistema parou por erro: ${errorMessage}`, 'error');
+            return errorInfo;
+        } else {
+            addLog('StateManager não disponível para reportar erro', 'ERROR');
+            updateSystemOperationalStatus('Parado Erro');
+            updateStatus(`Sistema parou por erro: ${errorMessage}`, 'error');
+            return null;
+        }
+    };
+
+    // Função wrapper para try-catch automático nas funções críticas
+    const safeExecute = async (fn, functionName, ...args) => {
+        try {
+            return await fn(...args);
+        } catch (error) {
+            reportSystemError(`Erro em ${functionName}: ${error.message}`, {
+                function: functionName,
+                args: args,
+                stack: error.stack
+            });
+            throw error;
+        }
+    };
 } else {
     console.log('Trade Manager Pro - Index Module já foi carregado anteriormente');
 }
