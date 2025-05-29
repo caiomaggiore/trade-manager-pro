@@ -436,9 +436,9 @@ DOCUMENTAÇÃO DO SISTEMA DE CONTAINERS:
 /* ================== OPERATIONS TABLE ================== */
 .operations-table {
     position: relative;
-    max-height: 200px; /* Reduzido para o novo layout */
+    max-height: 240px; /* Aumentado ainda mais para aproveitar o espaço */
     overflow-y: auto;
-    margin: 0; /* Removendo margin pois agora está dentro de sub-panel */
+    margin: 0;
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     border: 1px solid #e0e0e0;
@@ -723,19 +723,11 @@ DOCUMENTAÇÃO DO SISTEMA DE CONTAINERS:
 table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 11px;
+    font-size: 10px;
     font-family: 'Montserrat', sans-serif;
-    font-weight: 300;
-    table-layout: auto;
+    font-weight: 400;
+    table-layout: fixed;
     min-width: 100%;
-}
-
-td {
-  text-align: left;
-  padding: 4px 6px;
-  border-right: 0.02em solid #e0e0e0;
-  font-family: 'Montserrat', sans-serif;
-  font-weight: 300;
 }
 
 th, td {
@@ -743,11 +735,9 @@ th, td {
     border-bottom: 1px solid #e0e0e0;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 70px;
-    white-space: normal;
-    word-break: break-word;
-    padding: 6px 8px;
+    white-space: nowrap;
     font-family: 'Montserrat', sans-serif;
+    vertical-align: middle;
 }
 
 th {
@@ -755,45 +745,98 @@ th {
     color: white;
     position: sticky;
     top: 0;
+    font-weight: 700;
+    font-size: 11px;
+    height: 35px;
+    padding: 4px 6px;
+    line-height: 1.3;
+}
+
+/* Primeira célula do cabeçalho com borda especial */
+th:first-child {
+    border-left: 3px solid #3c1e8c; /* 2 tons mais escuro que a cor primária */
+}
+
+td {
+    text-align: left;
+    padding: 3px 4px;
+    border-right: 1px solid #e0e0e0;
+    font-family: 'Montserrat', sans-serif;
     font-weight: 400;
-    font-size: 12px;
+    height: 25px; /* Altura aumentada para 25px */
+    font-size: 10px;
+}
+
+/* Primeira célula de cada linha com borda especial */
+td:first-child {
+    border-left: 3px solid transparent;
 }
 
 tr:hover td {
-  background: #f8f9fa;
+    background: #f8f9fa;
 }
 
 /* ================== TABLE ROW STATES ================== */
+tr.venceu td:first-child { 
+    border-left: 3px solid #2ecc71;
+}
+
 tr.venceu td { 
-  background-color: rgba(46, 204, 113, 0.08) !important;
-  border-left: 0.02em solid #2ecc71;
+    background-color: rgba(46, 204, 113, 0.08) !important;
+}
+
+tr.perdeu td:first-child { 
+    border-left: 3px solid #e74c3c;
 }
 
 tr.perdeu td { 
-  background-color: rgba(231, 76, 60, 0.08) !important;
-  border-left: 0.02em solid #e74c3c;
+    background-color: rgba(231, 76, 60, 0.08) !important;
+}
+
+tr.neutro td:first-child { 
+    border-left: 3px solid #3498db;
 }
 
 tr.neutro td { 
-  background-color: rgba(52, 152, 219, 0.08) !important;
-  border-left: 0.02em solid #3498db;
+    background-color: rgba(52, 152, 219, 0.08) !important;
 }
 
 /* Manter hover state */
 tr:hover td {
-  background: #f0f0f0;
+    background: #f0f0f0;
 }
 
+/* ================== DISTRIBUIÇÃO FINAL DAS COLUNAS ================== */
+/* Hora: 15% | Moeda: 35% | Operação: 20% | Valor: 15% | Lucro: 15% */
 th:nth-child(1),
-td:nth-child(1) { width: 18%; }
+td:nth-child(1) { 
+    width: 15%; 
+    text-align: center;
+}
+
 th:nth-child(2),
-td:nth-child(2) { width: 25%; }
+td:nth-child(2) { 
+    width: 35%; 
+    text-align: center;
+}
+
 th:nth-child(3),
-td:nth-child(3) { width: 20%; }
+td:nth-child(3) { 
+    width: 20%; 
+    text-align: center;
+}
+
 th:nth-child(4),
-td:nth-child(4) { width: 17%; }
+td:nth-child(4) { 
+    width: 15%; 
+    text-align: right;
+}
+
 th:nth-child(5),
-td:nth-child(5) { width: 20%; }
+td:nth-child(5) { 
+    width: 15%; 
+    text-align: right;
+}
 
 /* ================== SETTINGS PANEL ================== */
 .settings-panel {
@@ -838,11 +881,6 @@ td:nth-child(5) { width: 20%; }
     box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     border: 1px solid #e0e0e0;
     font-family: 'Montserrat', sans-serif;
-}
-
-.styled-select, input[type="number"] {
-  width: calc(100% - 20px);
-  box-sizing: border-box;
 }
 
 .settings-grid {
@@ -1897,11 +1935,19 @@ input:checked + .slider:before {
 }
 
 .log-entry {
-  padding: 5px;
-  border-bottom: 1px solid #333;
-  animation: fadeIn 0.3s ease-in;
-  word-wrap: break-word;
-  white-space: pre-wrap;
+    padding: 8px 10px;
+    margin-bottom: 12px;
+    border-radius: 6px;
+    word-wrap: break-word;
+    border-bottom: 1px solid #dee2e6;
+    animation: fadeIn 0.3s ease-in;
+    white-space: pre-wrap;
+    font-family: 'Montserrat', monospace;
+    font-weight: 400;
+    font-size: 11px;
+    line-height: 1.4;
+    background: rgba(255, 255, 255, 0.5);
+    border-left: 3px solid transparent;
 }
 
 #analysis-results {
@@ -2037,7 +2083,7 @@ input, select, textarea {
 .log-container {
     height: 350px;
     overflow-y: auto;
-    background-color: #fff;
+    background-color: #f8f9fa;
     border-radius: 8px;
     padding: 10px;
     font-family: 'Montserrat', monospace;
@@ -2047,25 +2093,30 @@ input, select, textarea {
     border: 1px solid #e0e0e0;
 }
 
-.log-entry {
-    padding: 5px;
-    margin-bottom: 5px;
-    padding: 3px 5px;
-    border-radius: 3px;
-    word-wrap: break-word;
-    border-bottom: 1px solid #e0e0e0;
-    animation: fadeIn 0.3s ease-in;
-    white-space: pre-wrap;
-    font-family: 'Montserrat', monospace;
-    font-weight: 300;
-    font-size: 11px;
+.log-debug { 
+    color: #3d2a7a; 
+    border-left-color: #3d2a7a;
 }
 
-.log-debug { color: #5D4BB6; }
-.log-info { color: #2980b9; }
-.log-warn { color: #d35400; }
-.log-error { color: #c0392b; }
-.log-success { color: #27ae60; }
+.log-info { 
+    color: #1c5e89; 
+    border-left-color: #1c5e89;
+}
+
+.log-warn { 
+    color: #a8440d; 
+    border-left-color: #a8440d;
+}
+
+.log-error { 
+    color: #92251e; 
+    border-left-color: #92251e;
+}
+
+.log-success { 
+    color: #1e7e45; 
+    border-left-color: #1e7e45;
+}
 
 .filter-container {
     margin-bottom: 15px;
@@ -2205,4 +2256,63 @@ input, select, textarea {
 
 .log-action-btn.clear-btn i {
     color: #dc3545;
+}
+
+/* Garantir layout 50/50 específico para seção de payout */
+.sub-panel .panel-item input,
+.sub-panel .panel-item select {
+  flex: 1;
+  max-width: 50%;
+  margin: 0;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.sub-panel .panel-item-label {
+  flex: 1;
+  max-width: 50%;
+  margin-right: 0;
+  box-sizing: border-box;
+}
+
+/* Forçar layout 50/50 mesmo em elementos ocultos */
+#asset-switching-container .panel-item-label,
+#payout-timeout-container .panel-item-label {
+  flex: 1;
+  max-width: 50%;
+}
+
+#asset-switching-container select,
+#payout-timeout-container input {
+  flex: 1;
+  max-width: 50%;
+  min-width: 0;
+}
+
+/* Regras mais específicas para forçar layout correto */
+#asset-switching-container.panel-item {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  gap: 12px !important;
+}
+
+#asset-switching-container .panel-item-label {
+  flex: 1 !important;
+  max-width: 50% !important;
+  box-sizing: border-box !important;
+}
+
+#asset-switching-container select {
+  flex: 1 !important;
+  max-width: 50% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+/* Garantir que quando o container está visível, ele mantenha o layout */
+#asset-switching-container[style*="display: block"],
+#asset-switching-container[style*="display: flex"],
+#asset-switching-container:not([style*="display: none"]) {
+  display: flex !important;
 }
