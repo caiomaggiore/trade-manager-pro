@@ -237,21 +237,27 @@ class StateManager {
                 chrome.storage.sync.get(['operationalStatus'], resolve);
             });
             
-            if (result.operationalStatus) {
-                this.operationalStatus = {
-                    ...this.operationalStatus,
-                    ...result.operationalStatus
-                };
-                console.log('Status operacional carregado:', this.operationalStatus);
-            } else {
-                // Se não houver status salvo, garantir que está como "Pronto"
-                this.operationalStatus.status = 'Pronto';
-                this.operationalStatus.lastUpdate = Date.now();
-                this.saveOperationalStatus();
-            }
+            // *** CORREÇÃO: Sempre iniciar como "Pronto" ao recarregar a página ***
+            // O status operacional só deve ser "Operando..." durante operações ativas
+            // Ao recarregar, não há operação em andamento, então resetar para "Pronto"
+            this.operationalStatus.status = 'Pronto';
+            this.operationalStatus.lastUpdate = Date.now();
+            this.operationalStatus.operationStartTime = null;
+            this.operationalStatus.errorDetails = null;
+            
+            // *** CORREÇÃO: Também resetar estado de automação ***
+            // A automação pode estar configurada como ativa, mas não há operação em andamento
+            const config = this.getConfig();
+            this.updateAutomationState(config.automation || false, null);
+            
+            console.log('Status operacional e estado de automação resetados (página recarregada)');
+            
+            // Salvar o status resetado
+            this.saveOperationalStatus();
         } catch (error) {
             console.error('Erro ao carregar status operacional:', error);
             this.operationalStatus.status = 'Pronto';
+            this.operationalStatus.lastUpdate = Date.now();
         }
     }
 
@@ -381,6 +387,24 @@ class StateManager {
             return true;
         }
         return false;
+    }
+
+    // *** NOVO: Método para parar completamente a automação ***
+    stopAutomation() {
+        console.log('Parando automação completamente...');
+        
+        // Resetar status operacional para "Pronto"
+        this.updateOperationalStatus('Pronto');
+        
+        // Limpar estado de automação
+        this.updateAutomationState(false, null);
+        
+        // Notificar listeners sobre a parada
+        this.notifyListeners('automationStopped');
+        
+        console.log('Automação parada e status resetado para "Pronto"');
+        
+        return true;
     }
 }
 

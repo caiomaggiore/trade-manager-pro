@@ -336,24 +336,49 @@ window.TradeManager.History = (function() {
 
                                             const amountValue = (parseFloat(Amount?.textContent.replace('$', '') || 0).toFixed(2));
                                             
-                                            // Armazenar último valor para cálculos
-                                            if (!window.lastAmount && amountValue > 0) {
-                                                window.lastAmount = amountValue;
+                                            // *** CORREÇÃO: Obter valor real da entrada (incluindo Gale) ***
+                                            let realEntryAmount = amountValue;
+                                            
+                                            // Verificar se há Gale ativo e obter valor real do StateManager
+                                            try {
+                                                if (window.StateManager) {
+                                                    const config = window.StateManager.getConfig();
+                                                    const configValue = parseFloat(config.value || 0);
+                                                    if (configValue > 0) {
+                                                        realEntryAmount = configValue.toFixed(2);
+                                                        chrome.runtime.sendMessage({ 
+                                                            action: 'addLog', 
+                                                            logMessage: `Valor real da entrada capturado do StateManager: ${realEntryAmount}`, 
+                                                            level: 'DEBUG', 
+                                                            source: 'trade-history.js-injected' 
+                                                        });
+                                                    }
+                                                }
+                                            } catch (error) {
+                                                chrome.runtime.sendMessage({ 
+                                                    action: 'addLog', 
+                                                    logMessage: `Erro ao obter valor real do StateManager: ${error.message}`, 
+                                                    level: 'WARN', 
+                                                    source: 'trade-history.js-injected' 
+                                                });
                                             }
+                                            
+                                            // Armazenar último valor para cálculos (usar valor real)
+                                            window.lastAmount = realEntryAmount;
 
                                             const TradeTypeElement = node.querySelector('.deals-noty__value')?.textContent;
-                                            const payment = (parseFloat(profit) + parseFloat(window.lastAmount || 0)).toFixed(2);
+                                            const payment = (parseFloat(profit) + parseFloat(realEntryAmount)).toFixed(2);
                                             
                                             const tradeStatus = getTradeType(tradeTitle);
                                             const symbol = node.querySelector('.deals-noty__symbol-title')?.textContent;
                                             const timestamp = Date.now();
 
-                                            // Estruturar dados da operação
+                                            // Estruturar dados da operação com valor real
                                             const result = {
                                                 status: tradeStatus,
                                                 success: (profit > 0),
                                                 profit: profit,
-                                                amount: window.lastAmount || amountValue,
+                                                amount: realEntryAmount, // *** CORREÇÃO: Usar valor real ***
                                                 action: TradeTypeElement === 'Buy' || TradeTypeElement === 'Sell' ? payment : profit,
                                                 symbol: symbol,
                                                 timestamp: timestamp
@@ -498,8 +523,24 @@ window.TradeManager.History = (function() {
             profitCurrent = 0;
         }
         
+        // *** CORREÇÃO: Também atualizar o saldo no index ***
+        const lastProfitElement = document.querySelector('#last-profit');
+        if (lastProfitElement) {
+            lastProfitElement.textContent = 'R$ 0,00';
+        }
+        
         operationsCache = {};
         localStorage.removeItem('tradeOperations');
+        
+        // *** CORREÇÃO: Notificar outros módulos sobre a limpeza ***
+        try {
+            chrome.runtime.sendMessage({
+                action: 'historyCleared',
+                timestamp: Date.now()
+            });
+        } catch (e) {
+            // Ignorar erros de comunicação
+        }
         
         logToSystem("Histórico de operações limpo", "INFO");
     };
@@ -693,6 +734,9 @@ window.TradeManager.History = (function() {
                 // Disparar o evento
                 document.dispatchEvent(operationResultEvent);
                 logToSystem(`Evento 'operationResult' disparado`, 'DEBUG');
+                
+                // *** REMOVIDO: A chamada completeOperationCycle estava causando mudança indevida de status ***
+                // O StateManager já controla adequadamente o status baseado na configuração de automação
             } catch (eventError) {
                 logToSystem(`Erro ao disparar evento: ${eventError.message}`, 'ERROR');
             }
@@ -745,4 +789,4 @@ function toUpdateStatus(message, type = 'info', duration = 3000) {
             duration: duration
         });
     }
-} 
+}

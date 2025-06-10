@@ -231,6 +231,44 @@ const executeAnalysis = (tabId, sendResponse, metadata = {}) => {
   });
 };
 
+// ================== AUTOMAÇÃO HANDLERS ==================
+/**
+ * Manipula parada automática da automação
+ * @param {object} message - Mensagem com dados da parada
+ */
+const handleAutomationStopped = (message) => {
+    const { reason, profit, target, stopLossLimit } = message;
+    
+    console.log(`Automação parada automaticamente: ${reason}`);
+    
+    // Log detalhado baseado no motivo
+    switch (reason) {
+        case 'daily_profit_reached':
+            addLog(`Meta de lucro diária atingida! Lucro atual: ${profit}, Meta: ${target}`, 'SUCCESS');
+            break;
+        case 'stop_loss_triggered':
+            addLog(`STOP LOSS acionado! Perda atual: ${profit}, Limite: -${stopLossLimit}`, 'ERROR');
+            break;
+        default:
+            addLog(`Automação parada: ${reason}`, 'INFO');
+    }
+    
+    // Notificar todas as abas sobre a parada
+    chrome.tabs.query({}, (tabs) => {
+        tabs.forEach(tab => {
+            if (tab.url && (tab.url.includes('pocketoption.com') || tab.url.includes('chrome-extension'))) {
+                chrome.tabs.sendMessage(tab.id, {
+                    action: 'AUTOMATION_STOPPED_NOTIFICATION',
+                    reason: reason,
+                    data: message
+                }).catch(() => {
+                    // Ignorar erros de comunicação com abas inativas
+                });
+            }
+        });
+    });
+};
+
 // ================== EVENT LISTENERS ==================
 // Função para formatar o timestamp no padrão desejado
 function formatTimestamp(date = new Date()) {
@@ -474,7 +512,139 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         return false;
     }
-    
+
+    // *** NOVO: Handler para cancelamento de operação via chrome.runtime ***
+    if (message.action === 'CANCEL_OPERATION_REQUEST') {
+        console.log(`Background: Processando cancelamento - ${message.reason}`);
+        
+        try {
+            // Obter configuração atual de automação
+            chrome.storage.sync.get(['autoActive'], (result) => {
+                const automationActive = result.autoActive || false;
+                
+                // Enviar comando para todas as tabs ativas cancelarem a operação
+                chrome.tabs.query({active: true}, (tabs) => {
+                    tabs.forEach(tab => {
+                        if (tab.id && tab.status === 'complete') {
+                            chrome.tabs.sendMessage(tab.id, {
+                                action: 'FORCE_CANCEL_OPERATION',
+                                reason: message.reason,
+                                timestamp: message.timestamp
+                            }).catch(err => {
+                                console.debug('Tab não disponível para cancelamento');
+                            });
+                        }
+                    });
+                });
+                
+                // Responder imediatamente
+                if (sendResponse) {
+                    sendResponse({ 
+                        success: true, 
+                        message: 'Cancelamento processado',
+                        automationActive: automationActive,
+                        timestamp: Date.now()
+                    });
+                }
+                
+                console.log('Background: Cancelamento enviado para tabs ativas');
+            });
+        } catch (error) {
+            console.error('Background: Erro ao processar cancelamento:', error);
+            if (sendResponse) {
+                sendResponse({ 
+                    success: false, 
+                    error: error.message 
+                });
+            }
+        }
+                return true; // Resposta assíncrona
+    }
+
+    // *** NOVO: Handler para parada automática da automação ***
+    if (message.action === 'AUTOMATION_STOPPED') {
+        console.log(`Background: Processando parada automática da automação`);
+        
+        try {
+            handleAutomationStopped(message);
+            
+            if (sendResponse) {
+                sendResponse({ 
+                    success: true, 
+                    message: 'Parada automática processada',
+                    timestamp: Date.now()
+                });
+            }
+        } catch (error) {
+            console.error('Background: Erro ao processar parada automática:', error);
+            if (sendResponse) {
+                sendResponse({ 
+                    success: false, 
+                    error: error.message 
+                });
+            }
+        }
+        return false; // Fire-and-forget
+    }
+
+    // *** NOVO: Handler para iniciar operação via chrome.runtime ***
+    if (message.action === 'START_OPERATION_REQUEST') {
+        console.log(`Background: Processando início de operação`);
+        
+        try {
+            // Obter configuração atual de automação
+            chrome.storage.sync.get(['userConfig'], (result) => {
+                const config = result.userConfig || {};
+                const automationActive = config.automation || false;
+                
+                if (automationActive) {
+                    // Enviar comando para todas as tabs ativas iniciarem operação
+                    chrome.tabs.query({active: true}, (tabs) => {
+                        tabs.forEach(tab => {
+                            if (tab.id && tab.status === 'complete') {
+                                chrome.tabs.sendMessage(tab.id, {
+                                    action: 'FORCE_START_OPERATION',
+                                    timestamp: message.timestamp
+                                }).catch(err => {
+                                    console.debug('Tab não disponível para início de operação');
+                                });
+                            }
+                        });
+                    });
+                    
+                    // Responder imediatamente
+                    if (sendResponse) {
+                        sendResponse({ 
+                            success: true, 
+                            message: 'Operação iniciada com sucesso',
+                            automationActive: automationActive,
+                            timestamp: Date.now()
+                        });
+                    }
+                    
+                    console.log('Background: Início de operação enviado para tabs ativas');
+                } else {
+                    // Automação não está ativa
+                    if (sendResponse) {
+                        sendResponse({ 
+                            success: false, 
+                            error: 'A automação está desativada. Ative-a nas configurações.'
+                        });
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('Background: Erro ao processar início de operação:', error);
+            if (sendResponse) {
+                sendResponse({ 
+                    success: false, 
+                    error: error.message 
+                });
+            }
+        }
+        return true; // Resposta assíncrona
+    }
+
     // Handler para captura de imagem (modo tradicional com callback)
     if (message.action === 'initiateCapture' && !message.useEventResponseMode && !isProcessing) {
         isProcessing = true; // Marcar como processando para evitar chamadas paralelas

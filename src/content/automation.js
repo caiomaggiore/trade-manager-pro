@@ -184,6 +184,165 @@ async function ensureBestAsset(minPayout = 85, preferredCategory = 'crypto') {
 }
 
 // ======================================================================
+// =================== SISTEMA DE MONITORAMENTO CONTÍNUO ===============
+// ======================================================================
+
+/**
+ * Sistema de monitoramento contínuo de payout durante automação ativa
+ */
+let payoutMonitoringInterval = null;
+let isPayoutMonitoringActive = false;
+
+/**
+ * Iniciar monitoramento contínuo de payout
+ */
+function startPayoutMonitoring() {
+    // Parar monitoramento anterior se existir
+    stopPayoutMonitoring();
+    
+    sendToLogSystem('🔄 Iniciando monitoramento contínuo de payout...', 'INFO');
+    isPayoutMonitoringActive = true;
+    
+    // Verificar payout a cada 10 segundos
+    payoutMonitoringInterval = setInterval(async () => {
+        try {
+            // Verificar se ainda está em modo automático
+            const result = await new Promise((resolve) => {
+                chrome.storage.sync.get(['userConfig'], resolve);
+            });
+            
+            const config = result.userConfig || {};
+            if (!config.automation) {
+                sendToLogSystem('🛑 Automação desativada. Parando monitoramento de payout.', 'INFO');
+                stopPayoutMonitoring();
+                return;
+            }
+            
+            // Verificar payout atual
+            const minPayoutRequired = parseFloat(config.minPayout) || 80;
+            const payoutBehavior = config.payoutBehavior || 'cancel';
+            
+            const payoutResult = await getCurrentPayout();
+            const currentPayout = payoutResult.payout;
+            
+            sendToLogSystem(`🔍 Monitoramento: Payout atual ${currentPayout}% vs mínimo ${minPayoutRequired}%`, 'DEBUG');
+            
+            // Se payout estiver inadequado, aplicar comportamento
+            if (currentPayout < minPayoutRequired) {
+                sendToLogSystem(`⚠️ PAYOUT INADEQUADO detectado durante monitoramento! (${currentPayout}% < ${minPayoutRequired}%)`, 'WARN');
+                toUpdateStatus(`Payout inadequado detectado: ${currentPayout}%`, 'warn', 5000);
+                
+                // Parar monitoramento temporariamente para evitar execuções múltiplas
+                stopPayoutMonitoring();
+                
+                // Aplicar comportamento configurado
+                await handlePayoutIssue(currentPayout, minPayoutRequired, payoutBehavior, config);
+            }
+            
+        } catch (error) {
+            sendToLogSystem(`❌ Erro no monitoramento de payout: ${error.message}`, 'ERROR');
+        }
+    }, 10000); // 10 segundos
+    
+    sendToLogSystem('✅ Monitoramento contínuo de payout ativo (verificação a cada 10s)', 'SUCCESS');
+}
+
+/**
+ * Parar monitoramento contínuo de payout
+ */
+function stopPayoutMonitoring() {
+    if (payoutMonitoringInterval) {
+        clearInterval(payoutMonitoringInterval);
+        payoutMonitoringInterval = null;
+        sendToLogSystem('🛑 Monitoramento contínuo de payout parado', 'INFO');
+    }
+    isPayoutMonitoringActive = false;
+}
+
+/**
+ * Tratar problema de payout detectado durante monitoramento
+ */
+async function handlePayoutIssue(currentPayout, minPayoutRequired, payoutBehavior, config) {
+    sendToLogSystem(`🚨 Tratando problema de payout: ${currentPayout}% < ${minPayoutRequired}%, comportamento: ${payoutBehavior}`, 'INFO');
+    
+    switch (payoutBehavior) {
+        case 'cancel':
+            sendToLogSystem(`❌ Cancelando automação devido a payout inadequado (${currentPayout}% < ${minPayoutRequired}%)`, 'WARN');
+            toUpdateStatus(`Automação cancelada: payout inadequado (${currentPayout}%)`, 'error', 8000);
+            
+            // Cancelar operação atual
+            if (typeof window.cancelCurrentOperation === 'function') {
+                window.cancelCurrentOperation(`Payout inadequado: ${currentPayout}% < ${minPayoutRequired}%`);
+            }
+            break;
+            
+        case 'wait':
+            sendToLogSystem(`⏳ Pausando automação até payout melhorar (${currentPayout}% → ${minPayoutRequired}%)`, 'INFO');
+            toUpdateStatus(`Aguardando payout melhorar: ${currentPayout}% → ${minPayoutRequired}%`, 'info', 0);
+            
+            // Iniciar monitoramento de espera
+            await waitForPayoutImprovement(minPayoutRequired, 10, 
+                () => {
+                    sendToLogSystem('✅ Payout melhorou! Retomando automação...', 'SUCCESS');
+                    toUpdateStatus('Payout adequado! Retomando automação...', 'success', 3000);
+                    
+                    // Retomar monitoramento contínuo
+                    setTimeout(() => startPayoutMonitoring(), 2000);
+                },
+                (error) => {
+                    if (error === 'USER_CANCELLED') {
+                        sendToLogSystem('🛑 Aguardo de payout cancelado pelo usuário', 'INFO');
+                        toUpdateStatus('Aguardo cancelado', 'info', 3000);
+                    } else {
+                        sendToLogSystem(`❌ Erro durante aguardo de payout: ${error}`, 'ERROR');
+                    }
+                }
+            );
+            break;
+            
+        case 'switch':
+            sendToLogSystem(`🔄 Trocando ativo devido a payout inadequado (${currentPayout}% < ${minPayoutRequired}%)`, 'INFO');
+            toUpdateStatus(`Trocando ativo: payout inadequado (${currentPayout}%)`, 'warn', 4000);
+            
+            try {
+                const assetConfig = config.assetSwitching || {};
+                const preferredCategory = assetConfig.preferredCategory || 'crypto';
+                
+                const assetResult = await ensureBestAsset(minPayoutRequired, preferredCategory);
+                
+                if (assetResult.success) {
+                    sendToLogSystem(`✅ Ativo trocado com sucesso durante monitoramento: ${assetResult.message}`, 'SUCCESS');
+                    toUpdateStatus(`Ativo trocado: ${assetResult.message}`, 'success', 4000);
+                    
+                    // Retomar monitoramento após troca
+                    setTimeout(() => startPayoutMonitoring(), 3000);
+                } else {
+                    sendToLogSystem(`❌ Falha na troca de ativo durante monitoramento: ${assetResult.error}`, 'ERROR');
+                    toUpdateStatus(`Erro na troca de ativo: ${assetResult.error}`, 'error', 5000);
+                    
+                    // Cancelar automação se não conseguir trocar ativo
+                    if (typeof window.cancelCurrentOperation === 'function') {
+                        window.cancelCurrentOperation(`Falha na troca de ativo: ${assetResult.error}`);
+                    }
+                }
+            } catch (error) {
+                sendToLogSystem(`❌ Erro durante troca de ativo: ${error.message}`, 'ERROR');
+                toUpdateStatus(`Erro na troca de ativo: ${error.message}`, 'error', 5000);
+                
+                // Cancelar automação em caso de erro
+                if (typeof window.cancelCurrentOperation === 'function') {
+                    window.cancelCurrentOperation(`Erro na troca de ativo: ${error.message}`);
+                }
+            }
+            break;
+            
+        default:
+            sendToLogSystem(`❌ Comportamento de payout desconhecido: ${payoutBehavior}`, 'ERROR');
+            toUpdateStatus(`Erro: comportamento desconhecido (${payoutBehavior})`, 'error', 5000);
+    }
+}
+
+// ======================================================================
 // =================== INTEGRAÇÃO COM SISTEMA DE AUTOMAÇÃO =============
 // ======================================================================
 
@@ -548,6 +707,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ success: true });
         return true;
     }
+    
+    // *** NOVO: Handler para parar monitoramento contínuo ***
+    if (message.action === 'STOP_PAYOUT_MONITORING') {
+        sendToLogSystem(`🛑 Recebido comando para parar monitoramento contínuo: ${message.reason}`, 'INFO');
+        stopPayoutMonitoring();
+        sendResponse({ success: true, message: 'Monitoramento contínuo parado' });
+        return true;
+    }
 });
 
 (function() {
@@ -595,6 +762,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const msg = "Modo automatico desativado.";
                 sendToLogSystem(msg, 'WARN');
                 toUpdateStatus(msg, 'warn');
+                
+                // Parar monitoramento se automação estiver desativada
+                if (isPayoutMonitoringActive) {
+                    stopPayoutMonitoring();
+                }
+                
                 return; // Interrompe se desligada
             }
 
@@ -634,22 +807,61 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 return;
             }
 
+            // *** CORREÇÃO: Verificação de stop loss ***
+            const stopLossLimit = parseFloat(config.stopLoss) || 0;
+            if (stopLossLimit > 0 && currentProfit <= -stopLossLimit) {
+                const stopLossMsg = `STOP LOSS acionado! Perda atual: ${currentProfit} >= limite: -${stopLossLimit}. Parando automação automaticamente.`;
+                sendToLogSystem(stopLossMsg, 'ERROR');
+                toUpdateStatus(stopLossMsg, 'error', 10000);
+                
+                // *** NOVO: Parar automação quando stop loss é acionado ***
+                try {
+                    // Desativar automação nas configurações
+                    const newConfig = { ...config, automation: false };
+                    chrome.storage.sync.set({ userConfig: newConfig }, () => {
+                        if (chrome.runtime.lastError) {
+                            sendToLogSystem(`Erro ao desativar automação por stop loss: ${chrome.runtime.lastError.message}`, 'ERROR');
+                        } else {
+                            sendToLogSystem('Automação desativada automaticamente por STOP LOSS', 'ERROR');
+                            
+                            // *** NOVO: Resetar status do sistema usando StateManager ***
+                            if (window.StateManager) {
+                                window.StateManager.stopAutomation();
+                                sendToLogSystem('Status do sistema resetado após STOP LOSS', 'ERROR');
+                            }
+                            
+                            // Parar monitoramento de payout
+                            if (isPayoutMonitoringActive) {
+                                stopPayoutMonitoring();
+                            }
+                            
+                            // Notificar outros módulos sobre parada por stop loss
+                            chrome.runtime.sendMessage({
+                                action: 'AUTOMATION_STOPPED',
+                                reason: 'stop_loss_triggered',
+                                profit: currentProfit,
+                                stopLossLimit: stopLossLimit
+                            });
+                        }
+                    });
+                } catch (error) {
+                    sendToLogSystem(`Erro ao parar automação por stop loss: ${error.message}`, 'ERROR');
+                }
+                return;
+            }
+            
             if (currentProfit < dailyProfitTarget) {
                 const conditionMsg = `Automação: Condição atendida (${currentProfit} < ${dailyProfitTarget}). Verificando payout atual...`;
                 sendToLogSystem(conditionMsg, 'INFO');
                 toUpdateStatus('Automação: Verificando payout atual...', 'info', 3000);
                 
-                // Obter configurações de troca de ativos do StateManager
-                let assetConfig = { enabled: false, minPayout: 85, preferredCategory: 'crypto' };
-                if (window.StateManager) {
-                    assetConfig = window.StateManager.getAssetSwitchingConfig();
-                }
+                // *** CORREÇÃO: Obter configurações de payout diretamente do config ***
+                // O payoutBehavior define o comportamento, não apenas assetSwitching.enabled
+                const minPayoutRequired = parseFloat(config.minPayout) || 80;
+                const payoutBehavior = config.payoutBehavior || 'cancel';
                 
-                // Log da configuração de troca de ativos para debug
-                sendToLogSystem(`🔧 [runAutomationCheck] Configuração de troca de ativos: enabled=${assetConfig.enabled}, minPayout=${assetConfig.minPayout}, category=${assetConfig.preferredCategory}, checkBeforeAnalysis=${assetConfig.checkBeforeAnalysis}`, 'DEBUG');
-                
-                // Usar o payout mínimo configurado (padrão 75% baseado no log)
-                const minPayoutRequired = assetConfig.minPayout || 75;
+                // Log da configuração de payout para debug
+                sendToLogSystem(`🔧 [runAutomationCheck] Configuração de payout: minimo=${minPayoutRequired}%, comportamento=${payoutBehavior}`, 'DEBUG');
                 
                 // *** LÓGICA CORRIGIDA: Verificar payout atual ANTES de decidir trocar ***
                 sendToLogSystem(`🔍 Verificando payout atual (mínimo: ${minPayoutRequired}%)...`, 'INFO');
@@ -669,6 +881,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     if (analyzeBtn) {
                                     sendToLogSystem('Clicando #analyzeBtn para iniciar análise (payout adequado)', 'DEBUG');
                         analyzeBtn.click();
+                                    
+                                    // *** NOVO: Iniciar monitoramento contínuo de payout ***
+                                    if (!isPayoutMonitoringActive) {
+                                        setTimeout(() => startPayoutMonitoring(), 2000);
+                                    }
                     } else {
                                     const errorMsg = 'Botão #analyzeBtn não encontrado';
                         sendToLogSystem(errorMsg, 'ERROR');
@@ -694,6 +911,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                         if (analyzeBtn) {
                                             sendToLogSystem('Clicando #analyzeBtn após aprovação de payout', 'DEBUG');
                                             analyzeBtn.click();
+                                            
+                                            // *** NOVO: Iniciar monitoramento contínuo de payout ***
+                                            if (!isPayoutMonitoringActive) {
+                                                setTimeout(() => startPayoutMonitoring(), 2000);
+                                            }
                                         } else {
                                             const errorMsg = 'Botão #analyzeBtn não encontrado após aprovação de payout';
                                             sendToLogSystem(errorMsg, 'ERROR');
@@ -745,9 +967,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         }
                     });
             } else {
-                const resultMsg = `Automação: Meta de lucro atingida ou superada (${currentProfit} >= ${dailyProfitTarget}). Nenhuma análise necessária.`;
-                sendToLogSystem(resultMsg, 'INFO');
-                toUpdateStatus(resultMsg, 'success');
+                // *** CORREÇÃO: Quando meta de lucro é atingida, PARAR automação ***
+                const resultMsg = `Meta de lucro diária ATINGIDA! (${currentProfit} >= ${dailyProfitTarget}). Parando automação automaticamente.`;
+                sendToLogSystem(resultMsg, 'SUCCESS');
+                toUpdateStatus(resultMsg, 'success', 10000);
+                
+                // *** NOVO: Parar automação quando meta é atingida ***
+                try {
+                    // Desativar automação nas configurações
+                    const newConfig = { ...config, automation: false };
+                    chrome.storage.sync.set({ userConfig: newConfig }, () => {
+                        if (chrome.runtime.lastError) {
+                            sendToLogSystem(`Erro ao desativar automação: ${chrome.runtime.lastError.message}`, 'ERROR');
+                        } else {
+                            sendToLogSystem('Automação desativada automaticamente após atingir meta diária', 'SUCCESS');
+                            
+                            // *** NOVO: Resetar status do sistema usando StateManager ***
+                            if (window.StateManager) {
+                                window.StateManager.stopAutomation();
+                                sendToLogSystem('Status do sistema resetado após atingir meta diária', 'SUCCESS');
+                            }
+                            
+                            // Parar monitoramento de payout
+                            if (isPayoutMonitoringActive) {
+                                stopPayoutMonitoring();
+                            }
+                            
+                            // Notificar outros módulos sobre parada
+                            chrome.runtime.sendMessage({
+                                action: 'AUTOMATION_STOPPED',
+                                reason: 'daily_profit_reached',
+                                profit: currentProfit,
+                                target: dailyProfitTarget
+                            });
+                        }
+                    });
+                } catch (error) {
+                    sendToLogSystem(`Erro ao parar automação: ${error.message}`, 'ERROR');
+                }
             }
         }); // Fim callback storage.sync.get
     }
@@ -800,14 +1057,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         } else {
                             sendToLogSystem('Última operação foi uma PERDA com Gale ativo. Automação aguardará o sistema Gale. Nenhuma nova análise será iniciada pela automação principal.', 'INFO');
                             // Não faz nada, deixa o Gale System lidar com a perda
+                            // Mas continuar monitorando payout
+                            if (!isPayoutMonitoringActive && config.automation) {
+                                setTimeout(() => startPayoutMonitoring(), 1000);
+                            }
                         }
                     } else {
                         // Gale está INATIVO
                         sendToLogSystem('Modo Gale INATIVO detectado. Automação prossegue para runAutomationCheck independentemente do resultado anterior.', 'INFO');
                         runAutomationCheck();
+                        
+                        // Garantir que monitoramento de payout esteja ativo
+                        if (!isPayoutMonitoringActive && config.automation) {
+                            setTimeout(() => startPayoutMonitoring(), 1000);
+                        }
                     }
                 } else {
                     sendToLogSystem('Automação está DESATIVADA nas configurações. \'operationResult\' ignorado para ciclo de automação.', 'INFO');
+                    
+                    // Parar monitoramento se automação estiver desativada
+                    if (isPayoutMonitoringActive) {
+                        stopPayoutMonitoring();
+                    }
                 }
             });
         });

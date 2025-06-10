@@ -231,11 +231,20 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         results: analysisResult
                     };
                     
-                    // Finalizar operação com sucesso
+                    // Finalizar operação com sucesso - só alterar status se não estiver em modo automático
                     if (window.StateManager) {
-                        window.StateManager.stopOperation('completed');
+                        const automationState = window.StateManager.getAutomationState();
+                        const isInAutomaticMode = automationState && automationState.isRunning;
+                        
+                        if (!isInAutomaticMode) {
+                            // Só parar operação se não estiver em modo automático
+                            window.StateManager.stopOperation('completed');
+                            updateSystemOperationalStatus('Pronto');
+                        }
+                        // Em modo automático, manter status "Operando..." e deixar o sistema de automação controlar
+                    } else {
+                        updateSystemOperationalStatus('Pronto');
                     }
-                    updateSystemOperationalStatus('Pronto');
                     
                     // Registrar sucesso
                     addLog(`Análise concluída com sucesso: ${analysisResult.action}`, 'SUCCESS');
@@ -284,11 +293,20 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                             results: analysisResult
                         };
                         
-                        // Finalizar operação com sucesso
+                        // Finalizar operação com sucesso - só alterar status se não estiver em modo automático
                         if (window.StateManager) {
-                            window.StateManager.stopOperation('completed');
+                            const automationState = window.StateManager.getAutomationState();
+                            const isInAutomaticMode = automationState && automationState.isRunning;
+                            
+                            if (!isInAutomaticMode) {
+                                // Só parar operação se não estiver em modo automático
+                                window.StateManager.stopOperation('completed');
+                                updateSystemOperationalStatus('Pronto');
+                            }
+                            // Em modo automático, manter status "Operando..." e deixar o sistema de automação controlar
+                        } else {
+                            updateSystemOperationalStatus('Pronto');
                         }
-                        updateSystemOperationalStatus('Pronto');
                         
                         // Registrar sucesso
                         addLog(`Análise concluída com sucesso: ${analysisResult.action}`, 'SUCCESS');
@@ -827,23 +845,25 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     const cancelCurrentOperation = (reason = 'Cancelado pelo usuário') => {
         addLog(`Cancelando operação atual: ${reason}`, 'INFO');
         
-        // Finalizar operação no StateManager
-        if (window.StateManager) {
-            window.StateManager.stopOperation('cancelled');
-        }
-        updateSystemOperationalStatus('Pronto');
-        
-        // Limpar estado de operação no StateManager
-        if (window.StateManager) {
-            const currentConfig = window.StateManager.getConfig() || {};
-            const isAutomationActive = currentConfig.automation === true;
-            
-            // Atualizar estado para indicar que não há operação em andamento
-            window.StateManager.updateAutomationState(isAutomationActive, null);
-            
-            // Atualizar visibilidade dos botões
-            updateUserControlsVisibility(isAutomationActive, false);
-        }
+        // *** CORREÇÃO: Usar chrome.runtime ao invés de window.StateManager ***
+        chrome.runtime.sendMessage({
+            action: 'CANCEL_OPERATION_REQUEST',
+            reason: reason,
+            timestamp: Date.now()
+        }, (response) => {
+            if (response && response.success) {
+                addLog(`Cancelamento processado: ${reason}`, 'SUCCESS');
+                
+                // Atualizar status local
+                updateSystemOperationalStatus('Pronto');
+                
+                // Atualizar visibilidade dos botões
+                const automationActive = response.automationActive || false;
+                updateUserControlsVisibility(automationActive, false);
+            } else {
+                addLog(`Erro no cancelamento: ${response ? response.error : 'Sem resposta'}`, 'ERROR');
+            }
+        });
         
         // Interromper monitoramento se disponível
         if (window.TradeManager?.History) {
@@ -864,6 +884,17 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         if (typeof cancelPayoutMonitoring === 'function') {
             cancelPayoutMonitoring();
             addLog('Monitoramento de payout cancelado', 'DEBUG');
+        }
+        
+        // *** NOVO: Parar monitoramento contínuo de payout ***
+        try {
+            chrome.runtime.sendMessage({
+                action: 'STOP_PAYOUT_MONITORING',
+                reason: reason
+            });
+            addLog('Solicitação de parada do monitoramento contínuo enviada', 'DEBUG');
+        } catch (error) {
+            addLog(`Erro ao solicitar parada do monitoramento contínuo: ${error.message}`, 'WARN');
         }
         
         // Atualizar status
@@ -918,76 +949,29 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
 
         if (elements.startOperation) {
             elements.startOperation.addEventListener('click', () => {
-                // Verificar o estado atual da automação no StateManager
-                if (window.StateManager && typeof window.StateManager.getConfig === 'function') {
-                    const currentConfig = window.StateManager.getConfig() || {};
-                    const isAutomationActive = currentConfig.automation === true;
-                    
-                    // Verificar se o módulo História está disponível
-                    if (window.TradeManager?.History) {
-                        if (isAutomationActive) {
-                            // Marcar que uma operação está iniciando
-                            addLog('Iniciando operação automática...', 'INFO');
-                            updateStatus('Iniciando operação automática...', 'info');
-                            
-                            // Iniciar status operacional
-                            window.StateManager.startOperation('automatic_monitoring');
-                            updateSystemOperationalStatus('Operando...');
-                            
-                            // Atualizar visibilidade dos botões imediatamente
-                            updateUserControlsVisibility(true, true);
-                            
-                            // Iniciar o monitoramento
-                            window.TradeManager.History.startMonitoring()
-                                .then(() => {
-                                    addLog('Monitoramento de operações iniciado com sucesso', 'SUCCESS');
-                                    updateStatus('Operação automática em andamento', 'success');
-                                    
-                                    // Atualizar estado para operação em execução
-                                    const currentState = window.StateManager.getAutomationState();
-                                    if (currentState.currentOperation) {
-                                        window.StateManager.updateAutomationState(true, {
-                                            ...currentState.currentOperation,
-                                            status: 'running'
-                                        });
-                                    }
-                                })
-                                .catch(error => {
-                                    addLog(`Erro ao iniciar monitoramento: ${error.message}`, 'ERROR');
-                                    
-                                    // Reportar erro ao sistema
-                                    reportSystemError(`Falha ao iniciar monitoramento: ${error.message}`, {
-                                        operation: 'start_monitoring',
-                                        error: error
-                                    });
-                                    
-                                    updateStatus('Falha ao iniciar operação automática', 'error');
-                                    
-                                    // Limpar estado de operação em caso de erro
-                                    window.StateManager.updateAutomationState(true, null);
-                                    updateUserControlsVisibility(true, false);
-                                });
-                        } else {
-                            // Se não estiver ativa, apenas mostrar uma mensagem
-                            addLog('Tentativa de iniciar operação com automação desativada', 'WARN');
-                            updateStatus('A automação está desativada. Ative-a nas configurações.', 'warn');
-                        }
+                addLog('Botão "Iniciar Automático" clicado', 'INFO');
+                
+                // *** CORREÇÃO: Usar chrome.runtime ao invés de window.StateManager ***
+                chrome.runtime.sendMessage({
+                    action: 'START_OPERATION_REQUEST',
+                    timestamp: Date.now()
+                }, (response) => {
+                    if (response && response.success) {
+                        addLog(`Operação iniciada: ${response.message}`, 'SUCCESS');
+                        
+                        // Atualizar status local imediatamente
+                        updateSystemOperationalStatus('Operando...');
+                        updateStatus('Operação automática em andamento', 'success');
+                        
+                        // Atualizar visibilidade dos botões para mostrar "Cancelar Operação"
+                        updateUserControlsVisibility(response.automationActive, true);
+                        
                     } else {
-                        // Fallback para mensagem de erro
-                        addLog('Módulo de histórico não disponível', 'ERROR');
-                        reportSystemError('Módulo de histórico não disponível', {
-                            operation: 'start_operation',
-                            missing_module: 'TradeManager.History'
-                        });
-                        updateStatus('Módulo de histórico não disponível', 'error');
+                        const errorMsg = response ? response.error : 'Sem resposta';
+                        addLog(`Erro ao iniciar operação: ${errorMsg}`, 'ERROR');
+                        updateStatus(`Falha ao iniciar: ${errorMsg}`, 'error');
                     }
-                } else {
-                    // Se não conseguir acessar o estado via StateManager
-                    reportSystemError('StateManager não disponível', {
-                        operation: 'start_operation'
-                    });
-                    updateStatus('Não foi possível verificar o status da automação', 'error');
-                }
+                });
             });
         }
         
@@ -1015,10 +999,16 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                                 .then(() => {
                             addLog('Operação automática cancelada com sucesso', 'SUCCESS');
                             updateStatus('Operação cancelada pelo usuário', 'info');
+                            
+                            // *** CORREÇÃO: Atualizar status do sistema ***
+                            updateSystemOperationalStatus('Pronto');
                                 })
                                 .catch(error => {
                             addLog(`Erro ao cancelar operação: ${error.message}`, 'ERROR');
                             updateStatus('Erro ao cancelar operação', 'error');
+                            
+                            // *** CORREÇÃO: Mesmo em caso de erro, voltar para Pronto ***
+                            updateSystemOperationalStatus('Pronto');
                                 });
                         } else {
                     // Fallback para cancelamento direto
@@ -1029,6 +1019,9 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                             addLog('Temporizador de automação cancelado', 'INFO');
                         }
                         updateStatus('Operação cancelada pelo usuário', 'info');
+                        
+                        // *** CORREÇÃO: Atualizar status do sistema ***
+                        updateSystemOperationalStatus('Pronto');
                     }
                 
                 // Cancelar qualquer monitoramento de payout em andamento
@@ -1380,6 +1373,9 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                             tradeTime: config.period || 1,
                             autoActive: config.automation || false
                         });
+                        
+                        // *** CORREÇÃO: Atualizar payout mínimo no dashboard ***
+                        updateMinPayoutDisplay(config);
                         
                         // Atualizar visibilidade do painel de teste do Gale baseado no modo desenvolvedor
                         updateGaleTestPanelVisibility(config.devMode);
@@ -2119,6 +2115,119 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     // Se não estiver no contexto da extensão, apenas responde com sucesso
                     sendResponse({ success: true, status_ignored_not_extension_context: true });
                 }
+                return true;
+            }
+
+            // *** NOVO: Handler para cancelamento forçado via chrome.runtime ***
+            if (message.action === 'FORCE_CANCEL_OPERATION') {
+                logFunction(`Handler 'FORCE_CANCEL_OPERATION' recebida: ${message.reason}`, 'INFO');
+                
+                try {
+                    // *** EXCEÇÃO: Acesso direto ao StateManager para cancelamento urgente ***
+                    if (window.StateManager) {
+                        window.StateManager.stopOperation('cancelled');
+                        
+                        const currentConfig = window.StateManager.getConfig() || {};
+                        const isAutomationActive = currentConfig.automation === true;
+                        
+                        // Limpar operação atual mas manter estado de automação
+                        window.StateManager.updateAutomationState(isAutomationActive, null);
+                        
+                        addLog(`Operação cancelada via FORCE_CANCEL: ${message.reason}`, 'SUCCESS');
+                    }
+                    
+                    // Interromper monitoramento se disponível
+                    if (window.TradeManager?.History) {
+                        window.TradeManager.History.stopMonitoring()
+                            .catch(error => {
+                                addLog(`Erro ao parar monitoramento: ${error.message}`, 'ERROR');
+                            });
+                    }
+                    
+                    // Cancelar timeouts locais
+                    if (typeof automationTimeout !== 'undefined' && automationTimeout) {
+                        clearTimeout(automationTimeout);
+                        automationTimeout = null;
+                        addLog('Temporizador de automação cancelado', 'DEBUG');
+                    }
+                } catch (error) {
+                    addLog(`Erro no cancelamento forçado: ${error.message}`, 'ERROR');
+                }
+                
+                return; // Sair do handler
+            }
+
+            // *** NOVO: Handler para notificação de parada automática ***
+            if (message.action === 'AUTOMATION_STOPPED_NOTIFICATION') {
+                const { reason, data } = message;
+                
+                addLog(`Recebida notificação de parada automática: ${reason}`, 'INFO');
+                
+                try {
+                    // Atualizar UI baseado no motivo da parada
+                    switch (reason) {
+                        case 'daily_profit_reached':
+                            updateStatus(`🎯 Meta de lucro atingida! Automação parada automaticamente.`, 'success', 10000);
+                            break;
+                        case 'stop_loss_triggered':
+                            updateStatus(`🛑 STOP LOSS acionado! Automação parada automaticamente.`, 'error', 10000);
+                            break;
+                        default:
+                            updateStatus(`Automação parada automaticamente: ${reason}`, 'info', 5000);
+                    }
+                    
+                    // Garantir que o status do sistema seja atualizado
+                    updateSystemOperationalStatus('Pronto');
+                    
+                    // Atualizar visibilidade dos controles
+                    updateUserControlsVisibility(false, false);
+                    
+                    addLog(`Interface atualizada após parada automática: ${reason}`, 'SUCCESS');
+                } catch (error) {
+                    addLog(`Erro ao processar notificação de parada automática: ${error.message}`, 'ERROR');
+                }
+                
+                return; // Sair do handler
+            }
+
+            // *** NOVO: Handler para iniciar operação forçada via chrome.runtime ***
+            if (message.action === 'FORCE_START_OPERATION') {
+                logFunction(`Handler 'FORCE_START_OPERATION' recebida`, 'INFO');
+                
+                try {
+                    // *** EXCEÇÃO: Acesso direto ao StateManager para iniciar operação ***
+                    if (window.StateManager) {
+                        window.StateManager.startOperation('automatic_monitoring');
+                        
+                        const currentConfig = window.StateManager.getConfig() || {};
+                        const isAutomationActive = currentConfig.automation === true;
+                        
+                        // Atualizar estado para operação em execução
+                        window.StateManager.updateAutomationState(isAutomationActive, {
+                            type: 'automatic_monitoring',
+                            status: 'running',
+                            startTime: Date.now()
+                        });
+                        
+                        addLog('Operação iniciada via FORCE_START_OPERATION', 'SUCCESS');
+                    }
+                    
+                    // Iniciar monitoramento se disponível
+                    if (window.TradeManager?.History) {
+                        window.TradeManager.History.startMonitoring()
+                            .then(() => {
+                                addLog('Monitoramento de operações iniciado com sucesso', 'SUCCESS');
+                            })
+                            .catch(error => {
+                                addLog(`Erro ao iniciar monitoramento: ${error.message}`, 'ERROR');
+                            });
+                    }
+                    
+                } catch (error) {
+                    addLog(`Erro no handler FORCE_START_OPERATION: ${error.message}`, 'ERROR');
+                }
+                
+                sendResponse({ success: true, force_start_processed: true });
                 return true;
             }
 
