@@ -327,6 +327,56 @@ const safeExecuteBackground = async (fn, functionName, ...args) => {
     }
 };
 
+// Nova função para enviar logs para o sistema centralizado (via storage e broadcast)
+function addLog(message, level = 'INFO', source = 'background.js') {
+    try {
+        const now = new Date();
+        const formattedTimestamp = formatTimestamp(now);
+        const logEntry = {
+            message: message,
+            level: level,
+            source: source,
+            timestampFormatted: formattedTimestamp
+        };
+        
+        chrome.storage.local.get(['systemLogs'], function(result) {
+            if (chrome.runtime.lastError) {
+                console.error(`[background.js] Erro ao ler systemLogs do storage: ${chrome.runtime.lastError.message}`);
+                return;
+            }
+            let logs = result.systemLogs || [];
+            logs.push(logEntry);
+            // Limitar o número de logs armazenados (ex: 1000)
+            const MAX_LOGS = 1000;
+            if (logs.length > MAX_LOGS) {
+                logs = logs.slice(logs.length - MAX_LOGS);
+            }
+            chrome.storage.local.set({ systemLogs: logs }, function() {
+                if (chrome.runtime.lastError) {
+                    console.error(`[background.js] Erro ao salvar systemLogs no storage: ${chrome.runtime.lastError.message}`);
+                }
+            });
+        });
+        
+        // Broadcast para todas as abas (logs em tempo real)
+        chrome.tabs.query({}, (tabs) => {
+            for (const tab of tabs) {
+                // Só envie para abas que estão na página de logs da extensão
+                if (tab.url && tab.url.includes('logs.html')) {
+                    chrome.tabs.sendMessage(tab.id, { action: 'newLog', log: logEntry }, () => {
+                        // Silenciar o erro se não houver receiver
+                        if (chrome.runtime.lastError) {
+                            // Apenas ignore, não faça nada
+                        }
+                    });
+                }
+            }
+        });
+    } catch (e) {
+        console.error(`[background.js] Exceção na função addLog: ${e.message}`);
+    }
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Remover o log que causa poluição no console
     // console.log('Mensagem recebida no background:', message);
@@ -585,6 +635,125 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
         }
         return false; // Fire-and-forget
+    }
+
+    // *** NOVO: Handlers para novos módulos analisadores ***
+    if (message.action === 'EMERGENCY_STOP' || message.action === 'CRITICAL_STOP' || message.action === 'TARGET_REACHED') {
+        console.log(`Background: Processando ${message.action} do LimitsChecker`);
+        
+        // Log baseado no tipo de parada
+        const logLevel = message.action === 'EMERGENCY_STOP' ? 'ERROR' : 
+                        message.action === 'CRITICAL_STOP' ? 'ERROR' : 'SUCCESS';
+        
+        addLog(`LimitsChecker: ${message.data?.reason || 'Parada automática'}`, logLevel);
+        
+        // *** ESPECIAL: TARGET_REACHED - Desativar automação e resetar status ***
+        if (message.action === 'TARGET_REACHED') {
+            console.log('Background: Processando TARGET_REACHED - Desativando automação');
+            
+            // Desativar automação nas configurações
+            chrome.storage.sync.get(['userConfig'], (result) => {
+                if (result.userConfig) {
+                    const updatedConfig = { 
+                        ...result.userConfig, 
+                        automation: false 
+                    };
+                    chrome.storage.sync.set({ userConfig: updatedConfig }, () => {
+                        addLog('🔴 Automação desativada automaticamente após meta atingida', 'SUCCESS');
+                        console.log('Background: Automação desativada com sucesso após TARGET_REACHED');
+                    });
+                }
+            });
+            
+            // Log específico para meta atingida
+            const currentProfit = message.data?.currentProfit || 'N/A';
+            const targetProfit = message.data?.targetProfit || 'N/A';
+            addLog(`🎯 META ATINGIDA: Lucro atual ${currentProfit} atingiu/superou meta de ${targetProfit} - Sistema encerrado automaticamente`, 'SUCCESS');
+        }
+        
+        // Notificar todas as abas sobre a parada crítica
+        chrome.tabs.query({}, (tabs) => {
+            tabs.forEach(tab => {
+                if (tab.url && tab.url.includes('pocketoption.com')) {
+                    chrome.tabs.sendMessage(tab.id, {
+                        action: 'LIMITS_VIOLATION',
+                        type: message.action,
+                        data: message.data
+                    }).catch(() => {
+                        // Ignorar erros de comunicação
+                    });
+                }
+            });
+        });
+        
+        if (sendResponse) {
+            sendResponse({ success: true, processed: true });
+        }
+        
+        return true;
+    }
+
+    // *** NOVO: Handler para estatísticas de cache ***
+    if (message.action === 'CACHE_STATS_REQUEST') {
+        // Este será processado pelo content script que tem acesso ao cacheAnalyzer
+        if (sendResponse) {
+            sendResponse({ success: true, forwarded: true });
+        }
+        return true;
+    }
+
+    // *** NOVO: Handler para análise local ***
+    if (message.action === 'LOCAL_ANALYSIS_RESULT') {
+        console.log(`Background: Resultado de análise local: ${message.data?.confidence}% confiança`);
+        addLog(`Análise Local: ${message.data?.recommendation?.reason || 'Processada'}`, 'INFO');
+        
+        if (sendResponse) {
+            sendResponse({ success: true, logged: true });
+        }
+        return true;
+    }
+
+    // *** NOVO: Handler para eventos do Intelligent Gale ***
+    if (message.action === 'INTELLIGENT_GALE_EVENT') {
+        const { event, data } = message;
+        console.log(`Background: Evento do Intelligent Gale: ${event}`);
+        
+        // Log baseado no evento
+        switch (event) {
+            case 'gale_applied':
+                addLog(`🧠 Gale Inteligente aplicado - Nível: ${data.level}, Valor: ${data.value}, Risco: ${data.riskLevel}`, 'SUCCESS');
+                break;
+            case 'gale_stopped':
+                addLog(`🛑 Gale Inteligente parado - Motivo: ${data.reason}`, 'WARN');
+                break;
+            case 'gale_reset':
+                addLog(`🔄 Gale Inteligente resetado - Motivo: ${data.reason}`, 'INFO');
+                break;
+            default:
+                addLog(`Gale Inteligente - ${event}`, 'INFO');
+        }
+        
+        // Notificar abas se necessário
+        if (event === 'gale_stopped' || event === 'gale_applied') {
+            chrome.tabs.query({}, (tabs) => {
+                tabs.forEach(tab => {
+                    if (tab.url && tab.url.includes('pocketoption.com')) {
+                        chrome.tabs.sendMessage(tab.id, {
+                            action: 'INTELLIGENT_GALE_NOTIFICATION',
+                            event: event,
+                            data: data
+                        }).catch(() => {
+                            // Ignorar erros de comunicação
+                        });
+                    }
+                });
+            });
+        }
+        
+        if (sendResponse) {
+            sendResponse({ success: true, processed: true });
+        }
+        return true;
     }
 
     // *** NOVO: Handler para iniciar operação via chrome.runtime ***

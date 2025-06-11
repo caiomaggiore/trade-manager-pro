@@ -175,6 +175,77 @@ const processAnalysis = async (imageData, settings) => {
             throw new Error('Dados de imagem inválidos ou ausentes');
         }
         
+        // *** NOVO: Análise prévia com Local Pattern Detector ***
+        if (window.localPatternDetector) {
+            graphAddLog('Executando análise prévia local da imagem...', 'INFO');
+            
+            try {
+                const localAnalysis = await window.localPatternDetector.analyzeImage(imageData);
+                graphAddLog(`Análise local concluída - Confiança: ${localAnalysis.confidence}%`, 'INFO');
+                
+                // Verificar se a imagem tem qualidade suficiente para IA
+                if (!localAnalysis.readyForAI) {
+                    const reason = localAnalysis.recommendation.reason;
+                    const suggestions = localAnalysis.recommendation.suggestions || [];
+                    
+                    graphAddLog(`Imagem rejeitada pela análise local: ${reason}`, 'WARN');
+                    
+                    if (suggestions.length > 0) {
+                        graphAddLog(`Sugestões: ${suggestions.join(', ')}`, 'INFO');
+                    }
+                    
+                    // Retornar resultado de espera com base na análise local
+                    return {
+                        action: 'WAIT',
+                        reason: `Análise local: ${reason}. ${suggestions.length > 0 ? suggestions.join('. ') : ''}`,
+                        trust: Math.max(localAnalysis.confidence - 20, 30), // Reduzir confiança
+                        expiration: 3,
+                        localAnalysis: localAnalysis,
+                        source: 'local-detector'
+                    };
+                }
+                
+                // Log detalhes da análise local para contexto
+                graphAddLog(`Elementos detectados: Candlesticks=${localAnalysis.candlesticks.detected}, Indicadores=${localAnalysis.indicators.detected}`, 'DEBUG');
+                
+                // Adicionar contexto da análise local para a IA
+                settings.localContext = {
+                    confidence: localAnalysis.confidence,
+                    candlesticksCount: localAnalysis.candlesticks.totalCount,
+                    indicatorsCount: localAnalysis.indicators.lineCount,
+                    quality: localAnalysis.quality.score
+                };
+                
+            } catch (localError) {
+                graphAddLog(`Erro na análise local: ${localError.message}`, 'ERROR');
+                // Continuar com análise da IA mesmo se análise local falhar
+            }
+        } else {
+            graphAddLog('Local Pattern Detector não disponível, prosseguindo direto para IA', 'WARN');
+        }
+        
+        // *** NOVO: Verificar cache antes de chamar IA ***
+        if (window.cacheAnalyzer) {
+            const imageHash = btoa(imageData.substring(0, 100)).substring(0, 16);
+            const context = {
+                automation: settings.automation || false,
+                galeActive: settings.galeActive || false,
+                localContext: settings.localContext || null
+            };
+            
+            const cachedResult = window.cacheAnalyzer.getAIAnalysis(imageHash, context);
+            if (cachedResult) {
+                graphAddLog(`Resultado obtido do cache - economizando tokens da IA`, 'SUCCESS');
+                return {
+                    ...cachedResult,
+                    fromCache: true,
+                    cacheStats: window.cacheAnalyzer.getStats()
+                };
+            } else {
+                graphAddLog('Análise não encontrada no cache, enviando para IA...', 'INFO');
+            }
+        }
+
         // Montar payload para análise
         const payload = {
             contents: [{
@@ -263,6 +334,26 @@ const processAnalysis = async (imageData, settings) => {
         }
         
         graphAddLog(`Análise concluída: ${result.action} (${result.trust}% de confiança)`, 'success');
+        
+        // *** NOVO: Armazenar resultado no cache ***
+        if (window.cacheAnalyzer) {
+            try {
+                const imageHash = btoa(imageData.substring(0, 100)).substring(0, 16);
+                const context = {
+                    automation: settings.automation || false,
+                    galeActive: settings.galeActive || false,
+                    localContext: settings.localContext || null
+                };
+                
+                // Estimar tokens utilizados (aproximação)
+                const estimatedTokens = 1500; // Base + prompt + imagem
+                
+                window.cacheAnalyzer.setAIAnalysis(imageHash, context, result, estimatedTokens);
+                graphAddLog(`Resultado armazenado no cache (${estimatedTokens} tokens estimados)`, 'DEBUG');
+            } catch (cacheError) {
+                graphAddLog(`Erro ao armazenar no cache: ${cacheError.message}`, 'WARN');
+            }
+        }
         
         return {
             success: true,

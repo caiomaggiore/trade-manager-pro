@@ -48,8 +48,8 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 }, duration);
             }
         } else {
-            // Apenas logar no console se o elemento não for encontrado
-            console.warn('Elemento de status #status-processo não encontrado na UI');
+            // Silenciar warning para evitar spam no console
+            // console.warn('Elemento de status #status-processo não encontrado na UI');
         }
     };
     
@@ -2190,6 +2190,70 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 return; // Sair do handler
             }
 
+            // *** NOVO: Handler para violações de limites do LimitsChecker ***
+            if (message.action === 'LIMITS_VIOLATION') {
+                const { type, data } = message;
+                
+                addLog(`Violação de limite detectada: ${type}`, 'WARN');
+                
+                try {
+                    // Resetar UI
+                    updateSystemOperationalStatus('Pronto');
+                    
+                    // Atualizar visibilidade dos controles
+                    updateUserControlsVisibility(false, false);
+                    
+                    // Exibir notificação apropriada
+                    let notificationMsg = '';
+                    let notificationType = 'error';
+                    
+                    switch (type) {
+                        case 'EMERGENCY_STOP':
+                            notificationMsg = `🚨 PARADA DE EMERGÊNCIA: ${data?.reason || 'Condição crítica detectada'}`;
+                            notificationType = 'error';
+                            break;
+                        case 'CRITICAL_STOP':
+                            notificationMsg = `⚠️ PARADA CRÍTICA: ${data?.reason || 'Limite crítico atingido'}`;
+                            notificationType = 'error';
+                            break;
+                        case 'TARGET_REACHED':
+                            notificationMsg = `🎯 Meta atingida! Sistema pronto para nova sessão.`;
+                            notificationType = 'success';
+                            
+                            // *** RESETAR STATUS E INTERFACE ***
+                            setTimeout(() => {
+                                updateSystemOperationalStatus('PRONTO');
+                                updateAutomationStatusUI(false); // Desativar controles de automação
+                                
+                                // Resetar StateManager se disponível
+                                if (window.StateManager) {
+                                    try {
+                                        // Usar métodos que existem no StateManager
+                                        window.StateManager.updateOperationalStatus('Pronto');
+                                        window.StateManager.updateAutomationState(false, null);
+                                    } catch (error) {
+                                        addLog(`Erro ao resetar StateManager: ${error.message}`, 'WARN');
+                                    }
+                                }
+                                
+                                addLog('🎯 Sistema resetado para "PRONTO" após meta atingida', 'SUCCESS');
+                            }, 2000);
+                            break;
+                        default:
+                            notificationMsg = `Limite violado: ${type}`;
+                            notificationType = 'warn';
+                    }
+                    
+                    updateStatus(notificationMsg, notificationType, 15000);
+                    addLog(`Interface atualizada após violação de limite: ${type}`, 'SUCCESS');
+                    
+                } catch (error) {
+                    addLog(`Erro ao processar violação de limite: ${error.message}`, 'ERROR');
+                }
+                
+                return; // Sair do handler
+            }
+
             // *** NOVO: Handler para iniciar operação forçada via chrome.runtime ***
             if (message.action === 'FORCE_START_OPERATION') {
                 logFunction(`Handler 'FORCE_START_OPERATION' recebida`, 'INFO');
@@ -2853,6 +2917,39 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             throw error;
         }
     };
+
+    // *** NOVO: Listener para eventos críticos que resetam status ***
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.action === 'CRITICAL_STOP' || 
+            request.action === 'EMERGENCY_STOP' || 
+            request.action === 'TARGET_REACHED' ||
+            request.action === 'LIMITS_VIOLATION') {
+            
+            // Log do evento recebido
+            console.log('[Index] Evento crítico recebido:', request.action);
+            
+            // Resetar status para PRONTO após evento crítico
+            setTimeout(() => {
+                updateSystemOperationalStatus('Pronto');
+                console.log('[Index] Status resetado para PRONTO após:', request.action);
+                
+                // Notificação especial para TARGET_REACHED
+                if (request.action === 'TARGET_REACHED') {
+                    updateStatus('🎯 Meta de lucro atingida! Sistema pronto para nova sessão.', 'success', 8000);
+                }
+            }, 1500); // 1.5 segundo de delay
+        }
+        
+        // *** LISTENER ESPECÍFICO PARA LIMITS_VIOLATION ***
+        if (request.action === 'LIMITS_VIOLATION' && request.type === 'TARGET_REACHED') {
+            // Reset imediato para meta atingida
+            setTimeout(() => {
+                updateSystemOperationalStatus('Pronto');
+                updateStatus('🎯 Parabéns! Meta de lucro foi atingida!', 'success', 10000);
+                console.log('[Index] Status resetado: Meta de lucro atingida');
+            }, 500);
+        }
+    });
 } else {
     console.log('Trade Manager Pro - Index Module já foi carregado anteriormente');
 }

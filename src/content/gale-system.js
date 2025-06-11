@@ -331,6 +331,11 @@
     let desiredProfitPercentage = 0.2; // Valor padrão de 20%
     let currentPayout = 1.9; // Valor padrão para payout de 90% (multiplicador 1.9)
     
+    // *** NOVO: Integração com Intelligent Gale ***
+    let intelligentMode = false; // Se está usando modo inteligente
+    let intelligentValue = null; // Valor sugerido pelo sistema inteligente
+    let intelligentMultiplier = null; // Multiplicador sugerido pelo sistema inteligente
+    
     // Função para capturar e processar o payout para uso nos cálculos
     function getPayoutMultiplier() {
         try {
@@ -410,7 +415,11 @@
         isActive = false; // Garantir que isActive seja false em caso de erro
     }
     setupMessageListener(); // Mover para o final de initialize
-    setupDOMListeners(); // Configurar listeners do DOM
+    
+    // Configurar listeners de eventos DOM para mudanças de configuração
+    setupDOMListeners();
+    
+    log('Sistema Gale inicializado e pronto para uso', 'SUCCESS');
 }
     
     // Nova função para configurar os listeners do DOM
@@ -530,6 +539,42 @@
     
     function triggerNewAnalysis() {
         log('Acionando nova análise após aplicação de gale...', 'INFO');
+        
+        // *** USAR chrome.runtime.sendMessage para verificação de payout ***
+        chrome.runtime.sendMessage({
+            action: 'CHECK_PAYOUT_FOR_ANALYSIS',
+            source: 'gale-system'
+        }, (response) => {
+            if (chrome.runtime.lastError) {
+                log(`Erro ao solicitar verificação de payout: ${chrome.runtime.lastError.message}`, 'ERROR');
+                // Fallback para análise direta
+                setTimeout(() => requestActualAnalysis(), 2000);
+                return;
+            }
+            
+            if (!response) {
+                log('Nenhuma resposta recebida para verificação de payout. Tentando análise direta...', 'WARN');
+                setTimeout(() => requestActualAnalysis(), 2000);
+                return;
+            }
+            
+            if (response.success && response.shouldProceed) {
+                log('Payout verificado e aprovado. Iniciando análise do Gale...', 'SUCCESS');
+                requestActualAnalysis();
+            } else if (response.success && !response.shouldProceed) {
+                log(`Payout insuficiente detectado. ${response.reason}. Tentando novamente em 5 segundos...`, 'WARN');
+                // O sistema de automação já tratou (trocou ativo, etc)
+                // Tentar novamente após delay
+                setTimeout(() => triggerNewAnalysis(), 5000);
+            } else {
+                log(`Erro na verificação de payout: ${response.reason}. Tentando análise direta...`, 'ERROR');
+                setTimeout(() => requestActualAnalysis(), 2000);
+            }
+        });
+    }
+    
+    // *** NOVA FUNÇÃO: Requisitar análise sem verificações (função original) ***
+    function requestActualAnalysis() {
         try {
             const analyzeBtn = document.querySelector('#analyzeBtn');
             if (analyzeBtn) {
@@ -573,7 +618,7 @@
             });
             return true;
         } catch (error) {
-            log(`Erro em triggerNewAnalysis: ${error.message}`, 'ERROR');
+            log(`Erro em requestActualAnalysis: ${error.message}`, 'ERROR');
             return false;
         }
     }
@@ -584,6 +629,63 @@
             if (!isActive) {
                 log('Gale desativado. Nenhuma ação.', 'WARN');
                 return { success: false, message: 'Gale desativado' };
+            }
+            
+            // *** NOVO: Verificar se deve usar modo inteligente ***
+            if (window.intelligentGale && window.intelligentGale.getStatus().active) {
+                log('Sistema Gale Inteligente ativo, delegando cálculo...', 'INFO');
+                intelligentMode = true;
+                
+                const intelligentResult = window.intelligentGale.applyIntelligentGale(data);
+                if (intelligentResult.success) {
+                    intelligentValue = intelligentResult.value;
+                    intelligentMultiplier = intelligentResult.multiplier;
+                    
+                    log(`Gale Inteligente - Nível: ${intelligentResult.level}, Valor: ${intelligentValue}, Multiplicador: ${intelligentMultiplier}, Risco: ${intelligentResult.riskLevel}`, 'SUCCESS');
+                    
+                    // Usar valor inteligente em vez do cálculo clássico
+                    const newValue = intelligentValue;
+                    
+                    // Atualizar contadores locais para sincronização
+                    galeCount = intelligentResult.level;
+                    
+                    // Salvar no StateManager
+                    if (window.StateManager) {
+                        const config = window.StateManager.getConfig();
+                        const updatedConfig = { ...config, value: newValue };
+                        window.StateManager.saveConfig(updatedConfig)
+                            .then(() => {
+                                log(`Valor Inteligente ${newValue} salvo no StateManager`, 'SUCCESS');
+                                chrome.runtime.sendMessage({
+                                    action: 'SHOW_FEEDBACK', 
+                                    type: 'warning', 
+                                    message: `🧠 Gale Inteligente nível ${galeCount} aplicado. Valor: $${newValue} (Risco: ${intelligentResult.riskLevel})`
+                                });
+                                
+                                // *** LOG DEBUG: Gale vai solicitar nova análise ***
+                                log('🎯 Gale aplicado com sucesso. Solicitando nova análise em 500ms...', 'INFO');
+                                setTimeout(triggerNewAnalysis, 500);
+                            })
+                            .catch(error => {
+                                log(`Erro ao salvar valor inteligente: ${error.message}`, 'ERROR');
+                            });
+                    }
+                    
+                    return {
+                        success: true,
+                        level: galeCount,
+                        newValue: newValue,
+                        originalValue: originalValue,
+                        message: `Gale Inteligente nível ${galeCount} aplicado. Valor: ${newValue}`,
+                        intelligent: true,
+                        riskLevel: intelligentResult.riskLevel,
+                        confidence: intelligentResult.confidence
+                    };
+                } else {
+                    log('Sistema Gale Inteligente não pôde aplicar, usando sistema clássico', 'WARN');
+                    intelligentMode = false;
+                    // Continuar com lógica clássica abaixo
+                }
             }
             if (data.isHistorical) {
                 log('Ignorando gale para operação histórica.', 'INFO');
@@ -717,6 +819,8 @@
                             message: `Gale nível ${galeCount} aplicado. Novo valor: $${newValue}`
                         });
 
+                        // *** LOG DEBUG: Gale clássico vai solicitar nova análise ***
+                        log('🎯 Gale clássico aplicado com sucesso. Solicitando nova análise em 500ms...', 'INFO');
                         // Acionar nova análise após sucesso na aplicação do gale e salvamento da config
                         setTimeout(triggerNewAnalysis, 500);
                     })
@@ -907,16 +1011,43 @@
         };
     }
 
+    // *** NOVO: Funções de integração com Intelligent Gale ***
+    function setIntelligentValue(value, multiplier) {
+        intelligentValue = value;
+        intelligentMultiplier = multiplier;
+        intelligentMode = true;
+        log(`Valor inteligente definido: ${value} com multiplicador ${multiplier}`, 'DEBUG');
+    }
+    
+    function resetIntelligent() {
+        intelligentMode = false;
+        intelligentValue = null;
+        intelligentMultiplier = null;
+        log('Modo inteligente resetado', 'DEBUG');
+    }
+    
+    function getIntelligentStatus() {
+        return {
+            mode: intelligentMode,
+            value: intelligentValue,
+            multiplier: intelligentMultiplier,
+            hasIntelligentSystem: !!window.intelligentGale
+        };
+    }
+
     // Expor as funções para o window.GaleSystem que o index.js espera
     if (!window.GaleSystem) { // Evitar sobrescrever se já existir por algum motivo
         window.GaleSystem = {
             simulateGale: simulateGaleForTesting,
             simulateReset: simulateResetForTesting,
             getStatus: getStatusForTesting,
-            // Adicionar a nova função para captura de payout
-            capturePayout: capturePayoutFromDOM
+            capturePayout: capturePayoutFromDOM,
+            // *** NOVO: Funções de integração ***
+            setIntelligentValue,
+            resetIntelligent,
+            getIntelligentStatus
         };
-        log('API window.GaleSystem exposta para botões de teste com wrappers de mensagem.', 'DEBUG');
+        log('API window.GaleSystem exposta para botões de teste com integração inteligente.', 'DEBUG');
     }
 
     // Inicialização do módulo

@@ -52,8 +52,15 @@ class StateManager {
         this.loadConfig();
         this.loadOperationalStatus();
         
-        // Log de inicialização
-        console.log('[StateManager] Inicializado');
+        // *** NOVO: Inicializar módulos analisadores de forma LAZY ***
+        // Só inicializa quando necessário, não imediatamente
+        setTimeout(() => this.initializeAnalyzersLazy(), 5000); // 5 segundos após carregamento
+        
+        this.tradingActive = false;
+        this.analyzersInitialized = false; // *** NOVO: Controle de inicialização lazy ***
+        
+        // Log de inicialização simples - SEM usar logToSystem
+        console.log('[StateManager] Inicializado (logs lazy ativados)');
     }
 
     // Carregar configurações padrão do arquivo
@@ -389,6 +396,88 @@ class StateManager {
         return false;
     }
 
+    // *** NOVO: Inicialização LAZY dos módulos ***
+    initializeAnalyzersLazy() {
+        // Verificar se já foram inicializados
+        if (this.analyzersInitialized) {
+            return;
+        }
+        
+        // Marcar como inicializados
+        this.analyzersInitialized = true;
+        
+        console.log('[StateManager] Inicializando módulos de forma lazy...');
+        
+        let foundModules = 0;
+        
+        // Verificar módulos disponíveis SEM logs excessivos
+        if (window.localPatternDetector) foundModules++;
+        if (window.cacheAnalyzer) foundModules++;
+        if (window.limitsChecker) foundModules++;
+        if (window.intelligentGale) foundModules++;
+        
+        // Log simples do resultado
+        console.log(`[StateManager] Módulos encontrados: ${foundModules}/4`);
+        
+        // Se não encontrou todos, tentar novamente em 3 segundos
+        if (foundModules < 4) {
+            this.analyzersInitialized = false;
+            setTimeout(() => this.initializeAnalyzersLazy(), 3000);
+        } else {
+            // Configurar listeners críticos quando módulos estiverem carregados
+            this.setupCriticalListeners();
+        }
+    }
+    
+    // *** MÉTODO ORIGINAL para quando realmente precisar ***
+    initializeAnalyzersWhenNeeded() {
+        if (this.analyzersInitialized) {
+            return;
+        }
+        
+        console.log('[StateManager] Inicializando módulos sob demanda...');
+        
+        // *** NOVO: Adicionar listeners para eventos críticos ***
+        this.setupCriticalListeners();
+    }
+
+    /**
+     * Configura listeners para eventos críticos dos módulos
+     */
+    setupCriticalListeners() {
+        // Listener para paradas automáticas do LimitsChecker
+        if (chrome && chrome.runtime && chrome.runtime.onMessage) {
+            chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+                if (request.action === 'CRITICAL_STOP' || 
+                    request.action === 'EMERGENCY_STOP' || 
+                    request.action === 'TARGET_REACHED' ||
+                    request.action === 'LIMITS_VIOLATION') {
+                    
+                    // Resetar status para PRONTO após parada crítica
+                    setTimeout(() => {
+                        this.updateOperationalStatus('Pronto');
+                        console.log('[StateManager] Status resetado para PRONTO após evento crítico:', request.action);
+                    }, 1000); // 1 segundo de delay
+                }
+            });
+        }
+        
+        // Listener para document events
+        document.addEventListener('automation_stopped', () => {
+            setTimeout(() => {
+                this.updateOperationalStatus('Pronto');
+                console.log('[StateManager] Status resetado para PRONTO após parada de automação');
+            }, 500);
+        });
+        
+        document.addEventListener('operation_cancelled', () => {
+            setTimeout(() => {
+                this.updateOperationalStatus('Pronto');
+                console.log('[StateManager] Status resetado para PRONTO após cancelamento');
+            }, 500);
+        });
+    }
+
     // *** NOVO: Método para parar completamente a automação ***
     stopAutomation() {
         console.log('Parando automação completamente...');
@@ -408,5 +497,5 @@ class StateManager {
     }
 }
 
-// Exportar instância única
+// Criar instância global do StateManager
 window.StateManager = new StateManager(); 

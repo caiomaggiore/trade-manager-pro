@@ -745,6 +745,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendToLogSystem('runAutomationCheck: Iniciando ciclo de verificação.', 'INFO');
         toUpdateStatus('Automação: Verificando configurações e lucro...', 'info', 0); // 0 para não desaparecer
 
+        // *** NOVO: Inicializar LimitsChecker se ainda não estiver ativo ***
+        if (window.limitsChecker && !window.limitsChecker.getStatus().isActive) {
+            chrome.storage.sync.get(['userConfig'], (result) => {
+                const config = result.userConfig || {};
+                window.limitsChecker.start(config);
+                sendToLogSystem('LimitsChecker iniciado automaticamente pela automação', 'INFO');
+            });
+        }
+
         // 1. Obter configuração
         chrome.storage.sync.get(['userConfig'], (storageResult) => {
             if (chrome.runtime.lastError) {
@@ -807,50 +816,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 return;
             }
 
-            // *** CORREÇÃO: Verificação de stop loss ***
+            // *** DEBUG: Log detalhado da comparação ***
+            sendToLogSystem(`🔍 [COMPARAÇÃO DETALHADA] Lucro atual: ${currentProfit} (${typeof currentProfit}) vs Meta: ${dailyProfitTarget} (${typeof dailyProfitTarget})`, 'DEBUG');
+            sendToLogSystem(`🔍 [COMPARAÇÃO DETALHADA] currentProfit < dailyProfitTarget? ${currentProfit < dailyProfitTarget}`, 'DEBUG');
+            sendToLogSystem(`🔍 [COMPARAÇÃO DETALHADA] currentProfit >= dailyProfitTarget? ${currentProfit >= dailyProfitTarget}`, 'DEBUG');
+
+            // *** CORREÇÃO: Stop Loss será verificado pelo LimitsChecker ***
+            // O LimitsChecker agora gerencia isso automaticamente
             const stopLossLimit = parseFloat(config.stopLoss) || 0;
-            if (stopLossLimit > 0 && currentProfit <= -stopLossLimit) {
-                const stopLossMsg = `STOP LOSS acionado! Perda atual: ${currentProfit} >= limite: -${stopLossLimit}. Parando automação automaticamente.`;
-                sendToLogSystem(stopLossMsg, 'ERROR');
-                toUpdateStatus(stopLossMsg, 'error', 10000);
-                
-                // *** NOVO: Parar automação quando stop loss é acionado ***
-                try {
-                    // Desativar automação nas configurações
-                    const newConfig = { ...config, automation: false };
-                    chrome.storage.sync.set({ userConfig: newConfig }, () => {
-                        if (chrome.runtime.lastError) {
-                            sendToLogSystem(`Erro ao desativar automação por stop loss: ${chrome.runtime.lastError.message}`, 'ERROR');
-                        } else {
-                            sendToLogSystem('Automação desativada automaticamente por STOP LOSS', 'ERROR');
-                            
-                            // *** NOVO: Resetar status do sistema usando StateManager ***
-                            if (window.StateManager) {
-                                window.StateManager.stopAutomation();
-                                sendToLogSystem('Status do sistema resetado após STOP LOSS', 'ERROR');
-                            }
-                            
-                            // Parar monitoramento de payout
-                            if (isPayoutMonitoringActive) {
-                                stopPayoutMonitoring();
-                            }
-                            
-                            // Notificar outros módulos sobre parada por stop loss
-                            chrome.runtime.sendMessage({
-                                action: 'AUTOMATION_STOPPED',
-                                reason: 'stop_loss_triggered',
-                                profit: currentProfit,
-                                stopLossLimit: stopLossLimit
-                            });
-                        }
-                    });
-                } catch (error) {
-                    sendToLogSystem(`Erro ao parar automação por stop loss: ${error.message}`, 'ERROR');
-                }
-                return;
+            if (stopLossLimit > 0) {
+                sendToLogSystem(`Stop Loss configurado: ${stopLossLimit} - LimitsChecker monitora automaticamente`, 'DEBUG');
             }
             
             if (currentProfit < dailyProfitTarget) {
+                sendToLogSystem(`🟡 [CONDIÇÃO] Lucro ainda não atingiu meta. Prosseguindo com automação...`, 'INFO');
                 const conditionMsg = `Automação: Condição atendida (${currentProfit} < ${dailyProfitTarget}). Verificando payout atual...`;
                 sendToLogSystem(conditionMsg, 'INFO');
                 toUpdateStatus('Automação: Verificando payout atual...', 'info', 3000);
@@ -967,44 +946,55 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         }
                     });
             } else {
-                // *** CORREÇÃO: Quando meta de lucro é atingida, PARAR automação ***
-                const resultMsg = `Meta de lucro diária ATINGIDA! (${currentProfit} >= ${dailyProfitTarget}). Parando automação automaticamente.`;
-                sendToLogSystem(resultMsg, 'SUCCESS');
-                toUpdateStatus(resultMsg, 'success', 10000);
+                // *** CORREÇÃO: Quando meta for atingida, PARAR automação e disparar evento ***
+                sendToLogSystem(`🎯 [CONDIÇÃO] META ATINGIDA! Lucro atual ${currentProfit} >= Meta ${dailyProfitTarget}. Iniciando procedimento de parada...`, 'SUCCESS');
                 
-                // *** NOVO: Parar automação quando meta é atingida ***
-                try {
-                    // Desativar automação nas configurações
-                    const newConfig = { ...config, automation: false };
-                    chrome.storage.sync.set({ userConfig: newConfig }, () => {
-                        if (chrome.runtime.lastError) {
-                            sendToLogSystem(`Erro ao desativar automação: ${chrome.runtime.lastError.message}`, 'ERROR');
-                        } else {
-                            sendToLogSystem('Automação desativada automaticamente após atingir meta diária', 'SUCCESS');
-                            
-                            // *** NOVO: Resetar status do sistema usando StateManager ***
-                            if (window.StateManager) {
-                                window.StateManager.stopAutomation();
-                                sendToLogSystem('Status do sistema resetado após atingir meta diária', 'SUCCESS');
-                            }
-                            
-                            // Parar monitoramento de payout
-                            if (isPayoutMonitoringActive) {
-                                stopPayoutMonitoring();
-                            }
-                            
-                            // Notificar outros módulos sobre parada
-                            chrome.runtime.sendMessage({
-                                action: 'AUTOMATION_STOPPED',
-                                reason: 'daily_profit_reached',
-                                profit: currentProfit,
-                                target: dailyProfitTarget
-                            });
-                        }
-                    });
-                } catch (error) {
-                    sendToLogSystem(`Erro ao parar automação: ${error.message}`, 'ERROR');
+                // Disparar evento TARGET_REACHED
+                chrome.runtime.sendMessage({
+                    action: 'TARGET_REACHED',
+                    data: {
+                        currentProfit: currentProfit,
+                        targetProfit: dailyProfitTarget,
+                        reason: 'Daily profit target reached'
+                    }
+                });
+                
+                // *** DESATIVAR AUTOMAÇÃO ***
+                chrome.storage.sync.get(['userConfig'], (configResult) => {
+                    if (configResult.userConfig) {
+                        const updatedConfig = { 
+                            ...configResult.userConfig, 
+                            automation: false 
+                        };
+                        chrome.storage.sync.set({ userConfig: updatedConfig }, () => {
+                            sendToLogSystem('🔴 Automação desativada automaticamente após meta atingida', 'INFO');
+                        });
+                    }
+                });
+                
+                // Log detalhado da parada
+                chrome.runtime.sendMessage({
+                    action: 'addLog',
+                    logMessage: `🎯 META ATINGIDA: Lucro atual ${currentProfit} atingiu/superou meta de ${dailyProfitTarget} - Automação encerrada`,
+                    logLevel: 'SUCCESS',
+                    logSource: 'automation.js'
+                });
+                
+                // Parar monitoramento de payout
+                if (isPayoutMonitoringActive) {
+                    stopPayoutMonitoring();
                 }
+                
+                // *** REMOVIDO: Verificação periódica não é mais usada ***
+                // if (isPeriodicCheckActive) {
+                //     stopPeriodicMetaCheck();
+                // }
+                
+                // Atualizar status para indicar sucesso
+                toUpdateStatus(`🎯 Meta atingida! Lucro: ${currentProfit} / Meta: ${dailyProfitTarget}`, 'success', 10000);
+                
+                // O status será resetado pelos listeners que criamos
+                return; // Não continuar com automação
             }
         }); // Fim callback storage.sync.get
     }
@@ -1026,6 +1016,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             startOperationBtn.addEventListener('click', () => {
                 sendToLogSystem('Botão #start-operation clicado (listener em automation.js). Iniciando runAutomationCheck.', 'INFO');
                 runAutomationCheck();
+                
+                // *** REMOVIDO: Verificação periódica causando problemas ***
+                // A meta será verificada apenas quando necessário (após operações)
             });
         } else {
             sendToLogSystem('Botão #start-operation NÃO encontrado por automation.js.', 'WARN');
@@ -1034,6 +1027,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Adicionar listener para o CustomEvent 'operationResult' disparado por trade-history.js
         document.addEventListener('operationResult', (event) => {
             sendToLogSystem(`Recebido CustomEvent 'operationResult'. Detalhes: ${JSON.stringify(event.detail)}`, 'INFO');
+            
+            // *** NOVO: Registrar operação no LimitsChecker ***
+            if (window.limitsChecker && event.detail) {
+                window.limitsChecker.recordOperation(event.detail);
+                sendToLogSystem('Operação registrada no LimitsChecker', 'DEBUG');
+            }
 
             // Verificar se a automação está realmente configurada como ativa.
             chrome.storage.sync.get(['userConfig'], (storageResult) => {
@@ -1079,6 +1078,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     if (isPayoutMonitoringActive) {
                         stopPayoutMonitoring();
                     }
+                    
+                    // *** REMOVIDO: Verificação periódica não é mais usada ***
+                    // if (isPeriodicCheckActive) {
+                    //     stopPeriodicMetaCheck();
+                    // }
                 }
             });
         });
@@ -1086,6 +1090,100 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
 
     sendToLogSystem('Módulo de Automação carregado e configurado para controle direto e escuta de operationResult.', 'INFO');
+    
+    // *** REMOVIDO: Exposição global causava problemas ***
+    // window.runAutomationCheck = runAutomationCheck;
+    // window.startPeriodicMetaCheck = startPeriodicMetaCheck;
+    // window.stopPeriodicMetaCheck = stopPeriodicMetaCheck;
+    
+    // *** NOVO: Listener para mensagens de outros módulos (como gale-system) ***
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        // Handler para verificação de payout solicitada pelo Gale System
+        if (message.action === 'CHECK_PAYOUT_FOR_ANALYSIS' && message.source === 'gale-system') {
+            sendToLogSystem('Gale System solicitou verificação de payout. Processando...', 'INFO');
+            
+            checkPayoutBeforeAnalysis()
+                .then(() => {
+                    sendToLogSystem('Payout verificado e aprovado para Gale System', 'SUCCESS');
+                    sendResponse({ 
+                        success: true, 
+                        shouldProceed: true, 
+                        reason: 'Payout aprovado' 
+                    });
+                })
+                .catch(error => {
+                    if (error === 'PAYOUT_INSUFFICIENT') {
+                        sendToLogSystem('Payout insuficiente detectado. Sistema automático tratou a situação.', 'WARN');
+                        sendResponse({ 
+                            success: true, 
+                            shouldProceed: false, 
+                            reason: 'Payout insuficiente - sistema já tratou automaticamente' 
+                        });
+                    } else if (error === 'USER_CANCELLED') {
+                        sendResponse({ 
+                            success: false, 
+                            shouldProceed: false, 
+                            reason: 'Verificação cancelada pelo usuário' 
+                        });
+                    } else {
+                        sendToLogSystem(`Erro na verificação de payout para Gale: ${error}`, 'ERROR');
+                        sendResponse({ 
+                            success: false, 
+                            shouldProceed: true, 
+                            reason: `Erro na verificação: ${error}` 
+                        });
+                    }
+                });
+            
+            return true; // Resposta assíncrona
+        }
+        
+        // Handler para análise com verificação de ativo solicitada pelo Gale System
+        if (message.action === 'EXECUTE_ANALYSIS_WITH_ASSET_CHECK' && message.source === 'gale-system') {
+            sendToLogSystem('Gale System solicitou análise com verificação de ativo. Processando...', 'INFO');
+            
+            const config = message.config || {};
+            
+            executeAnalysisWithAssetCheck(config)
+                .then(() => {
+                    sendToLogSystem('Análise com verificação de ativo concluída para Gale System', 'SUCCESS');
+                    sendResponse({ 
+                        success: true, 
+                        reason: 'Análise iniciada após verificação de ativo' 
+                    });
+                })
+                .catch(error => {
+                    sendToLogSystem(`Erro na análise com verificação de ativo para Gale: ${error}`, 'ERROR');
+                    sendResponse({ 
+                        success: false, 
+                        reason: `Erro: ${error}` 
+                    });
+                });
+            
+            return true; // Resposta assíncrona
+        }
+        
+        // Handler para obter payout atual solicitado pelo Gale System
+        if (message.action === 'GET_CURRENT_PAYOUT' && message.source === 'gale-system') {
+            getCurrentPayout()
+                .then(payout => {
+                    sendResponse({ 
+                        success: true, 
+                        payout: payout 
+                    });
+                })
+                .catch(error => {
+                    sendResponse({ 
+                        success: false, 
+                        error: error.message 
+                    });
+                });
+            
+            return true; // Resposta assíncrona
+        }
+    });
+    
+    sendToLogSystem('Handlers de mensagens configurados para integração com outros módulos', 'DEBUG');
 })(); 
 
 // Função para reportar erro ao StateManager
@@ -1115,5 +1213,73 @@ async function safeExecuteAutomation(fn, functionName, ...args) {
             module: 'automation.js'
         });
         throw error;
+    }
+}
+
+// ======================================================================
+// =================== SISTEMA DE VERIFICAÇÃO PERIÓDICA ================
+// ======================================================================
+
+/**
+ * Sistema de verificação periódica da meta para garantir detecção
+ */
+let periodicCheckInterval = null;
+let isPeriodicCheckActive = false;
+
+/**
+ * *** DESABILITADO: Verificação periódica causava problemas ***
+ * Iniciar verificação periódica da meta
+ */
+function startPeriodicMetaCheck() {
+    sendToLogSystem('⚠️ Verificação periódica desabilitada - meta será verificada apenas após operações', 'WARN');
+    return; // *** DESABILITADO ***
+    
+    // Código original comentado para referência futura
+    /*
+    if (isPeriodicCheckActive) {
+        sendToLogSystem('Verificação periódica já está ativa', 'DEBUG');
+        return;
+    }
+    
+    sendToLogSystem('🔄 Iniciando verificação periódica da meta (a cada 30s)', 'INFO');
+    isPeriodicCheckActive = true;
+    
+    periodicCheckInterval = setInterval(() => {
+        try {
+            // Verificar se automação ainda está ativa
+            chrome.storage.sync.get(['userConfig'], (result) => {
+                const config = result.userConfig || {};
+                
+                if (config.automation) {
+                    sendToLogSystem('🔍 [VERIFICAÇÃO PERIÓDICA] Checando meta...', 'DEBUG');
+                    // Usar referência global segura
+                    if (typeof window.runAutomationCheck === 'function') {
+                        window.runAutomationCheck();
+                    } else if (typeof runAutomationCheck === 'function') {
+                        runAutomationCheck();
+                    } else {
+                        sendToLogSystem('⚠️ [VERIFICAÇÃO PERIÓDICA] runAutomationCheck não encontrada', 'WARN');
+                    }
+                } else {
+                    sendToLogSystem('🔍 [VERIFICAÇÃO PERIÓDICA] Automação desativada, parando verificação periódica', 'INFO');
+                    stopPeriodicMetaCheck();
+                }
+            });
+        } catch (error) {
+            sendToLogSystem(`❌ [VERIFICAÇÃO PERIÓDICA] Erro: ${error.message}`, 'ERROR');
+        }
+    }, 30000); // A cada 30 segundos
+    */
+}
+
+/**
+ * Parar verificação periódica
+ */
+function stopPeriodicMetaCheck() {
+    if (periodicCheckInterval) {
+        clearInterval(periodicCheckInterval);
+        periodicCheckInterval = null;
+        isPeriodicCheckActive = false;
+        sendToLogSystem('🔄 Verificação periódica da meta interrompida', 'INFO');
     }
 } 
