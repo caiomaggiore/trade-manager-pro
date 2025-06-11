@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Trade Manager Pro",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Ferramenta avançada para gerenciamento de trades na Pocket Option",
   "permissions": [
     "storage",
@@ -33,8 +33,13 @@
     {
       "matches": ["https://pocketoption.com/*"],
       "js": [
-        "src/content/state-manager.js",
         "src/content/log-sys.js",
+        "src/content/analyzers/local-pattern-detector.js",
+        "src/content/analyzers/cache-analyzer.js",
+        "src/content/analyzers/limits-checker.js",
+        "src/content/analyzers/intelligent-gale.js",
+        "src/content/analyzers/system-dashboard.js",
+        "src/content/state-manager.js",
         "src/content/navigation.js",
         "src/content/capture-screen.js",
         "src/content/analyze-graph.js",

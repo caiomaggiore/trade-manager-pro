@@ -345,8 +345,9 @@ const LogSystem = {
             const logElement = document.createElement('div');
             logElement.className = `log-entry log-${log.level.toLowerCase()}`;
             
-            // Usar o timestamp formatado original do log
-            logElement.textContent = `${log.timestampFormatted} [ ${log.source} ] - ${formatLogLevel(log.level)} - ${log.message}`;
+            // Formato: [timestamp] [ fonte ]\n[emoji] NIVEL - mensagem
+            const formattedText = `${log.timestampFormatted} [ ${log.source} ]\n${formatLogLevel(log.level)} - ${log.message}`;
+            logElement.textContent = formattedText;
             
             this.container.appendChild(logElement);
         });
@@ -497,9 +498,9 @@ const LogSystem = {
     // Obter logs formatados como texto para exportação
     getFormattedLogs() {
         return this.logs.map(log => 
-            // log.timestampFormatted já inclui os colchetes: [DD/MM/AAAA, HH:MM:SS]
-            `${log.timestampFormatted} [ ${log.source} ] - ${formatLogLevel(log.level)} - ${log.message}`
-        ).join('\n');
+            // Formato: [timestamp] [ fonte ]\n[emoji] NIVEL - mensagem
+            `${log.timestampFormatted} [ ${log.source} ]\n${formatLogLevel(log.level)} - ${log.message}`
+        ).join('\n\n');
     },
     
     // Baixar logs como arquivo

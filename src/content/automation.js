@@ -184,6 +184,165 @@ async function ensureBestAsset(minPayout = 85, preferredCategory = 'crypto') {
 }
 
 // ======================================================================
+// =================== SISTEMA DE MONITORAMENTO CONTÍNUO ===============
+// ======================================================================
+
+/**
+ * Sistema de monitoramento contínuo de payout durante automação ativa
+ */
+let payoutMonitoringInterval = null;
+let isPayoutMonitoringActive = false;
+
+/**
+ * Iniciar monitoramento contínuo de payout
+ */
+function startPayoutMonitoring() {
+    // Parar monitoramento anterior se existir
+    stopPayoutMonitoring();
+    
+    sendToLogSystem('🔄 Iniciando monitoramento contínuo de payout...', 'INFO');
+    isPayoutMonitoringActive = true;
+    
+    // Verificar payout a cada 10 segundos
+    payoutMonitoringInterval = setInterval(async () => {
+        try {
+            // Verificar se ainda está em modo automático
+            const result = await new Promise((resolve) => {
+                chrome.storage.sync.get(['userConfig'], resolve);
+            });
+            
+            const config = result.userConfig || {};
+            if (!config.automation) {
+                sendToLogSystem('🛑 Automação desativada. Parando monitoramento de payout.', 'INFO');
+                stopPayoutMonitoring();
+                return;
+            }
+            
+            // Verificar payout atual
+            const minPayoutRequired = parseFloat(config.minPayout) || 80;
+            const payoutBehavior = config.payoutBehavior || 'cancel';
+            
+            const payoutResult = await getCurrentPayout();
+            const currentPayout = payoutResult.payout;
+            
+            sendToLogSystem(`🔍 Monitoramento: Payout atual ${currentPayout}% vs mínimo ${minPayoutRequired}%`, 'DEBUG');
+            
+            // Se payout estiver inadequado, aplicar comportamento
+            if (currentPayout < minPayoutRequired) {
+                sendToLogSystem(`⚠️ PAYOUT INADEQUADO detectado durante monitoramento! (${currentPayout}% < ${minPayoutRequired}%)`, 'WARN');
+                toUpdateStatus(`Payout inadequado detectado: ${currentPayout}%`, 'warn', 5000);
+                
+                // Parar monitoramento temporariamente para evitar execuções múltiplas
+                stopPayoutMonitoring();
+                
+                // Aplicar comportamento configurado
+                await handlePayoutIssue(currentPayout, minPayoutRequired, payoutBehavior, config);
+            }
+            
+        } catch (error) {
+            sendToLogSystem(`❌ Erro no monitoramento de payout: ${error.message}`, 'ERROR');
+        }
+    }, 10000); // 10 segundos
+    
+    sendToLogSystem('✅ Monitoramento contínuo de payout ativo (verificação a cada 10s)', 'SUCCESS');
+}
+
+/**
+ * Parar monitoramento contínuo de payout
+ */
+function stopPayoutMonitoring() {
+    if (payoutMonitoringInterval) {
+        clearInterval(payoutMonitoringInterval);
+        payoutMonitoringInterval = null;
+        sendToLogSystem('🛑 Monitoramento contínuo de payout parado', 'INFO');
+    }
+    isPayoutMonitoringActive = false;
+}
+
+/**
+ * Tratar problema de payout detectado durante monitoramento
+ */
+async function handlePayoutIssue(currentPayout, minPayoutRequired, payoutBehavior, config) {
+    sendToLogSystem(`🚨 Tratando problema de payout: ${currentPayout}% < ${minPayoutRequired}%, comportamento: ${payoutBehavior}`, 'INFO');
+    
+    switch (payoutBehavior) {
+        case 'cancel':
+            sendToLogSystem(`❌ Cancelando automação devido a payout inadequado (${currentPayout}% < ${minPayoutRequired}%)`, 'WARN');
+            toUpdateStatus(`Automação cancelada: payout inadequado (${currentPayout}%)`, 'error', 8000);
+            
+            // Cancelar operação atual
+            if (typeof window.cancelCurrentOperation === 'function') {
+                window.cancelCurrentOperation(`Payout inadequado: ${currentPayout}% < ${minPayoutRequired}%`);
+            }
+            break;
+            
+        case 'wait':
+            sendToLogSystem(`⏳ Pausando automação até payout melhorar (${currentPayout}% → ${minPayoutRequired}%)`, 'INFO');
+            toUpdateStatus(`Aguardando payout melhorar: ${currentPayout}% → ${minPayoutRequired}%`, 'info', 0);
+            
+            // Iniciar monitoramento de espera
+            await waitForPayoutImprovement(minPayoutRequired, 10, 
+                () => {
+                    sendToLogSystem('✅ Payout melhorou! Retomando automação...', 'SUCCESS');
+                    toUpdateStatus('Payout adequado! Retomando automação...', 'success', 3000);
+                    
+                    // Retomar monitoramento contínuo
+                    setTimeout(() => startPayoutMonitoring(), 2000);
+                },
+                (error) => {
+                    if (error === 'USER_CANCELLED') {
+                        sendToLogSystem('🛑 Aguardo de payout cancelado pelo usuário', 'INFO');
+                        toUpdateStatus('Aguardo cancelado', 'info', 3000);
+                    } else {
+                        sendToLogSystem(`❌ Erro durante aguardo de payout: ${error}`, 'ERROR');
+                    }
+                }
+            );
+            break;
+            
+        case 'switch':
+            sendToLogSystem(`🔄 Trocando ativo devido a payout inadequado (${currentPayout}% < ${minPayoutRequired}%)`, 'INFO');
+            toUpdateStatus(`Trocando ativo: payout inadequado (${currentPayout}%)`, 'warn', 4000);
+            
+            try {
+                const assetConfig = config.assetSwitching || {};
+                const preferredCategory = assetConfig.preferredCategory || 'crypto';
+                
+                const assetResult = await ensureBestAsset(minPayoutRequired, preferredCategory);
+                
+                if (assetResult.success) {
+                    sendToLogSystem(`✅ Ativo trocado com sucesso durante monitoramento: ${assetResult.message}`, 'SUCCESS');
+                    toUpdateStatus(`Ativo trocado: ${assetResult.message}`, 'success', 4000);
+                    
+                    // Retomar monitoramento após troca
+                    setTimeout(() => startPayoutMonitoring(), 3000);
+                } else {
+                    sendToLogSystem(`❌ Falha na troca de ativo durante monitoramento: ${assetResult.error}`, 'ERROR');
+                    toUpdateStatus(`Erro na troca de ativo: ${assetResult.error}`, 'error', 5000);
+                    
+                    // Cancelar automação se não conseguir trocar ativo
+                    if (typeof window.cancelCurrentOperation === 'function') {
+                        window.cancelCurrentOperation(`Falha na troca de ativo: ${assetResult.error}`);
+                    }
+                }
+            } catch (error) {
+                sendToLogSystem(`❌ Erro durante troca de ativo: ${error.message}`, 'ERROR');
+                toUpdateStatus(`Erro na troca de ativo: ${error.message}`, 'error', 5000);
+                
+                // Cancelar automação em caso de erro
+                if (typeof window.cancelCurrentOperation === 'function') {
+                    window.cancelCurrentOperation(`Erro na troca de ativo: ${error.message}`);
+                }
+            }
+            break;
+            
+        default:
+            sendToLogSystem(`❌ Comportamento de payout desconhecido: ${payoutBehavior}`, 'ERROR');
+            toUpdateStatus(`Erro: comportamento desconhecido (${payoutBehavior})`, 'error', 5000);
+    }
+}
+
+// ======================================================================
 // =================== INTEGRAÇÃO COM SISTEMA DE AUTOMAÇÃO =============
 // ======================================================================
 
@@ -195,96 +354,43 @@ async function ensureBestAsset(minPayout = 85, preferredCategory = 'crypto') {
  * @returns {Promise<Object>} Resultado da operação
  */
 async function executeTradeWithAssetCheck(action, config = {}, autoSwitchAsset = true) {
-    try {
-        sendToLogSystem(`🚀 Iniciando operação ${action} com verificação de ativo`, 'INFO');
-        
-        // Configurações padrão
-        const operationConfig = {
-            tradeValue: config.tradeValue || 10,
-            tradeTime: config.tradeTime || 1,
-            minPayout: config.minPayout || 85,
-            preferredCategory: config.preferredCategory || 'crypto',
-            analysisResult: config.analysisResult || null,
-            useDynamicPeriod: config.useDynamicPeriod || false,
-            ...config
-        };
-        
-        sendToLogSystem(`📋 Configurações: Valor=${operationConfig.tradeValue}, Tempo=${operationConfig.tradeTime}min, PayoutMin=${operationConfig.minPayout}%`, 'INFO');
-        
-        // Etapa 1: Verificar e trocar ativo se necessário
-        if (autoSwitchAsset) {
-            toUpdateStatus('Verificando ativo ideal...', 'info', 2000);
+    return safeExecuteAutomation(async () => {
+        // Verificar se a troca automática de ativos está habilitada
+        if (autoSwitchAsset && window.StateManager?.isAssetSwitchingEnabled()) {
+            const minPayout = window.StateManager.getMinPayoutForAssets();
+            const preferredCategory = window.StateManager.getPreferredAssetCategory();
             
-            const assetResult = await ensureBestAsset(
-                operationConfig.minPayout, 
-                operationConfig.preferredCategory
-            );
+            sendToLogSystem(`Verificando ativo antes da operação (min payout: ${minPayout}%, categoria: ${preferredCategory})`, 'INFO');
             
-            if (!assetResult.success) {
-                throw new Error(`Falha na verificação de ativo: ${assetResult.error}`);
-            }
-            
-            // Log do resultado da verificação de ativo
-            if (assetResult.action === 'switched') {
-                sendToLogSystem(`🔄 Ativo alterado para: ${assetResult.asset.name} (${assetResult.asset.payout}%)`, 'SUCCESS');
-            } else {
-                sendToLogSystem(`✅ Ativo atual mantido (${assetResult.currentPayout}%)`, 'INFO');
-            }
-            
-            // Aguardar um momento após troca de ativo
-            if (assetResult.action === 'switched') {
-                await new Promise(resolve => setTimeout(resolve, 1000));
+            try {
+                // Garantir que estamos no melhor ativo
+                await ensureBestAsset(minPayout, preferredCategory);
+            } catch (assetError) {
+                sendToLogSystem(`Erro ao verificar/trocar ativo: ${assetError.message}`, 'ERROR');
+                throw new Error(`Falha na verificação de ativo: ${assetError.message}`);
             }
         }
         
-        // Etapa 2: Executar a operação
-        toUpdateStatus(`Executando ${action}...`, 'info', 2000);
-        
-        const tradeResult = await new Promise((resolve, reject) => {
-            chrome.runtime.sendMessage({
+        // Executar a operação de trade
+        try {
+            const result = await chrome.runtime.sendMessage({
                 action: 'EXECUTE_TRADE_ACTION',
                 tradeAction: action,
-                tradeData: {
-                    tradeValue: operationConfig.tradeValue,
-                    tradeTime: operationConfig.tradeTime,
-                    analysisResult: operationConfig.analysisResult,
-                    useDynamicPeriod: operationConfig.useDynamicPeriod,
-                    minPayout: operationConfig.minPayout,
-                    isFromAutomation: true
-                }
-            }, (response) => {
-                if (chrome.runtime.lastError) {
-                    reject(new Error(chrome.runtime.lastError.message));
-                    return;
-                }
-                
-                if (response && response.success) {
-                    resolve(response);
-                } else {
-                    reject(new Error(response?.error || 'Falha na execução da operação'));
-                }
+                tradeData: config,
+                source: 'automation'
             });
-        });
-        
-        sendToLogSystem(`✅ Operação ${action} executada com sucesso`, 'SUCCESS');
-        toUpdateStatus(`${action} executado com sucesso!`, 'success', 3000);
-        
-        return {
-            success: true,
-            action: action,
-            tradeResult: tradeResult,
-            message: `Operação ${action} concluída com sucesso`
-        };
-        
-    } catch (error) {
-        sendToLogSystem(`❌ Erro na operação ${action}: ${error.message}`, 'ERROR');
-        toUpdateStatus(`Erro: ${error.message}`, 'error', 5000);
-        
-        return {
-            success: false,
-            error: error.message
-        };
-    }
+            
+            if (!result || !result.success) {
+                throw new Error(result?.error || 'Falha na execução do trade');
+            }
+            
+            sendToLogSystem(`Trade executado com sucesso: ${action}`, 'SUCCESS');
+            return result;
+        } catch (tradeError) {
+            sendToLogSystem(`Erro ao executar trade: ${tradeError.message}`, 'ERROR');
+            throw tradeError;
+        }
+    }, 'executeTradeWithAssetCheck', action, config, autoSwitchAsset);
 }
 
 /**
@@ -293,71 +399,45 @@ async function executeTradeWithAssetCheck(action, config = {}, autoSwitchAsset =
  * @returns {Promise<Object>} Resultado da análise e operação
  */
 async function executeAnalysisWithAssetCheck(config = {}) {
-    try {
-        sendToLogSystem(`🔍 Iniciando análise com verificação de ativo`, 'INFO');
+    return safeExecuteAutomation(async () => {
+        const autoSwitchAsset = config.autoSwitchAsset !== false; // default true
         
-        const analysisConfig = {
-            minPayout: config.minPayout || 85,
-            preferredCategory: config.preferredCategory || 'crypto',
-            autoExecute: config.autoExecute !== false, // Padrão true
-            ...config
-        };
-        
-        // Etapa 1: Verificar e trocar ativo se necessário
-        toUpdateStatus('Verificando ativo para análise...', 'info', 2000);
-        
-        const assetResult = await ensureBestAsset(
-            analysisConfig.minPayout, 
-            analysisConfig.preferredCategory
-        );
-        
-        if (!assetResult.success) {
-            throw new Error(`Falha na verificação de ativo: ${assetResult.error}`);
+        // Verificar se a troca automática de ativos está habilitada
+        if (autoSwitchAsset && window.StateManager?.isAssetSwitchingEnabled()) {
+            const minPayout = window.StateManager.getMinPayoutForAssets();
+            const preferredCategory = window.StateManager.getPreferredAssetCategory();
+            
+            sendToLogSystem(`Verificando ativo antes da análise (min payout: ${minPayout}%, categoria: ${preferredCategory})`, 'INFO');
+            
+            try {
+                // Garantir que estamos no melhor ativo
+                await ensureBestAsset(minPayout, preferredCategory);
+            } catch (assetError) {
+                sendToLogSystem(`Erro ao verificar/trocar ativo: ${assetError.message}`, 'ERROR');
+                // Para análise, não interromper se falhar ao trocar ativo
+                sendToLogSystem('Continuando análise com ativo atual', 'WARN');
+            }
         }
         
-        // Aguardar um momento após troca de ativo
-        if (assetResult.action === 'switched') {
-            await new Promise(resolve => setTimeout(resolve, 1500));
-        }
-        
-        // Etapa 2: Executar análise
-        toUpdateStatus('Executando análise...', 'info', 2000);
-        
-        const analysisResult = await new Promise((resolve, reject) => {
-            chrome.runtime.sendMessage({
-                action: 'ANALYZE_GRAPH'
-            }, (response) => {
-                if (chrome.runtime.lastError) {
-                    reject(new Error(chrome.runtime.lastError.message));
-                    return;
-                }
-                
-                if (response && response.success) {
-                    resolve(response);
-                } else {
-                    reject(new Error(response?.error || 'Falha na análise'));
-                }
+        // Executar a análise
+        try {
+            const result = await chrome.runtime.sendMessage({
+                action: 'START_ANALYSIS',
+                source: 'automation',
+                config: config
             });
-        });
-        
-        sendToLogSystem(`✅ Análise concluída com sucesso`, 'SUCCESS');
-        
-        return {
-            success: true,
-            assetResult: assetResult,
-            analysisResult: analysisResult,
-            message: 'Análise com verificação de ativo concluída'
-        };
-        
-    } catch (error) {
-        sendToLogSystem(`❌ Erro na análise com verificação de ativo: ${error.message}`, 'ERROR');
-        toUpdateStatus(`Erro na análise: ${error.message}`, 'error', 5000);
-        
-        return {
-            success: false,
-            error: error.message
-        };
-    }
+            
+            if (!result || !result.success) {
+                throw new Error(result?.error || 'Falha na análise');
+            }
+            
+            sendToLogSystem('Análise executada com sucesso', 'SUCCESS');
+            return result;
+        } catch (analysisError) {
+            sendToLogSystem(`Erro ao executar análise: ${analysisError.message}`, 'ERROR');
+            throw analysisError;
+        }
+    }, 'executeAnalysisWithAssetCheck', config);
 }
 
 // Função para obter o payout atual da plataforma (solicita ao content.js) - VERSÃO ROBUSTA
@@ -627,6 +707,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ success: true });
         return true;
     }
+    
+    // *** NOVO: Handler para parar monitoramento contínuo ***
+    if (message.action === 'STOP_PAYOUT_MONITORING') {
+        sendToLogSystem(`🛑 Recebido comando para parar monitoramento contínuo: ${message.reason}`, 'INFO');
+        stopPayoutMonitoring();
+        sendResponse({ success: true, message: 'Monitoramento contínuo parado' });
+        return true;
+    }
 });
 
 (function() {
@@ -657,6 +745,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendToLogSystem('runAutomationCheck: Iniciando ciclo de verificação.', 'INFO');
         toUpdateStatus('Automação: Verificando configurações e lucro...', 'info', 0); // 0 para não desaparecer
 
+        // *** NOVO: Inicializar LimitsChecker se ainda não estiver ativo ***
+        if (window.limitsChecker && !window.limitsChecker.getStatus().isActive) {
+            chrome.storage.sync.get(['userConfig'], (result) => {
+                const config = result.userConfig || {};
+                window.limitsChecker.start(config);
+                sendToLogSystem('LimitsChecker iniciado automaticamente pela automação', 'INFO');
+            });
+        }
+
         // 1. Obter configuração
         chrome.storage.sync.get(['userConfig'], (storageResult) => {
             if (chrome.runtime.lastError) {
@@ -674,6 +771,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const msg = "Modo automatico desativado.";
                 sendToLogSystem(msg, 'WARN');
                 toUpdateStatus(msg, 'warn');
+                
+                // Parar monitoramento se automação estiver desativada
+                if (isPayoutMonitoringActive) {
+                    stopPayoutMonitoring();
+                }
+                
                 return; // Interrompe se desligada
             }
 
@@ -713,22 +816,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 return;
             }
 
+            // *** DEBUG: Log detalhado da comparação ***
+            sendToLogSystem(`🔍 [COMPARAÇÃO DETALHADA] Lucro atual: ${currentProfit} (${typeof currentProfit}) vs Meta: ${dailyProfitTarget} (${typeof dailyProfitTarget})`, 'DEBUG');
+            sendToLogSystem(`🔍 [COMPARAÇÃO DETALHADA] currentProfit < dailyProfitTarget? ${currentProfit < dailyProfitTarget}`, 'DEBUG');
+            sendToLogSystem(`🔍 [COMPARAÇÃO DETALHADA] currentProfit >= dailyProfitTarget? ${currentProfit >= dailyProfitTarget}`, 'DEBUG');
+
+            // *** CORREÇÃO: Stop Loss será verificado pelo LimitsChecker ***
+            // O LimitsChecker agora gerencia isso automaticamente
+            const stopLossLimit = parseFloat(config.stopLoss) || 0;
+            if (stopLossLimit > 0) {
+                sendToLogSystem(`Stop Loss configurado: ${stopLossLimit} - LimitsChecker monitora automaticamente`, 'DEBUG');
+            }
+            
             if (currentProfit < dailyProfitTarget) {
+                sendToLogSystem(`🟡 [CONDIÇÃO] Lucro ainda não atingiu meta. Prosseguindo com automação...`, 'INFO');
                 const conditionMsg = `Automação: Condição atendida (${currentProfit} < ${dailyProfitTarget}). Verificando payout atual...`;
                 sendToLogSystem(conditionMsg, 'INFO');
                 toUpdateStatus('Automação: Verificando payout atual...', 'info', 3000);
                 
-                // Obter configurações de troca de ativos do StateManager
-                let assetConfig = { enabled: false, minPayout: 85, preferredCategory: 'crypto' };
-                if (window.StateManager) {
-                    assetConfig = window.StateManager.getAssetSwitchingConfig();
-                }
+                // *** CORREÇÃO: Obter configurações de payout diretamente do config ***
+                // O payoutBehavior define o comportamento, não apenas assetSwitching.enabled
+                const minPayoutRequired = parseFloat(config.minPayout) || 80;
+                const payoutBehavior = config.payoutBehavior || 'cancel';
                 
-                // Log da configuração de troca de ativos para debug
-                sendToLogSystem(`🔧 [runAutomationCheck] Configuração de troca de ativos: enabled=${assetConfig.enabled}, minPayout=${assetConfig.minPayout}, category=${assetConfig.preferredCategory}, checkBeforeAnalysis=${assetConfig.checkBeforeAnalysis}`, 'DEBUG');
-                
-                // Usar o payout mínimo configurado (padrão 75% baseado no log)
-                const minPayoutRequired = assetConfig.minPayout || 75;
+                // Log da configuração de payout para debug
+                sendToLogSystem(`🔧 [runAutomationCheck] Configuração de payout: minimo=${minPayoutRequired}%, comportamento=${payoutBehavior}`, 'DEBUG');
                 
                 // *** LÓGICA CORRIGIDA: Verificar payout atual ANTES de decidir trocar ***
                 sendToLogSystem(`🔍 Verificando payout atual (mínimo: ${minPayoutRequired}%)...`, 'INFO');
@@ -748,6 +860,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     if (analyzeBtn) {
                                     sendToLogSystem('Clicando #analyzeBtn para iniciar análise (payout adequado)', 'DEBUG');
                         analyzeBtn.click();
+                                    
+                                    // *** NOVO: Iniciar monitoramento contínuo de payout ***
+                                    if (!isPayoutMonitoringActive) {
+                                        setTimeout(() => startPayoutMonitoring(), 2000);
+                                    }
                     } else {
                                     const errorMsg = 'Botão #analyzeBtn não encontrado';
                         sendToLogSystem(errorMsg, 'ERROR');
@@ -773,6 +890,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                         if (analyzeBtn) {
                                             sendToLogSystem('Clicando #analyzeBtn após aprovação de payout', 'DEBUG');
                                             analyzeBtn.click();
+                                            
+                                            // *** NOVO: Iniciar monitoramento contínuo de payout ***
+                                            if (!isPayoutMonitoringActive) {
+                                                setTimeout(() => startPayoutMonitoring(), 2000);
+                                            }
                                         } else {
                                             const errorMsg = 'Botão #analyzeBtn não encontrado após aprovação de payout';
                                             sendToLogSystem(errorMsg, 'ERROR');
@@ -824,9 +946,55 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         }
                     });
             } else {
-                const resultMsg = `Automação: Meta de lucro atingida ou superada (${currentProfit} >= ${dailyProfitTarget}). Nenhuma análise necessária.`;
-                sendToLogSystem(resultMsg, 'INFO');
-                toUpdateStatus(resultMsg, 'success');
+                // *** CORREÇÃO: Quando meta for atingida, PARAR automação e disparar evento ***
+                sendToLogSystem(`🎯 [CONDIÇÃO] META ATINGIDA! Lucro atual ${currentProfit} >= Meta ${dailyProfitTarget}. Iniciando procedimento de parada...`, 'SUCCESS');
+                
+                // Disparar evento TARGET_REACHED
+                chrome.runtime.sendMessage({
+                    action: 'TARGET_REACHED',
+                    data: {
+                        currentProfit: currentProfit,
+                        targetProfit: dailyProfitTarget,
+                        reason: 'Daily profit target reached'
+                    }
+                });
+                
+                // *** DESATIVAR AUTOMAÇÃO ***
+                chrome.storage.sync.get(['userConfig'], (configResult) => {
+                    if (configResult.userConfig) {
+                        const updatedConfig = { 
+                            ...configResult.userConfig, 
+                            automation: false 
+                        };
+                        chrome.storage.sync.set({ userConfig: updatedConfig }, () => {
+                            sendToLogSystem('🔴 Automação desativada automaticamente após meta atingida', 'INFO');
+                        });
+                    }
+                });
+                
+                // Log detalhado da parada
+                chrome.runtime.sendMessage({
+                    action: 'addLog',
+                    logMessage: `🎯 META ATINGIDA: Lucro atual ${currentProfit} atingiu/superou meta de ${dailyProfitTarget} - Automação encerrada`,
+                    logLevel: 'SUCCESS',
+                    logSource: 'automation.js'
+                });
+                
+                // Parar monitoramento de payout
+                if (isPayoutMonitoringActive) {
+                    stopPayoutMonitoring();
+                }
+                
+                // *** REMOVIDO: Verificação periódica não é mais usada ***
+                // if (isPeriodicCheckActive) {
+                //     stopPeriodicMetaCheck();
+                // }
+                
+                // Atualizar status para indicar sucesso
+                toUpdateStatus(`🎯 Meta atingida! Lucro: ${currentProfit} / Meta: ${dailyProfitTarget}`, 'success', 10000);
+                
+                // O status será resetado pelos listeners que criamos
+                return; // Não continuar com automação
             }
         }); // Fim callback storage.sync.get
     }
@@ -848,6 +1016,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             startOperationBtn.addEventListener('click', () => {
                 sendToLogSystem('Botão #start-operation clicado (listener em automation.js). Iniciando runAutomationCheck.', 'INFO');
                 runAutomationCheck();
+                
+                // *** REMOVIDO: Verificação periódica causando problemas ***
+                // A meta será verificada apenas quando necessário (após operações)
             });
         } else {
             sendToLogSystem('Botão #start-operation NÃO encontrado por automation.js.', 'WARN');
@@ -856,6 +1027,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Adicionar listener para o CustomEvent 'operationResult' disparado por trade-history.js
         document.addEventListener('operationResult', (event) => {
             sendToLogSystem(`Recebido CustomEvent 'operationResult'. Detalhes: ${JSON.stringify(event.detail)}`, 'INFO');
+            
+            // *** NOVO: Registrar operação no LimitsChecker ***
+            if (window.limitsChecker && event.detail) {
+                window.limitsChecker.recordOperation(event.detail);
+                sendToLogSystem('Operação registrada no LimitsChecker', 'DEBUG');
+            }
 
             // Verificar se a automação está realmente configurada como ativa.
             chrome.storage.sync.get(['userConfig'], (storageResult) => {
@@ -879,14 +1056,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         } else {
                             sendToLogSystem('Última operação foi uma PERDA com Gale ativo. Automação aguardará o sistema Gale. Nenhuma nova análise será iniciada pela automação principal.', 'INFO');
                             // Não faz nada, deixa o Gale System lidar com a perda
+                            // Mas continuar monitorando payout
+                            if (!isPayoutMonitoringActive && config.automation) {
+                                setTimeout(() => startPayoutMonitoring(), 1000);
+                            }
                         }
                     } else {
                         // Gale está INATIVO
                         sendToLogSystem('Modo Gale INATIVO detectado. Automação prossegue para runAutomationCheck independentemente do resultado anterior.', 'INFO');
                         runAutomationCheck();
+                        
+                        // Garantir que monitoramento de payout esteja ativo
+                        if (!isPayoutMonitoringActive && config.automation) {
+                            setTimeout(() => startPayoutMonitoring(), 1000);
+                        }
                     }
                 } else {
                     sendToLogSystem('Automação está DESATIVADA nas configurações. \'operationResult\' ignorado para ciclo de automação.', 'INFO');
+                    
+                    // Parar monitoramento se automação estiver desativada
+                    if (isPayoutMonitoringActive) {
+                        stopPayoutMonitoring();
+                    }
+                    
+                    // *** REMOVIDO: Verificação periódica não é mais usada ***
+                    // if (isPeriodicCheckActive) {
+                    //     stopPeriodicMetaCheck();
+                    // }
                 }
             });
         });
@@ -894,4 +1090,196 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
 
     sendToLogSystem('Módulo de Automação carregado e configurado para controle direto e escuta de operationResult.', 'INFO');
+    
+    // *** REMOVIDO: Exposição global causava problemas ***
+    // window.runAutomationCheck = runAutomationCheck;
+    // window.startPeriodicMetaCheck = startPeriodicMetaCheck;
+    // window.stopPeriodicMetaCheck = stopPeriodicMetaCheck;
+    
+    // *** NOVO: Listener para mensagens de outros módulos (como gale-system) ***
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        // Handler para verificação de payout solicitada pelo Gale System
+        if (message.action === 'CHECK_PAYOUT_FOR_ANALYSIS' && message.source === 'gale-system') {
+            sendToLogSystem('Gale System solicitou verificação de payout. Processando...', 'INFO');
+            
+            checkPayoutBeforeAnalysis()
+                .then(() => {
+                    sendToLogSystem('Payout verificado e aprovado para Gale System', 'SUCCESS');
+                    sendResponse({ 
+                        success: true, 
+                        shouldProceed: true, 
+                        reason: 'Payout aprovado' 
+                    });
+                })
+                .catch(error => {
+                    if (error === 'PAYOUT_INSUFFICIENT') {
+                        sendToLogSystem('Payout insuficiente detectado. Sistema automático tratou a situação.', 'WARN');
+                        sendResponse({ 
+                            success: true, 
+                            shouldProceed: false, 
+                            reason: 'Payout insuficiente - sistema já tratou automaticamente' 
+                        });
+                    } else if (error === 'USER_CANCELLED') {
+                        sendResponse({ 
+                            success: false, 
+                            shouldProceed: false, 
+                            reason: 'Verificação cancelada pelo usuário' 
+                        });
+                    } else {
+                        sendToLogSystem(`Erro na verificação de payout para Gale: ${error}`, 'ERROR');
+                        sendResponse({ 
+                            success: false, 
+                            shouldProceed: true, 
+                            reason: `Erro na verificação: ${error}` 
+                        });
+                    }
+                });
+            
+            return true; // Resposta assíncrona
+        }
+        
+        // Handler para análise com verificação de ativo solicitada pelo Gale System
+        if (message.action === 'EXECUTE_ANALYSIS_WITH_ASSET_CHECK' && message.source === 'gale-system') {
+            sendToLogSystem('Gale System solicitou análise com verificação de ativo. Processando...', 'INFO');
+            
+            const config = message.config || {};
+            
+            executeAnalysisWithAssetCheck(config)
+                .then(() => {
+                    sendToLogSystem('Análise com verificação de ativo concluída para Gale System', 'SUCCESS');
+                    sendResponse({ 
+                        success: true, 
+                        reason: 'Análise iniciada após verificação de ativo' 
+                    });
+                })
+                .catch(error => {
+                    sendToLogSystem(`Erro na análise com verificação de ativo para Gale: ${error}`, 'ERROR');
+                    sendResponse({ 
+                        success: false, 
+                        reason: `Erro: ${error}` 
+                    });
+                });
+            
+            return true; // Resposta assíncrona
+        }
+        
+        // Handler para obter payout atual solicitado pelo Gale System
+        if (message.action === 'GET_CURRENT_PAYOUT' && message.source === 'gale-system') {
+            getCurrentPayout()
+                .then(payout => {
+                    sendResponse({ 
+                        success: true, 
+                        payout: payout 
+                    });
+                })
+                .catch(error => {
+                    sendResponse({ 
+                        success: false, 
+                        error: error.message 
+                    });
+                });
+            
+            return true; // Resposta assíncrona
+        }
+    });
+    
+    sendToLogSystem('Handlers de mensagens configurados para integração com outros módulos', 'DEBUG');
 })(); 
+
+// Função para reportar erro ao StateManager
+function reportSystemError(errorMessage, errorDetails = null) {
+    sendToLogSystem(`ERRO DO SISTEMA: ${errorMessage}`, 'ERROR');
+    
+    if (window.StateManager) {
+        const errorInfo = window.StateManager.reportError(errorMessage, errorDetails);
+        toUpdateStatus(`Sistema parou por erro: ${errorMessage}`, 'error');
+        return errorInfo;
+    } else {
+        sendToLogSystem('StateManager não disponível para reportar erro', 'ERROR');
+        toUpdateStatus(`Sistema parou por erro: ${errorMessage}`, 'error');
+        return null;
+    }
+}
+
+// Função wrapper para try-catch automático nas funções críticas
+async function safeExecuteAutomation(fn, functionName, ...args) {
+    try {
+        return await fn(...args);
+    } catch (error) {
+        reportSystemError(`Erro em ${functionName}: ${error.message}`, {
+            function: functionName,
+            args: args,
+            stack: error.stack,
+            module: 'automation.js'
+        });
+        throw error;
+    }
+}
+
+// ======================================================================
+// =================== SISTEMA DE VERIFICAÇÃO PERIÓDICA ================
+// ======================================================================
+
+/**
+ * Sistema de verificação periódica da meta para garantir detecção
+ */
+let periodicCheckInterval = null;
+let isPeriodicCheckActive = false;
+
+/**
+ * *** DESABILITADO: Verificação periódica causava problemas ***
+ * Iniciar verificação periódica da meta
+ */
+function startPeriodicMetaCheck() {
+    sendToLogSystem('⚠️ Verificação periódica desabilitada - meta será verificada apenas após operações', 'WARN');
+    return; // *** DESABILITADO ***
+    
+    // Código original comentado para referência futura
+    /*
+    if (isPeriodicCheckActive) {
+        sendToLogSystem('Verificação periódica já está ativa', 'DEBUG');
+        return;
+    }
+    
+    sendToLogSystem('🔄 Iniciando verificação periódica da meta (a cada 30s)', 'INFO');
+    isPeriodicCheckActive = true;
+    
+    periodicCheckInterval = setInterval(() => {
+        try {
+            // Verificar se automação ainda está ativa
+            chrome.storage.sync.get(['userConfig'], (result) => {
+                const config = result.userConfig || {};
+                
+                if (config.automation) {
+                    sendToLogSystem('🔍 [VERIFICAÇÃO PERIÓDICA] Checando meta...', 'DEBUG');
+                    // Usar referência global segura
+                    if (typeof window.runAutomationCheck === 'function') {
+                        window.runAutomationCheck();
+                    } else if (typeof runAutomationCheck === 'function') {
+                        runAutomationCheck();
+                    } else {
+                        sendToLogSystem('⚠️ [VERIFICAÇÃO PERIÓDICA] runAutomationCheck não encontrada', 'WARN');
+                    }
+                } else {
+                    sendToLogSystem('🔍 [VERIFICAÇÃO PERIÓDICA] Automação desativada, parando verificação periódica', 'INFO');
+                    stopPeriodicMetaCheck();
+                }
+            });
+        } catch (error) {
+            sendToLogSystem(`❌ [VERIFICAÇÃO PERIÓDICA] Erro: ${error.message}`, 'ERROR');
+        }
+    }, 30000); // A cada 30 segundos
+    */
+}
+
+/**
+ * Parar verificação periódica
+ */
+function stopPeriodicMetaCheck() {
+    if (periodicCheckInterval) {
+        clearInterval(periodicCheckInterval);
+        periodicCheckInterval = null;
+        isPeriodicCheckActive = false;
+        sendToLogSystem('🔄 Verificação periódica da meta interrompida', 'INFO');
+    }
+} 
