@@ -16,6 +16,7 @@
   ],
   "host_permissions": [
     "https://pocketoption.com/*",
+    "https://www.pocketoption.com/*",
     "<all_urls>"
   ],
   "action": {
@@ -54,7 +55,7 @@
       "css": [
         "src/assets/styles/content.css"
       ],
-      "all_frames": true
+      "all_frames": false
     }
   ],
   "web_accessible_resources": [

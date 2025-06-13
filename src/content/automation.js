@@ -189,62 +189,20 @@ async function ensureBestAsset(minPayout = 85, preferredCategory = 'crypto') {
 
 /**
  * Sistema de monitoramento contínuo de payout durante automação ativa
+ * DESABILITADO: Monitoramento contínuo removido para evitar problemas de performance
+ * O payout será verificado apenas no momento da análise
  */
 let payoutMonitoringInterval = null;
 let isPayoutMonitoringActive = false;
 
 /**
  * Iniciar monitoramento contínuo de payout
+ * FUNÇÃO DESABILITADA: Não faz mais monitoramento contínuo
  */
 function startPayoutMonitoring() {
-    // Parar monitoramento anterior se existir
-    stopPayoutMonitoring();
-    
-    sendToLogSystem('🔄 Iniciando monitoramento contínuo de payout...', 'INFO');
-    isPayoutMonitoringActive = true;
-    
-    // Verificar payout a cada 10 segundos
-    payoutMonitoringInterval = setInterval(async () => {
-        try {
-            // Verificar se ainda está em modo automático
-            const result = await new Promise((resolve) => {
-                chrome.storage.sync.get(['userConfig'], resolve);
-            });
-            
-            const config = result.userConfig || {};
-            if (!config.automation) {
-                sendToLogSystem('🛑 Automação desativada. Parando monitoramento de payout.', 'INFO');
-                stopPayoutMonitoring();
-                return;
-            }
-            
-            // Verificar payout atual
-            const minPayoutRequired = parseFloat(config.minPayout) || 80;
-            const payoutBehavior = config.payoutBehavior || 'cancel';
-            
-            const payoutResult = await getCurrentPayout();
-            const currentPayout = payoutResult.payout;
-            
-            sendToLogSystem(`🔍 Monitoramento: Payout atual ${currentPayout}% vs mínimo ${minPayoutRequired}%`, 'DEBUG');
-            
-            // Se payout estiver inadequado, aplicar comportamento
-            if (currentPayout < minPayoutRequired) {
-                sendToLogSystem(`⚠️ PAYOUT INADEQUADO detectado durante monitoramento! (${currentPayout}% < ${minPayoutRequired}%)`, 'WARN');
-                toUpdateStatus(`Payout inadequado detectado: ${currentPayout}%`, 'warn', 5000);
-                
-                // Parar monitoramento temporariamente para evitar execuções múltiplas
-                stopPayoutMonitoring();
-                
-                // Aplicar comportamento configurado
-                await handlePayoutIssue(currentPayout, minPayoutRequired, payoutBehavior, config);
-            }
-            
-        } catch (error) {
-            sendToLogSystem(`❌ Erro no monitoramento de payout: ${error.message}`, 'ERROR');
-        }
-    }, 10000); // 10 segundos
-    
-    sendToLogSystem('✅ Monitoramento contínuo de payout ativo (verificação a cada 10s)', 'SUCCESS');
+    sendToLogSystem('ℹ️ Monitoramento contínuo de payout está DESABILITADO. Payout será verificado apenas durante análises.', 'INFO');
+    isPayoutMonitoringActive = false;
+    // Não iniciar mais o monitoramento contínuo
 }
 
 /**
@@ -286,8 +244,7 @@ async function handlePayoutIssue(currentPayout, minPayoutRequired, payoutBehavio
                     sendToLogSystem('✅ Payout melhorou! Retomando automação...', 'SUCCESS');
                     toUpdateStatus('Payout adequado! Retomando automação...', 'success', 3000);
                     
-                    // Retomar monitoramento contínuo
-                    setTimeout(() => startPayoutMonitoring(), 2000);
+                    // Monitoramento contínuo desabilitado - payout será verificado na próxima análise
                 },
                 (error) => {
                     if (error === 'USER_CANCELLED') {
@@ -314,8 +271,7 @@ async function handlePayoutIssue(currentPayout, minPayoutRequired, payoutBehavio
                     sendToLogSystem(`✅ Ativo trocado com sucesso durante monitoramento: ${assetResult.message}`, 'SUCCESS');
                     toUpdateStatus(`Ativo trocado: ${assetResult.message}`, 'success', 4000);
                     
-                    // Retomar monitoramento após troca
-                    setTimeout(() => startPayoutMonitoring(), 3000);
+                    // Monitoramento contínuo desabilitado - payout será verificado na próxima análise
                 } else {
                     sendToLogSystem(`❌ Falha na troca de ativo durante monitoramento: ${assetResult.error}`, 'ERROR');
                     toUpdateStatus(`Erro na troca de ativo: ${assetResult.error}`, 'error', 5000);
@@ -440,27 +396,26 @@ async function executeAnalysisWithAssetCheck(config = {}) {
     }, 'executeAnalysisWithAssetCheck', config);
 }
 
-// Função para obter o payout atual da plataforma (solicita ao content.js) - VERSÃO ROBUSTA
+// Função para obter payout atual - DELEGADA PARA PayoutController
 async function getCurrentPayout() {
+    // Usar o PayoutController se disponível
+    if (window.PayoutController && typeof window.PayoutController.getCurrentPayout === 'function') {
+        sendToLogSystem('Delegando obtenção de payout para PayoutController', 'DEBUG');
+        return window.PayoutController.getCurrentPayout();
+    }
+    
+    // Fallback: implementação básica via content.js
+    sendToLogSystem('PayoutController não disponível, usando implementação via content.js', 'WARN');
     return new Promise((resolve, reject) => {
         try {
             sendToLogSystem('🔍 Solicitando payout atual ao content.js...', 'DEBUG');
             
-            // Timeout de segurança para evitar travamento
+            // Timeout de segurança
             const timeoutId = setTimeout(() => {
                 const errorMsg = 'Timeout: Solicitação de payout demorou mais de 8 segundos';
                 sendToLogSystem(errorMsg, 'ERROR');
                 reject(new Error(errorMsg));
             }, 8000);
-            
-            // Verificar se o contexto da extensão ainda é válido
-            if (!chrome.runtime || !chrome.runtime.id) {
-                clearTimeout(timeoutId);
-                const errorMsg = 'Contexto da extensão inválido para solicitar payout';
-                sendToLogSystem(errorMsg, 'ERROR');
-                reject(new Error(errorMsg));
-                return;
-            }
             
             // Solicitar payout ao content.js via chrome.runtime
             chrome.runtime.sendMessage({
@@ -468,44 +423,15 @@ async function getCurrentPayout() {
             }, (response) => {
                 clearTimeout(timeoutId);
                 
-                // Verificar erro de runtime primeiro
                 if (chrome.runtime.lastError) {
                     const errorMsg = `Erro de comunicação: ${chrome.runtime.lastError.message}`;
                     sendToLogSystem(errorMsg, 'ERROR');
-                    
-                    // Se for "message port closed", tentar novamente uma vez
-                    if (chrome.runtime.lastError.message.includes('message port closed')) {
-                        sendToLogSystem('Tentando novamente após "message port closed"...', 'WARN');
-                        
-                        setTimeout(() => {
-                            getCurrentPayout().then(resolve).catch(reject);
-                        }, 1000);
-                        return;
-                    }
-                    
                     reject(new Error(errorMsg));
                     return;
                 }
                 
-                // Verificar se recebeu resposta
-                if (!response) {
-                    const errorMsg = 'Nenhuma resposta recebida do content.js para solicitação de payout';
-                    sendToLogSystem(errorMsg, 'ERROR');
-                    reject(new Error(errorMsg));
-                    return;
-                }
-                
-                // Verificar se a operação foi bem-sucedida
-                if (!response.success) {
-                    const errorMsg = response.error || 'Erro desconhecido ao obter payout';
-                    sendToLogSystem(errorMsg, 'ERROR');
-                    reject(new Error(errorMsg));
-                    return;
-                }
-                
-                // Validar o valor do payout
-                if (typeof response.payout !== 'number' || response.payout <= 0 || response.payout > 100) {
-                    const errorMsg = `Payout inválido recebido: ${response.payout}`;
+                if (!response || !response.success) {
+                    const errorMsg = response?.error || 'Erro ao obter payout';
                     sendToLogSystem(errorMsg, 'ERROR');
                     reject(new Error(errorMsg));
                     return;
@@ -522,178 +448,45 @@ async function getCurrentPayout() {
     });
 }
 
-// Função para verificar payout antes de análise e aplicar comportamento configurado
+// Função para verificar payout antes de análise - DELEGADA PARA PayoutController
 async function checkPayoutBeforeAnalysis() {
-    return new Promise(async (resolve, reject) => {
-        chrome.storage.sync.get(['userConfig'], async (storageResult) => {
-            if (chrome.runtime.lastError) {
-                const errorMsg = `Falha ao ler userConfig para verificação de payout: ${chrome.runtime.lastError.message}`;
-                sendToLogSystem(errorMsg, 'ERROR');
-                reject(errorMsg);
-                return;
-            }
-
-            const config = storageResult.userConfig || {};
-            const minPayout = parseFloat(config.minPayout) || 80;
-            const payoutBehavior = config.payoutBehavior || 'cancel';
-            const checkInterval = parseInt(config.payoutTimeout) || 5; // Renomeado para checkInterval
-            
-            sendToLogSystem(`Verificando payout: Mínimo=${minPayout}%, Comportamento=${payoutBehavior}, Intervalo=${checkInterval}s`, 'INFO');
-            
-            // Obter payout atual usando await
-            const payoutResult = await getCurrentPayout();
-            const currentPayout = payoutResult.payout;
-            sendToLogSystem(`Payout atual detectado: ${currentPayout}%`, 'INFO');
-            
-            if (currentPayout >= minPayout) {
-                sendToLogSystem(`Payout adequado (${currentPayout}% >= ${minPayout}%). Prosseguindo com análise.`, 'SUCCESS');
-                resolve(true);
-                return;
-            }
-            
-            // Payout insuficiente - aplicar comportamento configurado
-            sendToLogSystem(`Payout insuficiente (${currentPayout}% < ${minPayout}%). Aplicando comportamento: ${payoutBehavior}`, 'WARN');
-            
-            switch (payoutBehavior) {
-                case 'cancel':
-                    const cancelMsg = `Análise cancelada: Payout atual (${currentPayout}%) abaixo do mínimo configurado (${minPayout}%).`;
-                    sendToLogSystem(cancelMsg, 'WARN');
-                    toUpdateStatus(cancelMsg, 'warn', 8000);
-                    reject('PAYOUT_INSUFFICIENT');
-                    break;
-                    
-                case 'wait':
-                    sendToLogSystem(`Iniciando monitoramento contínuo de payout (mínimo: ${minPayout}%, intervalo: ${checkInterval}s)...`, 'INFO');
-                    toUpdateStatus(`Monitoramento de payout ativo - aguardando ${minPayout}%...`, 'info', 0);
-                    waitForPayoutImprovement(minPayout, checkInterval, resolve, reject);
-                    break;
-                    
-                case 'switch':
-                    sendToLogSystem(`Iniciando troca automática de ativo (payout atual: ${currentPayout}%, mínimo: ${minPayout}%)...`, 'INFO');
-                    toUpdateStatus(`Payout baixo (${currentPayout}%). Procurando melhor ativo...`, 'warn', 4000);
-                    
-                    // Obter configurações de troca de ativos
-                    const assetConfig = config.assetSwitching || {};
-                    const preferredCategory = assetConfig.preferredCategory || 'crypto';
-                    
-                    // Usar a função ensureBestAsset para trocar
-                    ensureBestAsset(minPayout, preferredCategory)
-                        .then(assetResult => {
-                            if (assetResult.success) {
-                                sendToLogSystem(`✅ ${assetResult.message}`, 'SUCCESS');
-                                toUpdateStatus(assetResult.message, 'success', 4000);
-                                
-                                // Aguardar um pouco para a interface atualizar e resolver
-                                setTimeout(() => {
-                                    sendToLogSystem('Troca de ativo concluída. Prosseguindo com análise.', 'SUCCESS');
-                                    resolve(true);
-                                }, 2000);
-                            } else {
-                                sendToLogSystem(`❌ Falha na troca de ativo: ${assetResult.error}`, 'ERROR');
-                                toUpdateStatus(`Erro na troca de ativo: ${assetResult.error}`, 'error', 5000);
-                                reject(`ASSET_SWITCH_FAILED: ${assetResult.error}`);
-                            }
-                        })
-                        .catch(error => {
-                            sendToLogSystem(`❌ Erro na troca de ativo: ${error.message || error}`, 'ERROR');
-                            toUpdateStatus(`Erro na troca de ativo: ${error.message || error}`, 'error', 5000);
-                            reject(`ASSET_SWITCH_ERROR: ${error.message || error}`);
-                        });
-                    break;
-                    
-                default:
-                    sendToLogSystem(`Comportamento de payout desconhecido: ${payoutBehavior}. Cancelando.`, 'ERROR');
-                    reject('UNKNOWN_BEHAVIOR');
-            }
-        });
+    // Usar o PayoutController se disponível
+    if (window.PayoutController && typeof window.PayoutController.checkPayoutBeforeAnalysis === 'function') {
+        sendToLogSystem('Delegando verificação de payout para PayoutController', 'DEBUG');
+        return window.PayoutController.checkPayoutBeforeAnalysis();
+    }
+    
+    // Fallback: implementação básica
+    sendToLogSystem('PayoutController não disponível, usando implementação básica', 'WARN');
+    return new Promise((resolve) => {
+        sendToLogSystem('Verificação de payout ignorada - PayoutController não carregado', 'WARN');
+        resolve(true); // Continuar sem verificação
     });
 }
 
-// Função auxiliar para aguardar melhora do payout (loop contínuo sem timeout)
+// Função auxiliar para aguardar melhora do payout - DELEGADA PARA PayoutController
 function waitForPayoutImprovement(minPayout, checkInterval, resolve, reject) {
-    let elapsedTime = 0;
-    let waitInterval = null;
-    let lastStatusUpdate = 0;
-    let isCancelled = false;
+    // Usar o PayoutController se disponível
+    if (window.PayoutController && typeof window.PayoutController.waitForPayoutImprovement === 'function') {
+        sendToLogSystem('Delegando aguardo de payout para PayoutController', 'DEBUG');
+        return window.PayoutController.waitForPayoutImprovement(minPayout, checkInterval, resolve, reject);
+    }
     
-    // Log inicial único
-    sendToLogSystem(`Aguardando payout adequado - monitoramento ativo (mínimo: ${minPayout}%, verificação a cada ${checkInterval}s)`, 'INFO');
-    
-    const checkPayoutPeriodically = async () => {
-        // Verificar cancelamento via storage ou mensagem
-        try {
-            const result = await new Promise((storageResolve) => {
-                chrome.storage.local.get(['cancelPayoutWait'], (data) => {
-                    storageResolve(data.cancelPayoutWait || false);
-                });
-            });
-            
-            if (result || isCancelled) {
-                clearInterval(waitInterval);
-                sendToLogSystem('Monitoramento de payout cancelado', 'INFO');
-                toUpdateStatus('Aguardo de payout cancelado', 'warn', 3000);
-                
-                // Limpar flag de cancelamento
-                chrome.storage.local.remove(['cancelPayoutWait']);
-                reject('USER_CANCELLED');
-                return;
-            }
-        } catch (storageError) {
-            sendToLogSystem(`Erro ao verificar cancelamento: ${storageError.message}`, 'WARN');
-        }
-        
-        try {
-            const payoutResult = await getCurrentPayout();
-            const currentPayout = payoutResult.payout;
-            elapsedTime += checkInterval; // Incrementar pelo intervalo de verificação
-            
-            // Verificar se o payout melhorou
-            if (currentPayout >= minPayout) {
-                clearInterval(waitInterval);
-                sendToLogSystem(`Payout adequado alcançado! ${currentPayout}% >= ${minPayout}%. Prosseguindo com análise.`, 'SUCCESS');
-                toUpdateStatus(`Payout adequado (${currentPayout}%)! Iniciando análise...`, 'success', 3000);
-                resolve(true);
-                return;
-            }
-            
-            // Atualizar status visual para o usuário a cada 5 segundos (não logs)
-            if (elapsedTime % 5 === 0) {
-                const minutes = Math.floor(elapsedTime / 60);
-                const seconds = elapsedTime % 60;
-                const timeStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-                
-                toUpdateStatus(`Aguardando payout: ${currentPayout}% → ${minPayout}% (${timeStr} aguardando)`, 'info', 0);
-                lastStatusUpdate = elapsedTime;
-            }
-            
-            // Log periódico opcional a cada 30 segundos (reduzido)
-            if (elapsedTime % 30 === 0) {
-                const minutes = Math.floor(elapsedTime / 60);
-                sendToLogSystem(`Monitoramento payout: ${currentPayout}% após ${minutes > 0 ? minutes + 'm' : elapsedTime + 's'}`, 'DEBUG');
-            }
-            
-        } catch (payoutError) {
-            clearInterval(waitInterval);
-            sendToLogSystem(`Erro ao verificar payout durante monitoramento: ${payoutError.message}`, 'ERROR');
-            toUpdateStatus(`Erro na verificação de payout: ${payoutError.message}`, 'error', 5000);
-            reject(`PAYOUT_READ_ERROR: ${payoutError.message}`);
-            return;
-        }
-    };
-    
-    // Verificar imediatamente e depois no intervalo configurado
-    checkPayoutPeriodically();
-    waitInterval = setInterval(checkPayoutPeriodically, checkInterval * 1000); // Converter para milissegundos
-    
-    // Armazenar referência do interval no chrome.storage para cancelamento
-    chrome.storage.local.set({
-        currentPayoutInterval: true,
-        payoutMonitoringActive: true
-    });
+    // Fallback: implementação básica
+    sendToLogSystem('PayoutController não disponível para aguardo de payout, resolvendo imediatamente', 'WARN');
+    resolve(true);
 }
 
-// Função para cancelar monitoramento de payout (usando chrome.storage)
+// Função para cancelar monitoramento de payout - DELEGADA PARA PayoutController
 function cancelPayoutMonitoring() {
+    // Usar o PayoutController se disponível
+    if (window.PayoutController && typeof window.PayoutController.cancelPayoutMonitoring === 'function') {
+        sendToLogSystem('Delegando cancelamento de payout para PayoutController', 'DEBUG');
+        return window.PayoutController.cancelPayoutMonitoring();
+    }
+    
+    // Fallback: implementação básica
+    sendToLogSystem('PayoutController não disponível, usando implementação básica de cancelamento', 'WARN');
     chrome.storage.local.set({ cancelPayoutWait: true }, () => {
         sendToLogSystem('Sinal de cancelamento de monitoramento enviado via chrome.storage', 'INFO');
         toUpdateStatus('Cancelando monitoramento de payout...', 'info', 3000);
@@ -861,10 +654,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                     sendToLogSystem('Clicando #analyzeBtn para iniciar análise (payout adequado)', 'DEBUG');
                         analyzeBtn.click();
                                     
-                                    // *** NOVO: Iniciar monitoramento contínuo de payout ***
-                                    if (!isPayoutMonitoringActive) {
-                                        setTimeout(() => startPayoutMonitoring(), 2000);
-                                    }
+                                    // Monitoramento contínuo desabilitado - payout será verificado na próxima análise
                     } else {
                                     const errorMsg = 'Botão #analyzeBtn não encontrado';
                         sendToLogSystem(errorMsg, 'ERROR');
@@ -891,10 +681,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                             sendToLogSystem('Clicando #analyzeBtn após aprovação de payout', 'DEBUG');
                                             analyzeBtn.click();
                                             
-                                            // *** NOVO: Iniciar monitoramento contínuo de payout ***
-                                            if (!isPayoutMonitoringActive) {
-                                                setTimeout(() => startPayoutMonitoring(), 2000);
-                                            }
+                                            // Monitoramento contínuo desabilitado - payout será verificado na próxima análise
                                         } else {
                                             const errorMsg = 'Botão #analyzeBtn não encontrado após aprovação de payout';
                                             sendToLogSystem(errorMsg, 'ERROR');
@@ -1056,20 +843,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         } else {
                             sendToLogSystem('Última operação foi uma PERDA com Gale ativo. Automação aguardará o sistema Gale. Nenhuma nova análise será iniciada pela automação principal.', 'INFO');
                             // Não faz nada, deixa o Gale System lidar com a perda
-                            // Mas continuar monitorando payout
-                            if (!isPayoutMonitoringActive && config.automation) {
-                                setTimeout(() => startPayoutMonitoring(), 1000);
-                            }
+                                                    // Monitoramento contínuo desabilitado - payout será verificado na próxima análise
                         }
                     } else {
                         // Gale está INATIVO
                         sendToLogSystem('Modo Gale INATIVO detectado. Automação prossegue para runAutomationCheck independentemente do resultado anterior.', 'INFO');
                         runAutomationCheck();
                         
-                        // Garantir que monitoramento de payout esteja ativo
-                        if (!isPayoutMonitoringActive && config.automation) {
-                            setTimeout(() => startPayoutMonitoring(), 1000);
-                        }
+                        // Monitoramento contínuo desabilitado - payout será verificado na próxima análise
                     }
                 } else {
                     sendToLogSystem('Automação está DESATIVADA nas configurações. \'operationResult\' ignorado para ciclo de automação.', 'INFO');

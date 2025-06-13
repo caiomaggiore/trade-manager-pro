@@ -1,4 +1,107 @@
 // Trade Manager Pro - Index Module
+// ================== VALIDAÇÃO DE DOMÍNIO ==================
+// IMPORTANTE: Esta extensão só deve funcionar na Pocket Option
+const validateDomain = () => {
+    try {
+        // Obter informações de localização de forma mais robusta
+        const currentURL = window.location.href;
+        const currentDomain = window.location.hostname;
+        const currentOrigin = window.location.origin;
+        
+        // Verificar se estamos em um contexto de extensão (chrome-extension://)
+        if (currentURL.startsWith('chrome-extension://')) {
+            console.log(`[Trade Manager Pro] Contexto de extensão detectado: ${currentURL}`);
+            return true; // Permitir execução em contexto de extensão
+        }
+        
+        // Verificar se estamos em um iframe ou contexto aninhado
+        if (window !== window.top) {
+            console.log(`[Trade Manager Pro] Contexto de iframe detectado, verificando domínio pai`);
+            try {
+                const parentURL = window.top.location.href;
+                const parentDomain = window.top.location.hostname;
+                if (parentDomain === 'pocketoption.com' || parentDomain === 'www.pocketoption.com') {
+                    console.log(`[Trade Manager Pro] Iframe em domínio autorizado: ${parentDomain}`);
+                    return true;
+                }
+            } catch (e) {
+                // Cross-origin iframe, não podemos acessar o parent
+                console.log(`[Trade Manager Pro] Iframe cross-origin detectado, usando validação local`);
+            }
+        }
+        
+        // Lista de domínios e padrões permitidos
+        const allowedDomains = ['pocketoption.com', 'www.pocketoption.com'];
+        const allowedPatterns = [
+            /^https?:\/\/(www\.)?pocketoption\.com/,
+            /pocketoption\.com/
+        ];
+        
+        // Verificar se o domínio está na lista permitida
+        const isDomainAllowed = allowedDomains.includes(currentDomain);
+        
+        // Verificar se a URL corresponde aos padrões permitidos
+        const isPatternAllowed = allowedPatterns.some(pattern => pattern.test(currentURL));
+        
+        // Log detalhado para debug apenas se houver problema
+        if (!isDomainAllowed && !isPatternAllowed) {
+            console.log(`[Trade Manager Pro] Validação de domínio FALHOU:`, {
+                currentURL,
+                currentDomain,
+                currentOrigin,
+                isDomainAllowed,
+                isPatternAllowed,
+                isIframe: window !== window.top
+            });
+            
+            console.warn(`[Trade Manager Pro] Extensão bloqueada: domínio não autorizado`);
+            console.warn(`[Trade Manager Pro] URL atual: ${currentURL}`);
+            console.warn(`[Trade Manager Pro] Domínio atual: ${currentDomain}`);
+            console.warn('[Trade Manager Pro] Esta extensão só funciona em pocketoption.com');
+            
+            // Mostrar aviso visual apenas se não estivermos em contexto de extensão e for a janela principal
+            if (!currentURL.includes('chrome-extension://') && window === window.top) {
+                const warningDiv = document.createElement('div');
+                warningDiv.style.cssText = `
+                    position: fixed; top: 20px; right: 20px; z-index: 999999;
+                    background: #ff4444; color: white; padding: 15px; border-radius: 8px;
+                    font-family: Arial, sans-serif; font-size: 14px; max-width: 300px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                `;
+                warningDiv.innerHTML = `
+                    <strong>⚠️ Trade Manager Pro</strong><br>
+                    Esta extensão só funciona na plataforma Pocket Option.<br>
+                    Acesse: <a href="https://pocketoption.com" style="color: #ffdddd;">pocketoption.com</a>
+                `;
+                document.body.appendChild(warningDiv);
+                
+                // Remover aviso após 10 segundos
+                setTimeout(() => {
+                    if (warningDiv.parentNode) {
+                        warningDiv.parentNode.removeChild(warningDiv);
+                    }
+                }, 10000);
+            }
+            
+            return false; // Domínio não autorizado
+        }
+        
+        console.log(`[Trade Manager Pro] Domínio autorizado: ${currentDomain}`);
+        return true; // Domínio autorizado
+        
+    } catch (error) {
+        console.error(`[Trade Manager Pro] Erro na validação de domínio:`, error);
+        // Em caso de erro, permitir execução para não quebrar a funcionalidade
+        return true;
+    }
+};
+
+// Verificar domínio antes de inicializar
+if (!validateDomain()) {
+    console.warn('[Trade Manager Pro] Inicialização bloqueada devido ao domínio não autorizado');
+    // Não continuar com a inicialização
+} else {
+
 // Verifica se o módulo já foi inicializado para evitar duplicações
 if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     // Marca o módulo como carregado
@@ -881,9 +984,12 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         }
         
         // Cancelar monitoramento de payout
-        if (typeof cancelPayoutMonitoring === 'function') {
+        if (window.PayoutController && typeof window.PayoutController.cancelPayoutMonitoring === 'function') {
+            window.PayoutController.cancelPayoutMonitoring();
+            addLog('Monitoramento de payout cancelado via PayoutController', 'DEBUG');
+        } else if (typeof cancelPayoutMonitoring === 'function') {
             cancelPayoutMonitoring();
-            addLog('Monitoramento de payout cancelado', 'DEBUG');
+            addLog('Monitoramento de payout cancelado via função local', 'DEBUG');
         }
         
         // *** NOVO: Parar monitoramento contínuo de payout ***
@@ -1024,11 +1130,14 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         updateSystemOperationalStatus('Pronto');
                     }
                 
-                // Cancelar qualquer monitoramento de payout em andamento
-                if (typeof cancelPayoutMonitoring === 'function') {
-                    cancelPayoutMonitoring();
-                    addLog('Monitoramento de payout cancelado', 'DEBUG');
-                }
+                        // Cancelar qualquer monitoramento de payout em andamento
+        if (window.PayoutController && typeof window.PayoutController.cancelPayoutMonitoring === 'function') {
+            window.PayoutController.cancelPayoutMonitoring();
+            addLog('Monitoramento de payout cancelado via PayoutController', 'DEBUG');
+        } else if (typeof cancelPayoutMonitoring === 'function') {
+            cancelPayoutMonitoring();
+            addLog('Monitoramento de payout cancelado via função local', 'DEBUG');
+        }
             });
         }
         
@@ -1940,6 +2049,19 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             // Responder à mensagem se necessário
             if (sendResponse) {
                 sendResponse({ success: true });
+            }
+        }
+        
+        // *** NOVO: Handler para cancelamento de operação pelo controle de payout ***
+        if (message && message.action === 'CANCEL_OPERATION_NOTIFICATION') {
+            addLog(`Recebida notificação de cancelamento: ${message.reason}`, 'INFO');
+            
+            // Executar cancelamento usando a função existente
+            cancelCurrentOperation(message.reason);
+            
+            // Responder à mensagem
+            if (sendResponse) {
+                sendResponse({ success: true, cancelled: true });
             }
         }
         
@@ -2953,3 +3075,5 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
 } else {
     console.log('Trade Manager Pro - Index Module já foi carregado anteriormente');
 }
+
+} // Fechamento do bloco de validação de domínio

@@ -20,6 +20,25 @@ const settingsUI = {
     assetPreferredCategory: document.getElementById('asset-preferred-category')
 };
 
+// Verificar se os elementos críticos foram encontrados
+const checkCriticalElements = () => {
+    const criticalElements = [
+        { name: 'payoutBehavior', element: settingsUI.payoutBehavior },
+        { name: 'payoutTimeoutContainer', element: settingsUI.payoutTimeoutContainer },
+        { name: 'assetSwitchingContainer', element: settingsUI.assetSwitchingContainer }
+    ];
+    
+    let allFound = true;
+    criticalElements.forEach(({ name, element }) => {
+        if (!element) {
+            console.error(`[settings.js] Elemento crítico não encontrado: ${name}`);
+            allFound = false;
+        }
+    });
+    
+    return allFound;
+};
+
 // Função simplificada para enviar logs ao sistema centralizado
 const logFromSettings = (message, level = 'INFO') => {
     try {
@@ -131,35 +150,84 @@ const applySettingsToUI = (config) => {
         }
     }
 
-    // Mostrar/ocultar campos baseado no comportamento selecionado
-    updatePayoutBehaviorVisibility();
-
     // Atualiza o estado do select de gale
     settingsUI.galeSelect.disabled = !settingsUI.toggleGale.checked;
+    
+    // Mostrar/ocultar campos baseado no comportamento selecionado (com delay para garantir que os elementos estejam prontos)
+    setTimeout(() => {
+        updatePayoutBehaviorVisibility();
+    }, 100);
+    
+    // Chamada adicional com delay maior para garantir que funcione
+    setTimeout(() => {
+        logFromSettings('Executando segunda chamada de updatePayoutBehaviorVisibility para garantir funcionamento', 'DEBUG');
+        updatePayoutBehaviorVisibility();
+    }, 500);
     
     logFromSettings('UI atualizada com as configurações', 'SUCCESS');
 };
 
 // Função para atualizar a visibilidade dos campos baseado no comportamento selecionado
 const updatePayoutBehaviorVisibility = () => {
-    if (settingsUI.payoutBehavior && settingsUI.payoutTimeoutContainer && settingsUI.assetSwitchingContainer) {
-        const behavior = settingsUI.payoutBehavior.value;
-        
-        // Mostrar/ocultar campos baseado no comportamento
-        if (behavior === 'wait') {
-            settingsUI.payoutTimeoutContainer.style.display = 'block';
-            settingsUI.assetSwitchingContainer.style.display = 'none';
-            logFromSettings('Campos de intervalo de verificação exibidos, campos de troca de ativos ocultados', 'DEBUG');
-        } else if (behavior === 'switch') {
-            settingsUI.payoutTimeoutContainer.style.display = 'none';
-            settingsUI.assetSwitchingContainer.style.display = 'block';
-            logFromSettings('Campos de troca de ativos exibidos, campo de timeout ocultado', 'DEBUG');
-        } else {
-            settingsUI.payoutTimeoutContainer.style.display = 'none';
-            settingsUI.assetSwitchingContainer.style.display = 'none';
-            logFromSettings('Todos os campos condicionais ocultados (cancel selecionado)', 'DEBUG');
-        }
+    logFromSettings('Iniciando atualização de visibilidade dos campos de payout...', 'DEBUG');
+    
+    // Verificar se todos os elementos necessários existem
+    const payoutBehaviorExists = settingsUI.payoutBehavior && settingsUI.payoutBehavior.value !== undefined;
+    const timeoutContainerExists = settingsUI.payoutTimeoutContainer;
+    const assetContainerExists = settingsUI.assetSwitchingContainer;
+    
+    logFromSettings(`Elementos encontrados - Behavior: ${!!payoutBehaviorExists}, Timeout: ${!!timeoutContainerExists}, Assets: ${!!assetContainerExists}`, 'DEBUG');
+    
+    if (!payoutBehaviorExists) {
+        logFromSettings('❌ Elemento payoutBehavior não encontrado ou sem valor', 'ERROR');
+        return;
     }
+    
+    if (!timeoutContainerExists) {
+        logFromSettings('❌ Elemento payoutTimeoutContainer não encontrado', 'ERROR');
+        return;
+    }
+    
+    if (!assetContainerExists) {
+        logFromSettings('❌ Elemento assetSwitchingContainer não encontrado', 'ERROR');
+        return;
+    }
+    
+    const behavior = settingsUI.payoutBehavior.value;
+    logFromSettings(`Comportamento atual selecionado: "${behavior}"`, 'DEBUG');
+    
+    // Log do estado atual dos elementos ANTES da mudança
+    logFromSettings(`Estado ANTES - Timeout: ${settingsUI.payoutTimeoutContainer.style.display}, Assets: ${settingsUI.assetSwitchingContainer.style.display}`, 'DEBUG');
+    
+    // SEMPRE resetar a visibilidade primeiro
+    settingsUI.payoutTimeoutContainer.style.display = 'none';
+    settingsUI.assetSwitchingContainer.style.display = 'none';
+    logFromSettings('Todos os campos condicionais resetados para oculto', 'DEBUG');
+    
+    // Log do estado APÓS o reset
+    logFromSettings(`Estado APÓS RESET - Timeout: ${settingsUI.payoutTimeoutContainer.style.display}, Assets: ${settingsUI.assetSwitchingContainer.style.display}`, 'DEBUG');
+    
+    // Mostrar campos baseado no comportamento
+    switch (behavior) {
+        case 'wait':
+            settingsUI.payoutTimeoutContainer.style.display = 'block';
+            logFromSettings('✅ Campo de intervalo de verificação exibido', 'INFO');
+            break;
+            
+        case 'switch':
+            settingsUI.assetSwitchingContainer.style.display = 'block';
+            logFromSettings('✅ Campo de troca de ativos exibido', 'INFO');
+            break;
+            
+        case 'cancel':
+        default:
+            logFromSettings('✅ Todos os campos condicionais mantidos ocultos (cancelar operação)', 'INFO');
+            break;
+    }
+    
+    // Log do estado FINAL
+    logFromSettings(`Estado FINAL - Timeout: ${settingsUI.payoutTimeoutContainer.style.display}, Assets: ${settingsUI.assetSwitchingContainer.style.display}`, 'DEBUG');
+    logFromSettings('Atualização de visibilidade concluída com sucesso', 'SUCCESS');
 };
 
 // Coletar configurações da UI
@@ -279,17 +347,40 @@ const closeSettings = () => {
 document.addEventListener('DOMContentLoaded', async () => {
     logFromSettings('Inicializando página de configurações', 'INFO');
     
+    // Verificar se todos os elementos críticos foram encontrados
+    const elementsFound = checkCriticalElements();
+    if (!elementsFound) {
+        logFromSettings('❌ Alguns elementos críticos não foram encontrados. Funcionalidade pode estar comprometida.', 'ERROR');
+    }
+    
     // Desabilitar o select de gale se o toggle estiver desativado
-    settingsUI.toggleGale.addEventListener('change', () => {
-        settingsUI.galeSelect.disabled = !settingsUI.toggleGale.checked;
-    });
+    if (settingsUI.toggleGale && settingsUI.galeSelect) {
+        settingsUI.toggleGale.addEventListener('change', () => {
+            settingsUI.galeSelect.disabled = !settingsUI.toggleGale.checked;
+        });
+    }
     
     // Listener para mudança no comportamento de payout
     if (settingsUI.payoutBehavior) {
         settingsUI.payoutBehavior.addEventListener('change', () => {
-            updatePayoutBehaviorVisibility();
             logFromSettings(`Comportamento de payout alterado para: ${settingsUI.payoutBehavior.value}`, 'INFO');
+            
+            // Aguardar um pouco para garantir que o valor foi atualizado
+            setTimeout(() => {
+                updatePayoutBehaviorVisibility();
+            }, 50);
         });
+        
+        // IMPORTANTE: Configurar estado inicial após carregar configurações
+        logFromSettings('Configurando estado inicial dos campos de payout...', 'DEBUG');
+        
+        // Aguardar um pouco para garantir que as configurações foram carregadas
+        setTimeout(() => {
+            updatePayoutBehaviorVisibility();
+        }, 200);
+        
+    } else {
+        logFromSettings('❌ Elemento payoutBehavior não encontrado durante a inicialização', 'ERROR');
     }
     
     // Evento de salvar
@@ -321,6 +412,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Carregar configurações padrão em caso de erro
         loadSettingsToUI(null);
     }
+    
+    // Verificação final para garantir que a visibilidade seja aplicada
+    setTimeout(() => {
+        logFromSettings('Verificação final da visibilidade dos campos de payout...', 'DEBUG');
+        if (settingsUI.payoutBehavior && settingsUI.payoutBehavior.value) {
+            logFromSettings(`Valor final do comportamento: "${settingsUI.payoutBehavior.value}"`, 'DEBUG');
+            updatePayoutBehaviorVisibility();
+        } else {
+            logFromSettings('Elemento payoutBehavior ainda não está pronto na verificação final', 'WARN');
+        }
+    }, 1000);
 });
 
 // Função para notificar a página principal sobre as mudanças de configuração

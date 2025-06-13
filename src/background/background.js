@@ -611,6 +611,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 return true; // Resposta assíncrona
     }
 
+    // *** NOVO: Handler para cancelamento de operação pelo controle de payout ***
+    if (message.action === 'CANCEL_CURRENT_OPERATION') {
+        console.log(`Background: Recebido comando para cancelar operação: ${message.reason}`);
+        addLog(`🚫 Cancelamento de operação solicitado: ${message.reason}`, 'INFO');
+        
+        // Notificar todas as abas sobre o cancelamento
+        chrome.tabs.query({}, (tabs) => {
+            tabs.forEach(tab => {
+                if (tab.url && (tab.url.includes('pocketoption.com') || tab.url.includes('chrome-extension'))) {
+                    chrome.tabs.sendMessage(tab.id, {
+                        action: 'CANCEL_OPERATION_NOTIFICATION',
+                        reason: message.reason,
+                        source: message.source || 'system'
+                    }).catch(() => {
+                        // Ignorar erros de comunicação com abas inativas
+                    });
+                }
+            });
+        });
+        
+        if (sendResponse) {
+            sendResponse({ success: true, message: 'Comando de cancelamento enviado para todas as abas' });
+        }
+        return true;
+    }
+
     // *** NOVO: Handler para parada automática da automação ***
     if (message.action === 'AUTOMATION_STOPPED') {
         console.log(`Background: Processando parada automática da automação`);
