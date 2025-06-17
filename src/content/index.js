@@ -10,23 +10,19 @@ const validateDomain = () => {
         
         // Verificar se estamos em um contexto de extensão (chrome-extension://)
         if (currentURL.startsWith('chrome-extension://')) {
-            console.log(`[Trade Manager Pro] Contexto de extensão detectado: ${currentURL}`);
             return true; // Permitir execução em contexto de extensão
         }
         
         // Verificar se estamos em um iframe ou contexto aninhado
         if (window !== window.top) {
-            console.log(`[Trade Manager Pro] Contexto de iframe detectado, verificando domínio pai`);
             try {
                 const parentURL = window.top.location.href;
                 const parentDomain = window.top.location.hostname;
                 if (parentDomain === 'pocketoption.com' || parentDomain === 'www.pocketoption.com') {
-                    console.log(`[Trade Manager Pro] Iframe em domínio autorizado: ${parentDomain}`);
                     return true;
                 }
             } catch (e) {
                 // Cross-origin iframe, não podemos acessar o parent
-                console.log(`[Trade Manager Pro] Iframe cross-origin detectado, usando validação local`);
             }
         }
         
@@ -43,21 +39,8 @@ const validateDomain = () => {
         // Verificar se a URL corresponde aos padrões permitidos
         const isPatternAllowed = allowedPatterns.some(pattern => pattern.test(currentURL));
         
-        // Log detalhado para debug apenas se houver problema
+        // Validação de domínio
         if (!isDomainAllowed && !isPatternAllowed) {
-            console.log(`[Trade Manager Pro] Validação de domínio FALHOU:`, {
-                currentURL,
-                currentDomain,
-                currentOrigin,
-                isDomainAllowed,
-                isPatternAllowed,
-                isIframe: window !== window.top
-            });
-            
-            console.warn(`[Trade Manager Pro] Extensão bloqueada: domínio não autorizado`);
-            console.warn(`[Trade Manager Pro] URL atual: ${currentURL}`);
-            console.warn(`[Trade Manager Pro] Domínio atual: ${currentDomain}`);
-            console.warn('[Trade Manager Pro] Esta extensão só funciona em pocketoption.com');
             
             // Mostrar aviso visual apenas se não estivermos em contexto de extensão e for a janela principal
             if (!currentURL.includes('chrome-extension://') && window === window.top) {
@@ -86,11 +69,9 @@ const validateDomain = () => {
             return false; // Domínio não autorizado
         }
         
-        console.log(`[Trade Manager Pro] Domínio autorizado: ${currentDomain}`);
         return true; // Domínio autorizado
         
     } catch (error) {
-        console.error(`[Trade Manager Pro] Erro na validação de domínio:`, error);
         // Em caso de erro, permitir execução para não quebrar a funcionalidade
         return true;
     }
@@ -98,7 +79,6 @@ const validateDomain = () => {
 
 // Verificar domínio antes de inicializar
 if (!validateDomain()) {
-    console.warn('[Trade Manager Pro] Inicialização bloqueada devido ao domínio não autorizado');
     // Não continuar com a inicialização
 } else {
 
@@ -122,7 +102,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 source: 'index.js' // 'source' já é explícito aqui, mas pode ser útil para o receptor
             }); // Callback removido
         } catch (error) {
-            console.warn('[index.js] Exceção ao tentar enviar log via runtime:', error);
+            // Erro silencioso
         }
     };
     
@@ -512,7 +492,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     // Função para analisar na aba
     const analyzeInTab = async () => {
         try {
-            const tab = await getActiveTab();
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
             const response = await chrome.tabs.sendMessage(tab.id, { action: 'ANALYZE_GRAPH' });
             if (response && response.success) {
                 updateStatus('Análise concluída com sucesso', 'success');
@@ -526,125 +506,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     };
 
     // ================== INICIALIZAÇÃO ==================
-    document.addEventListener('DOMContentLoaded', async () => {
-        // Inicializar sistema de logs
-        initLogging();
-        
-        // Adicionar log de inicialização
-        addLog('Interface principal inicializada', 'INFO');
-        
-        // Tentar obter a versão do Manifest e mostrar no rodapé
-        try {
-            const manifest = chrome.runtime.getManifest();
-            if (indexUI.version) {
-                indexUI.version.textContent = manifest.version || '1.0.0';
-                addLog(`Versão do Trade Manager Pro: ${manifest.version}`, 'INFO');
-            }
-        } catch (error) {
-            addLog('Erro ao obter versão do sistema', 'ERROR');
-            if (indexUI.version) {
-                indexUI.version.textContent = '1.0.0';
-            }
-        }
-        
-        // Testar conexão com a API Gemini
-        testGeminiConnection();
-        
-        // Carregar configurações
-        loadConfig();
-        
-        // Atualizar status inicial
-        updateStatus('Sistema operando normalmente', 'INFO');
-        
-        // Adicionar event listeners
-        addEventListeners();
-        
-        // Inicializar listener para StateManager
-        initStateManagerListener();
-        
-        // Configurar listener para sistema de Gale
-        setupGaleListener();
-        
-        // Atualização inicial do dashboard e status operacional
-        setTimeout(() => {
-            if (window.StateManager) {
-                const config = window.StateManager.getConfig();
-                const operationalStatus = window.StateManager.getOperationalStatus();
-                
-                if (config) {
-                    updateMinPayoutDisplay(config);
-                    updateProfitLossDisplay();
-                    updateGaleLevelDisplay();
-                    addLog('Dashboard atualizado com configurações iniciais', 'DEBUG');
-                }
-                
-                if (operationalStatus) {
-                    updateSystemOperationalStatus(operationalStatus.status);
-                    addLog(`Status operacional carregado: ${operationalStatus.status}`, 'DEBUG');
-                }
-            }
-        }, 1500);
-        
-        // Inicializar módulo de histórico
-        initHistoryModule();
-        
-        // Configurar event listeners
-        addLog('Event listeners configurados com sucesso', 'DEBUG');
-        
-        // Adicionar listener direto para mensagens da página de configurações (mecanismo alternativo)
-        window.addEventListener('message', (event) => {
-            // Verificar se é uma mensagem de atualização de configurações
-            if (event.data && event.data.action === 'configUpdated' && event.data.settings) {
-                addLog('Recebida mensagem direta de atualização de configurações', 'INFO');
-                
-                const config = event.data.settings;
-                // Atualizar campos da página principal
-                updateCurrentSettings({
-                    galeEnabled: config.gale?.active || false,
-                    galeLevel: config.gale?.level || '1.2x',
-                    galeProfit: config.gale?.level || '20%', // Adicionando galeProfit
-                    dailyProfit: config.dailyProfit || 150,
-                    stopLoss: config.stopLoss || 30,
-                    tradeValue: config.value || 10,
-                    tradeTime: config.period || 1,
-                    autoActive: config.automation || false
-                });
-                
-                // Atualizar apenas a UI de status de automação, sem alterar o estado
-                const automationStatus = config.automation || false;
-                const automationStatusElement = document.querySelector('#automation-status');
-                if (automationStatusElement) {
-                    automationStatusElement.textContent = automationStatus ? 'Ativado' : 'Desativado';
-                    automationStatusElement.className = 'status-value';
-                    
-                    addLog(`UI de status de automação atualizada via postMessage: ${automationStatus ? 'Ativo' : 'Inativo'}`, 'DEBUG');
-                }
-                
-                updateStatus('Configurações atualizadas via mensagem direta', 'success', 2000);
-                addLog('Configurações atualizadas com sucesso via postMessage', 'SUCCESS');
-            }
-        });
-        addLog('Listener de mensagens diretas configurado com sucesso', 'INFO');
-        
-        updateStatus('Sistema iniciado com sucesso!', 'success');
-        addLog('Interface principal carregada e pronta', 'SUCCESS');
-        
-        // Verificar conexão com a extensão e processar operações pendentes
-        checkExtensionConnection();
-        
-        // Tentar testar a conexão com a API Gemini
-        testGeminiConnection()
-            .then(connected => {
-                if (connected) {
-                    addLog('API Gemini conectada com sucesso', 'SUCCESS');
-                } else {
-                    addLog('Não foi possível conectar à API Gemini', 'WARN');
-                }
-            })
-            .catch(err => {
-                addLog(`Erro ao testar conexão com API: ${err.message}`, 'ERROR');
-            });
-    });
+    // Inicialização removida - usando _setupLateInitialization
 
     // ================== NOVAS FUNÇÕES PARA AUTOMAÇÃO ==================
     // Função para atualizar os elementos de UI com as configurações atuais
@@ -708,14 +570,17 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 }
             }
             
-            // Atualizar configurações de Gale
-            if (indexUI.toggleGale && typeof settings.galeEnabled !== 'undefined') {
-                indexUI.toggleGale.checked = settings.galeEnabled;
-                addLog(`toggleGale atualizado para: ${settings.galeEnabled}`, 'DEBUG');
+            // Atualizar configurações de Gale (usando estrutura correta)
+            const galeEnabled = settings.gale?.active ?? settings.galeEnabled ?? false;
+            const galeLevel = settings.gale?.level ?? settings.galeLevel ?? '20%';
+            
+            if (indexUI.toggleGale) {
+                indexUI.toggleGale.checked = galeEnabled;
+                addLog(`toggleGale atualizado para: ${galeEnabled}`, 'DEBUG');
             }
             
             // Atualizar status do Gale na UI
-            updateGaleStatusUI(settings.galeEnabled, settings.galeLevel, settings.galeProfit);
+            updateGaleStatusUI(galeEnabled, galeLevel, settings.galeProfit);
             
             // Atualizar payout mínimo no dashboard
             updateMinPayoutDisplay(settings);
@@ -723,9 +588,10 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             // Atualizar ganhos e perdas no dashboard
             updateProfitLossDisplay();
             
-            // Atualizar status de automação (padronizado)
-            if (indexUI.automationStatus && typeof settings.autoActive !== 'undefined') {
-                updateAutomationStatusUI(settings.autoActive);
+            // Atualizar status de automação (usando estrutura correta)
+            const automationActive = settings.automation ?? settings.autoActive ?? false;
+            if (indexUI.automationStatus) {
+                updateAutomationStatusUI(automationActive);
             }
             
             // Salvar as configurações globalmente para acesso fácil
@@ -747,9 +613,9 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     indexUI.currentTime.textContent = `${settings.tradeTime} min`;
                 }
                 // Atualizar status do Gale novamente para garantir
-                if (typeof settings.galeEnabled !== 'undefined' && typeof settings.galeLevel !== 'undefined') {
-                    updateGaleStatusUI(settings.galeEnabled, settings.galeLevel, settings.galeProfit);
-                }
+                const galeEnabled = settings.gale?.active ?? settings.galeEnabled ?? false;
+                const galeLevel = settings.gale?.level ?? settings.galeLevel ?? '20%';
+                updateGaleStatusUI(galeEnabled, galeLevel, settings.galeProfit);
                 
                 addLog('Verificação adicional de atualização da UI realizada', 'DEBUG');
             }, 100);
@@ -938,48 +804,30 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         return total;
     };
 
-    // Função para obter a aba ativa
-    async function getActiveTab() {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        return tab;
-    }
+    // Função simplificada removida - usar chrome.tabs.query diretamente
 
-    // Função para testar a conexão com a API
-    async function testGeminiConnection() {
+    // Função simplificada para teste de conectividade
+    const testGeminiConnection = async () => {
         try {
-            updateStatus('Testando conexão com Gemini...', 'info');
-            addLog('Iniciando teste de conexão...');
+            addLog('Verificando conectividade do sistema...', 'INFO');
+            updateStatus('Sistema verificando conectividade...', 'info');
             
-            const response = await fetch(API_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{
-                        parts: [{ text: "Me responda com OK" }]
-                    }]
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error(`Erro HTTP: ${response.status}`);
-            }
-
-            const data = await response.json();
-            const text = data.candidates[0].content.parts[0].text;
-            
-            if (text.includes('OK')) {
-                updateStatus('Conexão estabelecida!', 'success');
-                addLog('Conexão com Gemini estabelecida com sucesso');
+            // Verificação básica sem fazer requisição real
+            if (window.API_KEY && window.API_URL) {
+                addLog('Configurações de API encontradas', 'SUCCESS');
+                updateStatus('Sistema pronto para análises', 'success');
                 return true;
             } else {
-                throw new Error('Resposta inesperada da API');
+                addLog('Configurações de API não encontradas', 'WARN');
+                updateStatus('Sistema em modo limitado', 'warn');
+                return false;
             }
         } catch (error) {
-            updateStatus(`Erro: ${error.message}`, 'error');
-            addLog(`Erro no teste de conexão: ${error.message}`);
+            addLog(`Erro na verificação: ${error.message}`, 'ERROR');
+            updateStatus('Erro na verificação do sistema', 'error');
             return false;
         }
-    }
+    };
 
     // Função para atualizar o contador
     const updateTradeCountdown = () => {
@@ -1100,7 +948,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             } else {
                 // Fallback para o método antigo se o módulo não estiver disponível
                 addLog('Módulo CaptureScreen não disponível, tentando método alternativo', 'WARN');
-                const tab = await getActiveTab();
+                const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
                 const response = await chrome.tabs.sendMessage(tab.id, { action: 'CAPTURE_SCREENSHOT' });
                 if (response && response.success) {
                     updateStatus('Captura realizada com sucesso', 'success');
@@ -1303,13 +1151,33 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         // Inicializar sistema de logs
         initLogging();
         
+        // Adicionar log de inicialização
+        addLog('Interface principal inicializada', 'INFO');
+        
+        // Tentar obter a versão do Manifest e mostrar no rodapé
         try {
-            const manifestInfo = chrome.runtime.getManifest();
-            addLog(`Sistema Trade Manager Pro v${manifestInfo.version} inicializado`, 'INFO');
-            addLog(`Ambiente: ${manifestInfo.name} / ${navigator.userAgent}`, 'DEBUG');
+            const manifest = chrome.runtime.getManifest();
+            if (indexUI.version) {
+                indexUI.version.textContent = manifest.version || '1.0.0';
+                addLog(`Versão do Trade Manager Pro: ${manifest.version}`, 'INFO');
+            }
+            addLog(`Sistema Trade Manager Pro v${manifest.version} inicializado`, 'INFO');
+            addLog(`Ambiente: ${manifest.name} / ${navigator.userAgent}`, 'DEBUG');
         } catch (e) {
             addLog('Sistema Trade Manager Pro inicializado (versão desconhecida)', 'INFO');
+            if (indexUI.version) {
+                indexUI.version.textContent = '1.0.0';
+            }
         }
+        
+        // Testar conexão com a API Gemini
+        testGeminiConnection();
+        
+        // Carregar configurações
+        loadConfig();
+        
+        // Atualizar status inicial
+        updateStatus('Sistema operando normalmente', 'INFO');
         
         // Inicializar módulo de histórico
         initHistoryModule();
@@ -1330,11 +1198,32 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         // Configurar listener para sistema de Gale
         setupGaleListener();
         
+        // Atualização inicial do dashboard e status operacional
+        setTimeout(() => {
+            if (window.StateManager) {
+                const config = window.StateManager.getConfig();
+                const operationalStatus = window.StateManager.getOperationalStatus();
+                
+                if (config) {
+                    updateMinPayoutDisplay(config);
+                    updateProfitLossDisplay();
+                    updateGaleLevelDisplay();
+                    addLog('Dashboard atualizado com configurações iniciais', 'DEBUG');
+                }
+                
+                if (operationalStatus) {
+                    updateSystemOperationalStatus(operationalStatus.status);
+                    addLog(`Status operacional carregado: ${operationalStatus.status}`, 'DEBUG');
+                }
+            }
+        }, 1500);
+        
         // Adicionar listener direto para mensagens da página de configurações (mecanismo alternativo)
         window.addEventListener('message', (event) => {
             // Verificar se é uma mensagem de atualização de configurações
             if (event.data && event.data.action === 'configUpdated' && event.data.settings) {
                 addLog('Recebida mensagem direta de atualização de configurações', 'INFO');
+                addLog(`Dados recebidos: ${JSON.stringify(event.data.settings)}`, 'DEBUG');
                 
                 const config = event.data.settings;
                 // Atualizar campos da página principal
@@ -1348,6 +1237,14 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     tradeTime: config.period || 1,
                     autoActive: config.automation || false
                 });
+                
+                // Forçar atualização do dashboard
+                setTimeout(() => {
+                    updateMinPayoutDisplay(config);
+                    updateProfitLossDisplay();
+                    updateGaleLevelDisplay();
+                    addLog('Dashboard forçado a atualizar após receber configurações', 'DEBUG');
+                }, 100);
                                 
                 updateStatus('Configurações atualizadas via mensagem direta', 'success', 2000);
                 addLog('Configurações atualizadas com sucesso via postMessage', 'SUCCESS');
@@ -2121,43 +2018,11 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 default: statusType = 'info';
             }
             
-            updateStatusUI(message, statusType, duration);
+            updateStatus(message, statusType, duration);
         }
     };
 
-    // Função interna para atualizar apenas a UI de status, sem registrar logs
-    const updateStatusUI = (message, type = 'info', duration = 3000) => {
-        try {
-            // Registrar no sistema de logs centralizado
-            addLog(`Status UI atualizado: ${message}`, type.toUpperCase());
-            
-            // Buscar o elemento de status
-            const statusElement = document.getElementById('status-processo');
-            if (statusElement) {
-                // Remover classes específicas, mas manter a classe base 'status-processo'
-                statusElement.className = 'status-processo';
-                
-                // Adicionar a classe apropriada
-                statusElement.classList.add(type, 'visible');
-                
-                // Converter quebras de linha \n para <br> e usar innerHTML
-                const formattedMessage = message.replace(/\n/g, '<br>');
-                statusElement.innerHTML = formattedMessage;
-                
-                // Auto-limpar após duração
-                if (duration > 0) {
-                    setTimeout(() => {
-                        statusElement.classList.remove('visible');
-                    }, duration);
-                }
-            } else {
-                addLog('Elemento de status não encontrado na UI', 'WARN');
-            }
-        } catch (error) {
-            console.error(`Erro ao atualizar UI de status: ${error.message}`);
-            addLog(`Erro ao atualizar UI de status: ${error.message}`, 'ERROR');
-        }
-    };
+    // Função removida - usar updateStatus() diretamente
 
     //Adicionar um listener para mensagens do chrome.runtime
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

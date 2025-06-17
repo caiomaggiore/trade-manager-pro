@@ -6,7 +6,7 @@
 function showAnalysisModal(result) {
     // Validação crítica: verificar se result e result.action existem
     if (!result) {
-        console.error('showAnalysisModal: result é undefined ou null');
+        // Result é undefined ou null
         if (typeof addLog === 'function') {
             addLog('Erro: Resultado da análise é undefined', 'ERROR', 'analysis');
         }
@@ -14,7 +14,7 @@ function showAnalysisModal(result) {
     }
     
     if (!result.action) {
-        console.error('showAnalysisModal: result.action é undefined ou null', result);
+        // Result.action é undefined ou null
         if (typeof addLog === 'function') {
             addLog(`Erro: Ação da análise é undefined. Resultado recebido: ${JSON.stringify(result)}`, 'ERROR', 'analysis');
         }

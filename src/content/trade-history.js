@@ -42,7 +42,7 @@ window.TradeManager.History = (function() {
                 source: 'trade-history.js'
             });
         } catch (error) {
-            console.warn('[trade-history.js] Exceção ao tentar enviar log via runtime (este é um log de fallback no console):', error);
+            // Erro silencioso
         }
     };
     
@@ -266,18 +266,10 @@ window.TradeManager.History = (function() {
                         //     localRuntimeId = chrome && chrome.runtime ? chrome.runtime.id : 'undefined';
                         // } catch(e) { /*ignore*/ }
 
-                        // console.warn(`${scriptName} Initialized. Runtime ID: ${localRuntimeId}`);
-
                         // Verificar se já existe um observer
                         if (window._tradeObserver) {
                             const logMsg = 'Observer já existe, não será criado novamente';
-                            // console.warn(`${scriptName} Attempting to log: "${logMsg}", Runtime ID: ${localRuntimeId}`);
-                            // if (localRuntimeId && localRuntimeId !== 'undefined') {
                             chrome.runtime.sendMessage({ action: 'addLog', logMessage: logMsg, level: 'DEBUG', source: 'trade-history.js-injected' });
-                            //     console.warn(`${scriptName} Log message SENT for "Observer already exists".`);
-                            // } else {
-                            //     console.warn(`${scriptName} Log message NOT SENT for "Observer already exists" (invalid runtime).`);
-                            // }
                             return;
                         }
                         
@@ -387,46 +379,22 @@ window.TradeManager.History = (function() {
                                             // Verificar se é uma operação duplicada
                                             if (isProcessedRecently(result)) {
                                                 const logMsg = `Operação duplicada ignorada: ${result.symbol} ${result.status}`;
-                                                // console.warn(`${scriptName} Attempting to log: "${logMsg}", Runtime ID: ${localRuntimeId}`);
-                                                // if (localRuntimeId && localRuntimeId !== 'undefined') {
                                                 chrome.runtime.sendMessage({ action: 'addLog', logMessage: logMsg, level: 'DEBUG', source: 'trade-history.js-injected' });
-                                                //     console.warn(`${scriptName} Log message SENT for "Duplicate operation".`);
-                                                // } else {
-                                                //     console.warn(`${scriptName} Log message NOT SENT for "Duplicate operation" (invalid runtime).`);
-                                                // }
                                                 return;
                                             }
 
                                             const detectedLogMsg = `Operação detectada: ${JSON.stringify(result)}`;
-                                            // console.warn(`${scriptName} Attempting to log: "${detectedLogMsg.substring(0,100)}...", Runtime ID: ${localRuntimeId}`);
-                                            // if (localRuntimeId && localRuntimeId !== 'undefined') {
-                                            chrome.runtime.sendMessage({ action: 'addLog', logMessage: detectedLogMsg, level: 'INFO', source: 'trade-history.js-injected' });      
-                                            //     console.warn(`${scriptName} Log message SENT for "Operation detected".`);
-                                            // } else {
-                                            //     console.warn(`${scriptName} Log message NOT SENT for "Operation detected" (invalid runtime).`);
-                                            // }            
+                                            chrome.runtime.sendMessage({ action: 'addLog', logMessage: detectedLogMsg, level: 'INFO', source: 'trade-history.js-injected' });            
                                             
                                             // Enviar o resultado para a extensão
                                             try {
-                                                // console.warn(`${scriptName} Attempting to send TRADE_RESULT. Runtime ID: ${localRuntimeId}`);
-                                                // if (localRuntimeId && localRuntimeId !== 'undefined') {
                                                 chrome.runtime.sendMessage({
                                                     type: 'TRADE_RESULT',
                                                     data: result
                                                 }); 
-                                                //     console.warn(`${scriptName} TRADE_RESULT message SENT.`);
-                                                // } else {
-                                                //     console.warn(`${scriptName} TRADE_RESULT message NOT SENT (invalid runtime).`);
-                                                // }
                                             } catch (error) {
                                                 const errorMsg = `Erro ao enviar operação: ${error.message}`;
-                                                // console.warn(`${scriptName} Attempting to log error: "${errorMsg}", Runtime ID: ${localRuntimeId}`);
-                                                // if (localRuntimeId && localRuntimeId !== 'undefined') {
                                                 chrome.runtime.sendMessage({ action: 'addLog', logMessage: errorMsg, level: 'ERROR', source: 'trade-history.js-injected' });
-                                                //     console.warn(`${scriptName} Error log message SENT.`);
-                                                // } else {
-                                                //     console.warn(`${scriptName} Error log message NOT SENT (invalid runtime).`);
-                                                // }
                                             }
                                         }
                                     }
@@ -444,13 +412,7 @@ window.TradeManager.History = (function() {
                         window._tradeObserver = observer;
                         
                         const startedLogMsg = 'Monitoramento de operações iniciado';
-                        // console.warn(`${scriptName} Attempting to log: "${startedLogMsg}", Runtime ID: ${localRuntimeId}`);
-                        // if (localRuntimeId && localRuntimeId !== 'undefined') {
                         chrome.runtime.sendMessage({ action: 'addLog', logMessage: startedLogMsg, level: 'INFO', source: 'trade-history.js-injected' });
-                        //     console.warn(`${scriptName} Log message SENT for "Monitoring started".`);
-                        // } else {
-                        //     console.warn(`${scriptName} Log message NOT SENT for "Monitoring started" (invalid runtime).`);
-                        // }
                         return true;
                     }
                     
@@ -698,9 +660,6 @@ window.TradeManager.History = (function() {
             // Método 2: Se a comunicação direta falhar, tentar via mensagem do Chrome
             if (!galeSystemNotified) {
                 try {
-                    // const runtimeId = chrome && chrome.runtime ? chrome.runtime.id : 'undefined';
-                    // console.warn(`[trade-history.js][notifyAutomationSystem] Attempting to notify Gale via runtime. Runtime ID: ${runtimeId}`);
-                    // if (chrome && chrome.runtime && runtimeId && runtimeId !== 'undefined') { // Condição removida
                     const action = operation.success ? 'RESET_GALE' : 'APPLY_GALE';
                     chrome.runtime.sendMessage({
                         action: action,
@@ -709,11 +668,7 @@ window.TradeManager.History = (function() {
                             source: 'trade-history',
                             notifyTime: Date.now()
                         }
-                    }); 
-                    // console.warn(`[trade-history.js][notifyAutomationSystem] Gale notification (${action}) SENT.`);
-                    // } else {
-                    //    console.warn(`[trade-history.js][notifyAutomationSystem] Gale notification NOT SENT (invalid runtime).`);
-                    // }
+                    });
                 } catch (msgError) {
                     logToSystem(`Erro ao enviar mensagem para sistema de gale: ${msgError.message}`, 'ERROR');
                 }

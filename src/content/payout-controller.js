@@ -29,7 +29,7 @@ class PayoutController {
                 });
             }
         } catch (error) {
-            console.warn('[PayoutController] Erro ao enviar log:', error);
+            // Erro silencioso
         }
     }
     
@@ -45,7 +45,7 @@ class PayoutController {
                 });
             }
         } catch (error) {
-            console.warn('[PayoutController] Erro ao atualizar status:', error);
+            // Erro silencioso
         }
     }
     
@@ -533,4 +533,4 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 });
 
-console.log('[PayoutController] Módulo carregado com sucesso'); 
+        // Módulo carregado 

@@ -26,6 +26,27 @@ const DEFAULT_CONFIG = {
     }
 };
 
+// Função para normalizar configurações vindas de diferentes fontes
+const normalizeConfig = (config) => {
+    if (!config) return DEFAULT_CONFIG;
+    
+    // Garantir estrutura consistente
+    const normalized = {
+        ...DEFAULT_CONFIG,
+        ...config,
+        gale: {
+            active: config.gale?.active ?? DEFAULT_CONFIG.gale.active,
+            level: config.gale?.level ?? DEFAULT_CONFIG.gale.level
+        },
+        assetSwitching: {
+            ...DEFAULT_CONFIG.assetSwitching,
+            ...(config.assetSwitching || {})
+        }
+    };
+    
+    return normalized;
+};
+
 class StateManager {
     static instance = null;
 
@@ -62,87 +83,108 @@ class StateManager {
         this.tradingActive = false;
         this.analyzersInitialized = false; // *** NOVO: Controle de inicialização lazy ***
         
-        // Log de inicialização simples - SEM usar logToSystem
-        console.log('[StateManager] Inicializado (logs lazy ativados)');
+        // StateManager inicializado
     }
 
-    // Carregar configurações padrão do arquivo
-    async loadDefaultConfig() {
-        try {
-            console.log('[StateManager] Tentando carregar default.json...');
-            const response = await fetch('../config/default.json');
-            
-            if (!response.ok) {
-                throw new Error(`Erro ao carregar default.json: ${response.status}`);
-            }
-            
-            const defaultConfig = await response.json();
-            console.log('[StateManager] default.json carregado com sucesso:', defaultConfig);
-            return defaultConfig;
-        } catch (error) {
-            console.error('[StateManager] Erro ao carregar default.json:', error);
-            console.log('[StateManager] Usando configurações padrão hardcoded');
-            return DEFAULT_CONFIG;
-        }
-    }
+    // *** REMOVIDO: Não carregamos mais default.json ***
+    // Todas as configurações padrão agora são definidas pelo usuário
 
     // Carregar configurações
     async loadConfig() {
         try {
-            console.log('[StateManager] Carregando configurações do storage...');
             const result = await chrome.storage.sync.get(['userConfig']);
             
-            // Se não houver configurações no storage, carregar default.json
+            // Se não houver configurações no storage, usar DEFAULT_CONFIG (não carregar JSON)
             if (!result.userConfig || Object.keys(result.userConfig).length === 0) {
-                console.log('[StateManager] Nenhuma configuração encontrada no storage');
-                this.state.config = await this.loadDefaultConfig();
+                // Usar configurações padrão em memória, sem salvar automaticamente
+                this.state.config = normalizeConfig(DEFAULT_CONFIG);
                 
-                // Salvar as configurações padrão no storage para uso futuro
+                // *** NOVO: Salvar configurações padrão apenas na primeira vez ***
+                // Isso garante que o usuário tenha um ponto de partida, mas não sobrescreve configurações existentes
                 await chrome.storage.sync.set({ userConfig: this.state.config });
-                console.log('[StateManager] Configurações padrão salvas no storage');
             } else {
-                console.log('[StateManager] Configurações do usuário carregadas do storage');
-                this.state.config = result.userConfig;
+                // Normalizar configurações do storage
+                this.state.config = normalizeConfig(result.userConfig);
                 
-                // Verificar se o payout mínimo está definido, caso contrário, usar o padrão
-                if (typeof this.state.config.minPayout === 'undefined') {
-                    console.log('[StateManager] Payout mínimo não encontrado, usando padrão de 80%');
-                    this.state.config.minPayout = 80;
-                } else {
-                    console.log(`[StateManager] Payout mínimo carregado: ${this.state.config.minPayout}%`);
+                // Se houve normalização, salvar de volta
+                if (JSON.stringify(this.state.config) !== JSON.stringify(result.userConfig)) {
+                    await chrome.storage.sync.set({ userConfig: this.state.config });
                 }
             }
             
             this.notifyListeners('config');
             return this.state.config;
         } catch (error) {
-            console.error('[StateManager] Erro ao carregar configurações:', error);
-            // Em caso de erro, usar configurações padrão
-            this.state.config = DEFAULT_CONFIG;
-            return DEFAULT_CONFIG;
+            // Em caso de erro, usar configurações padrão normalizadas
+            this.state.config = normalizeConfig(DEFAULT_CONFIG);
+            return this.state.config;
         }
     }
 
     // Salvar configurações
     async saveConfig(newConfig) {
         try {
-            console.log('[StateManager] Salvando configurações:', newConfig);
+            // Normalizar configurações antes de salvar
+            const normalizedConfig = normalizeConfig(newConfig);
             
-            // Verificar se o payout mínimo está definido
-            if (typeof newConfig.minPayout === 'undefined') {
-                console.log('[StateManager] Payout mínimo não encontrado no novo config, usando padrão de 80%');
-                newConfig.minPayout = 80;
-            } else {
-                console.log(`[StateManager] Payout mínimo sendo salvo: ${newConfig.minPayout}%`);
-            }
-            
-            await chrome.storage.sync.set({ userConfig: newConfig });
-            this.state.config = newConfig;
+            await chrome.storage.sync.set({ userConfig: normalizedConfig });
+            this.state.config = normalizedConfig;
             this.notifyListeners('config');
-            console.log('[StateManager] Configurações salvas com sucesso');
             return true;
         } catch (error) {
-            console.error('[StateManager] Erro ao salvar configurações:', error);
+            return false;
+        }
+    }
+
+    // *** NOVO: Salvar configurações atuais como padrão do usuário ***
+    async saveAsUserDefault() {
+        try {
+            const currentConfig = this.getConfig();
+            
+            // Salvar configurações atuais como padrão do usuário
+            await chrome.storage.sync.set({ userDefaultConfig: currentConfig });
+            
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    // *** NOVO: Carregar configurações padrão definidas pelo usuário ***
+    async loadUserDefault() {
+        try {
+            const result = await chrome.storage.sync.get(['userDefaultConfig']);
+            
+            if (result.userDefaultConfig && Object.keys(result.userDefaultConfig).length > 0) {
+                // Normalizar e aplicar configurações padrão do usuário
+                const normalizedConfig = normalizeConfig(result.userDefaultConfig);
+                
+                await chrome.storage.sync.set({ userConfig: normalizedConfig });
+                this.state.config = normalizedConfig;
+                this.notifyListeners('config');
+                
+                return true;
+            } else {
+                // Se não há configurações padrão do usuário, usar DEFAULT_CONFIG
+                const defaultConfig = normalizeConfig(DEFAULT_CONFIG);
+                
+                await chrome.storage.sync.set({ userConfig: defaultConfig });
+                this.state.config = defaultConfig;
+                this.notifyListeners('config');
+                
+                return true;
+            }
+        } catch (error) {
+            return false;
+        }
+    }
+
+    // *** NOVO: Verificar se existem configurações padrão do usuário ***
+    async hasUserDefault() {
+        try {
+            const result = await chrome.storage.sync.get(['userDefaultConfig']);
+            return result.userDefaultConfig && Object.keys(result.userDefaultConfig).length > 0;
+        } catch (error) {
             return false;
         }
     }
@@ -185,10 +227,8 @@ class StateManager {
             };
             
             await this.saveConfig(updatedConfig);
-            console.log('[StateManager] Configurações de troca de ativos atualizadas:', newAssetConfig);
             return true;
         } catch (error) {
-            console.error('[StateManager] Erro ao atualizar configurações de troca de ativos:', error);
             return false;
         }
     }
@@ -219,8 +259,6 @@ class StateManager {
 
     // Notificar listeners
     notifyListeners(type) {
-        console.log(`[StateManager] Notificando ${this.listeners.size} listeners sobre atualização de '${type}'`);
-        
         // Adicionar timestamp para garantir que os listeners reconheçam como uma atualização nova
         const notification = {
             state: this.state,
@@ -233,11 +271,9 @@ class StateManager {
             try {
                 callback(notification);
             } catch (error) {
-                console.error(`[StateManager] Erro ao notificar listener: ${error.message}`);
+                // Erro silencioso
             }
         });
-        
-        console.log(`[StateManager] Notificação completada para tipo: ${type}`);
     }
 
     // Novo método para carregar status operacional
@@ -265,7 +301,6 @@ class StateManager {
             // Salvar o status resetado
             this.saveOperationalStatus();
         } catch (error) {
-            console.error('Erro ao carregar status operacional:', error);
             this.operationalStatus.status = 'Pronto';
             this.operationalStatus.lastUpdate = Date.now();
         }
@@ -285,9 +320,8 @@ class StateManager {
                     }
                 });
             });
-            console.log('Status operacional salvo:', this.operationalStatus);
         } catch (error) {
-            console.error('Erro ao salvar status operacional:', error);
+            // Erro silencioso
         }
     }
 
@@ -296,7 +330,6 @@ class StateManager {
         const validStatuses = ['Pronto', 'Operando...', 'Parado Erro'];
         
         if (!validStatuses.includes(newStatus)) {
-            console.error('Status inválido:', newStatus);
             return false;
         }
 
@@ -323,7 +356,7 @@ class StateManager {
         // Notificar listeners
         this.notifyListeners('operationalStatus');
         
-        console.log(`Status operacional atualizado: ${previousStatus} → ${newStatus}`);
+        // Status atualizado
         
         return true;
     }
@@ -335,8 +368,6 @@ class StateManager {
 
     // Novo método para registrar erro e alterar status
     reportError(errorMessage, errorDetails = null) {
-        console.error('Erro reportado ao StateManager:', errorMessage);
-        
         const errorInfo = {
             message: errorMessage,
             details: errorDetails,
@@ -353,7 +384,7 @@ class StateManager {
                 error: errorInfo
             });
         } catch (e) {
-            console.warn('Não foi possível notificar erro via runtime:', e.message);
+            // Erro silencioso
         }
         
         return errorInfo;
@@ -371,7 +402,7 @@ class StateManager {
             status: 'running'
         });
         
-        console.log(`Operação ${operationType} iniciada`);
+        // Operação iniciada
     }
 
     // Novo método para finalizar operação
@@ -386,14 +417,13 @@ class StateManager {
         const config = this.getConfig();
         this.updateAutomationState(config.automation || false, null);
         
-        console.log(`Operação finalizada: ${reason}`);
+        // Operação finalizada
     }
 
     // Novo método para reset manual do status de erro
     resetErrorStatus() {
         if (this.operationalStatus.status === 'Parado Erro') {
             this.updateOperationalStatus('Pronto');
-            console.log('Status de erro resetado manualmente');
             return true;
         }
         return false;
@@ -409,7 +439,7 @@ class StateManager {
         // Marcar como inicializados
         this.analyzersInitialized = true;
         
-        console.log('[StateManager] Inicializando módulos de forma lazy...');
+        // Inicializando módulos de forma lazy
         
         let foundModules = 0;
         
@@ -419,8 +449,7 @@ class StateManager {
         if (window.limitsChecker) foundModules++;
         if (window.intelligentGale) foundModules++;
         
-        // Log simples do resultado
-        console.log(`[StateManager] Módulos encontrados: ${foundModules}/4`);
+        // Módulos detectados
         
         // Se não encontrou todos, tentar novamente em 3 segundos
         if (foundModules < 4) {
@@ -438,7 +467,7 @@ class StateManager {
             return;
         }
         
-        console.log('[StateManager] Inicializando módulos sob demanda...');
+        // Inicializando módulos sob demanda
         
         // *** NOVO: Adicionar listeners para eventos críticos ***
         this.setupCriticalListeners();
@@ -459,7 +488,7 @@ class StateManager {
                     // Resetar status para PRONTO após parada crítica
                     setTimeout(() => {
                         this.updateOperationalStatus('Pronto');
-                        console.log('[StateManager] Status resetado para PRONTO após evento crítico:', request.action);
+                        // Status resetado após evento crítico
                     }, 1000); // 1 segundo de delay
                 }
             });
@@ -469,22 +498,20 @@ class StateManager {
         document.addEventListener('automation_stopped', () => {
             setTimeout(() => {
                 this.updateOperationalStatus('Pronto');
-                console.log('[StateManager] Status resetado para PRONTO após parada de automação');
+                // Status resetado após parada de automação
             }, 500);
         });
         
         document.addEventListener('operation_cancelled', () => {
             setTimeout(() => {
                 this.updateOperationalStatus('Pronto');
-                console.log('[StateManager] Status resetado para PRONTO após cancelamento');
+                // Status resetado após cancelamento
             }, 500);
         });
     }
 
     // *** NOVO: Método para parar completamente a automação ***
     stopAutomation() {
-        console.log('Parando automação completamente...');
-        
         // Resetar status operacional para "Pronto"
         this.updateOperationalStatus('Pronto');
         
@@ -493,8 +520,6 @@ class StateManager {
         
         // Notificar listeners sobre a parada
         this.notifyListeners('automationStopped');
-        
-        console.log('Automação parada e status resetado para "Pronto"');
         
         return true;
     }

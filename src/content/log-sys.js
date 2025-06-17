@@ -137,7 +137,6 @@ const LogSystem = {
             // Atualizar a UI agora que temos os logs
             this.updateUI();
         }).catch(error => {
-            console.error('[LogSystem] Erro ao inicializar sistema de logs:', error);
             this.initialized = true; // Inicializar mesmo com erro
             this.addLog(`Erro ao carregar logs: ${error.message}`, 'ERROR', 'LogSystem');
         });
@@ -160,7 +159,7 @@ const LogSystem = {
             // Verificar se os logs foram recentemente limpos
             const clearFlag = localStorage.getItem('logsRecentlyCleared');
             if (clearFlag && (Date.now() - parseInt(clearFlag)) < 5000) { // 5 segundos
-                console.log('[LogSystem] Logs foram recentemente limpos, ignorando carregamento do storage');
+                // Logs foram recentemente limpos
                 this.logs = []; // Garantir que logs estejam vazios
                 return;
             }
@@ -222,7 +221,6 @@ const LogSystem = {
                 }
             }
         } catch (error) {
-            console.error('[LogSystem] Erro ao carregar logs:', error);
             throw error;
         }
     },
@@ -368,7 +366,7 @@ const LogSystem = {
         try {
             localStorage.setItem('logsRecentlyCleared', Date.now().toString());
         } catch (e) {
-            console.warn('[LogSystem] Não foi possível definir flag de limpeza:', e);
+            // Erro ao definir flag
         }
         
         // Limpar no storage também - com múltiplas tentativas
@@ -378,7 +376,6 @@ const LogSystem = {
                 await new Promise(resolve => {
                     chrome.storage.local.remove(['systemLogs'], () => {
                         if (chrome.runtime.lastError) {
-                            console.error(`[LogSystem] Erro ao limpar logs (tentativa 1): ${chrome.runtime.lastError.message}`);
                             resolve(false);
                         } else {
                             resolve(true);
@@ -390,7 +387,6 @@ const LogSystem = {
                 await new Promise(resolve => {
                     chrome.storage.local.set({ systemLogs: [] }, () => {
                         if (chrome.runtime.lastError) {
-                            console.error(`[LogSystem] Erro ao limpar logs (tentativa 2): ${chrome.runtime.lastError.message}`);
                             resolve(false);
                         } else {
                             storageCleared = true;
@@ -400,16 +396,11 @@ const LogSystem = {
                 });
                 
                 // Verificar se a limpeza foi bem-sucedida
-                if (storageCleared) {
-                    console.log('[LogSystem] Storage limpo com sucesso');
-                } else {
-                    console.warn('[LogSystem] Possível falha ao limpar o storage');
-                }
             } catch (error) {
-                console.error(`[LogSystem] Erro ao limpar logs do storage: ${error.message}`);
+                // Erro ao limpar logs
             }
         } else {
-            console.warn('[LogSystem] Contexto da extensão inválido, não foi possível limpar o storage');
+            // Contexto da extensão inválido
         }
         
         // Adicionar log de limpeza - apenas após tentar limpar o storage para não salvar novamente
@@ -426,6 +417,11 @@ const LogSystem = {
             chrome.runtime.sendMessage({
                 action: 'logsCleaned',
                 timestamp: Date.now()
+            }, (response) => {
+                // Callback para evitar erro de listener assíncrono
+                if (chrome.runtime.lastError) {
+                    // Erro silencioso
+                }
             });
         } catch (e) {
             // Ignorar erros de comunicação
@@ -451,8 +447,6 @@ const LogSystem = {
             
             // Se ainda houver logs no storage após a limpeza
             if (logs.length > 1) { // Permitir 1 log (o da limpeza)
-                console.warn(`[LogSystem] Detectados ${logs.length} logs no storage após limpeza`);
-                
                 // Tentar limpar novamente
                 await new Promise(resolve => {
                     chrome.storage.local.set({ systemLogs: [] }, resolve);
@@ -463,7 +457,6 @@ const LogSystem = {
             
             return true;
         } catch (error) {
-            console.error(`[LogSystem] Erro ao verificar limpeza do storage: ${error.message}`);
             return false;
         }
     },
@@ -533,7 +526,13 @@ const LogSystem = {
                 chrome.runtime.sendMessage({
                     action: 'copyTextToClipboard',
                     text: content
-                }, response => {
+                }, (response) => {
+                    if (chrome.runtime.lastError) {
+                        toUpdateStatus('Erro ao copiar logs', 'error');
+                        this.offerDownloadAlternative();
+                        return;
+                    }
+                    
                     if (response && response.success) {
                         toUpdateStatus('Logs copiados para a área de transferência', 'success');
                     } else {
@@ -547,7 +546,6 @@ const LogSystem = {
                 this.offerDownloadAlternative();
             }
         } catch (err) {
-            console.error('Erro ao solicitar cópia:', err);
             toUpdateStatus('Erro ao copiar logs', 'error');
             this.offerDownloadAlternative();
         }
@@ -590,18 +588,23 @@ function logToSystem(message, level = 'INFO', source = 'SYSTEM') {
                 logMessage: message,
                 logLevel: logLevel,
                 logSource: logSource
+            }, (response) => {
+                // Callback para evitar erro de listener assíncrono
+                if (chrome.runtime.lastError) {
+                    // Erro silencioso
+                }
             });
         }
         
         // Log no console apenas para erros
         if (logLevel === 'ERROR') {
-            console.error(`[${logLevel}][${logSource}] ${message}`);
+            // Log de fallback
         }
         
         return true;
     } catch (e) {
         // Log de erro no console apenas
-        console.error(`Erro ao processar log: ${e.message || e}`);
+        // Erro ao processar log
         return false;
     }
 }
@@ -626,7 +629,7 @@ function closeLogs() {
         // Método 3: Usar postMessage
         window.parent.postMessage({ action: 'closePage' }, '*');
     } catch (error) {
-        console.error('[LogSystem] Erro ao fechar página:', error);
+        // Erro ao fechar página
     }
 }
 
@@ -691,7 +694,6 @@ function addLogEntry(message, level, source) {
         // Verificar se temos os elementos necessários
         const logContainer = document.getElementById('log-container');
         if (!logContainer) {
-            console.error('Container de logs não encontrado');
             return;
         }
 
@@ -719,7 +721,7 @@ function addLogEntry(message, level, source) {
         // Atualizar os contadores
         updateLogCounters();
     } catch (error) {
-        console.error('Erro ao adicionar entrada de log:', error);
+        // Erro ao adicionar entrada
     }
 }
 
@@ -768,6 +770,11 @@ function toUpdateStatus(message, type = 'info', duration = 3000) {
             message: message,
             type: type,
             duration: duration
+        }, (response) => {
+            // Callback para evitar erro de listener assíncrono
+            if (chrome.runtime.lastError) {
+                // Erro silencioso
+            }
         });
     }
 }

@@ -147,24 +147,37 @@ class NavigationManager {
 
         // Adiciona listener para mensagens Chrome
         chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-            if (request.action === 'closePage') {
-                this.closePage();
-                sendResponse({ success: true });
-                return true;
-            }
-            
-            if (request.action === 'openPage') {
-                const { page } = request;
-                if (this.pages[page]) {
-                    this.openPage(page);
+            try {
+                if (request.action === 'closePage') {
+                    this.closePage();
                     sendResponse({ success: true });
-                } else {
-                    sendResponse({ success: false, error: `Página ${page} não encontrada` });
+                    return false; // Não manter canal aberto
                 }
-                return true;
+                
+                if (request.action === 'openPage') {
+                    const { page } = request;
+                    if (this.pages[page]) {
+                        this.openPage(page);
+                        sendResponse({ success: true });
+                    } else {
+                        sendResponse({ success: false, error: `Página ${page} não encontrada` });
+                    }
+                    return false; // Não manter canal aberto
+                }
+                
+                // Listener para atualizações de configuração
+                if (request.action === 'configUpdated' && request.config) {
+                    this.updateMainUI(request.config);
+                    sendResponse({ success: true });
+                    return false; // Não manter canal aberto
+                }
+                
+                return false; // Não manter canal aberto para mensagens não tratadas
+            } catch (error) {
+                // Em caso de erro, enviar resposta e não manter canal aberto
+                sendResponse({ success: false, error: error.message });
+                return false;
             }
-            
-            return false;
         });
         
         // Adiciona listener para mensagens postMessage das subpáginas
@@ -191,19 +204,19 @@ class NavigationManager {
 
     // Atualiza a UI principal com as novas configurações
     updateMainUI(config) {
+        // Log para debug
+        if (window.addLog) {
+            window.addLog('NavigationManager: Atualizando UI principal com configurações', 'INFO');
+            window.addLog(`NavigationManager: Config recebido: ${JSON.stringify(config)}`, 'DEBUG');
+        }
+        
         // Atualiza o status de Gale
         const currentGale = document.getElementById('gale-status');
         const galeLed = document.getElementById('gale-led');
         if (currentGale) {
-            // Verifica se temos config.gale.enabled direto ou config.galeEnabled
-            const galeActive = typeof config.gale?.enabled !== 'undefined' ? 
-                config.gale.enabled : 
-                (typeof config.galeEnabled !== 'undefined' ? config.galeEnabled : false);
-                
-            // Verifica se temos config.gale.level direto ou config.galeLevel
-            const galeLevel = typeof config.gale?.level !== 'undefined' ? 
-                config.gale.level : 
-                (typeof config.galeLevel !== 'undefined' ? config.galeLevel : 1);
+            // Usar estrutura normalizada: config.gale.active
+            const galeActive = config.gale?.active ?? config.galeEnabled ?? false;
+            const galeLevel = config.gale?.level ?? config.galeLevel ?? '20%';
                 
             if (galeActive) {
                 currentGale.textContent = 'Ativado';
@@ -212,12 +225,18 @@ class NavigationManager {
                 if (galeLed) {
                     galeLed.className = 'status-led gale-led active';
                 }
+                if (window.addLog) {
+                    window.addLog(`NavigationManager: Gale atualizado para Ativado (${galeLevel})`, 'DEBUG');
+                }
             } else {
                 currentGale.textContent = 'Desativado';
                 currentGale.className = 'status-value';
                 // Atualizar LED
                 if (galeLed) {
                     galeLed.className = 'status-led gale-led inactive';
+                }
+                if (window.addLog) {
+                    window.addLog('NavigationManager: Gale atualizado para Desativado', 'DEBUG');
                 }
             }
         }
@@ -226,24 +245,36 @@ class NavigationManager {
         const currentProfit = document.getElementById('current-profit');
         if (currentProfit) {
             currentProfit.textContent = `R$ ${config.dailyProfit}`;
+            if (window.addLog) {
+                window.addLog(`NavigationManager: Lucro diário atualizado para R$ ${config.dailyProfit}`, 'DEBUG');
+            }
         }
 
         // Atualiza o display de Stop Loss
         const currentStop = document.getElementById('current-stop');
         if (currentStop) {
             currentStop.textContent = `R$ ${config.stopLoss}`;
+            if (window.addLog) {
+                window.addLog(`NavigationManager: Stop loss atualizado para R$ ${config.stopLoss}`, 'DEBUG');
+            }
         }
 
         // Atualiza o status de automação
         const automationStatus = document.getElementById('automation-status');
         const automationLed = document.getElementById('automation-led');
         if (automationStatus) {
-            if (config.autoActive) {
+            // Usar estrutura normalizada: config.automation
+            const automationActive = config.automation ?? config.autoActive ?? false;
+            
+            if (automationActive) {
                 automationStatus.textContent = 'Ativado';
                 automationStatus.className = 'status-value';
                 // Atualizar LED
                 if (automationLed) {
                     automationLed.className = 'status-led automation-led active';
+                }
+                if (window.addLog) {
+                    window.addLog('NavigationManager: Automação atualizada para Ativado', 'DEBUG');
                 }
             } else {
                 automationStatus.textContent = 'Desativado';
@@ -251,6 +282,9 @@ class NavigationManager {
                 // Atualizar LED
                 if (automationLed) {
                     automationLed.className = 'status-led automation-led inactive';
+                }
+                if (window.addLog) {
+                    window.addLog('NavigationManager: Automação atualizada para Desativado', 'DEBUG');
                 }
             }
         }
@@ -305,7 +339,7 @@ class NavigationManager {
     openPage(pageName) {
         // Verificar se a página solicitada existe
         if (!this.pages[pageName]) {
-            console.error(`Página ${pageName} não encontrada`);
+            // Página não encontrada
             return false;
         }
         
@@ -400,7 +434,7 @@ class NavigationManager {
             
             return true;
         } catch (e) {
-            console.error('[NavigationManager] Não foi possível remover ou ocultar o elemento:', e);
+            // Erro ao remover elemento
             return false;
         }
     }
@@ -441,7 +475,6 @@ class NavigationManager {
                     }
                 }
             } catch (error) {
-                console.error('Erro ao remover página:', error);
                 // Tentar remoção forçada como último recurso
                 this.forceRemoveElement(pageElement);
             }
@@ -450,18 +483,33 @@ class NavigationManager {
 
     // Inicializa os handlers específicos de cada página
     initPageHandlers(iframe, pageName) {
-        const contentWindow = iframe.contentWindow;
-        const document = contentWindow.document;
+        try {
+            // Aguardar o iframe carregar completamente
+            iframe.addEventListener('load', () => {
+                try {
+                    const contentWindow = iframe.contentWindow;
+                    const document = contentWindow?.document;
 
-        switch(pageName) {
-            case 'settings':
-                this.initSettingsPage(document);
-                break;
-            case 'logs':
-                this.initLogsPage(document);
-                break;
-            default:
-                console.log(`Página ${pageName} não tem handlers específicos`);
+                    if (!document) {
+                        return; // Documento não disponível
+                    }
+
+                    switch(pageName) {
+                        case 'settings':
+                            this.initSettingsPage(document);
+                            break;
+                        case 'logs':
+                            this.initLogsPage(document);
+                            break;
+                        default:
+                            // Página sem handlers específicos
+                    }
+                } catch (error) {
+                    // Erro ao inicializar handlers específicos da página
+                }
+            });
+        } catch (error) {
+            // Erro ao configurar listener de load do iframe
         }
     }
 
@@ -487,7 +535,7 @@ class NavigationManager {
                 });
             }
         } catch (error) {
-            console.error('Erro ao inicializar página de configurações:', error);
+            // Erro ao inicializar página
         }
     }
     
@@ -513,7 +561,7 @@ class NavigationManager {
                 });
             }
         } catch (error) {
-            console.error('Erro ao inicializar página de logs:', error);
+            // Erro ao inicializar página
         }
     }
 }

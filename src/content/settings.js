@@ -31,7 +31,7 @@ const checkCriticalElements = () => {
     let allFound = true;
     criticalElements.forEach(({ name, element }) => {
         if (!element) {
-            console.error(`[settings.js] Elemento crítico não encontrado: ${name}`);
+            // Elemento crítico não encontrado
             allFound = false;
         }
     });
@@ -48,10 +48,15 @@ const logFromSettings = (message, level = 'INFO') => {
                 logMessage: message,
                 level: level,
                 source: 'settings.js'
+            }, (response) => {
+                // Callback para tratar resposta e evitar erro de listener assíncrono
+                if (chrome.runtime.lastError) {
+                    // Erro silencioso - não precisa fazer nada
+                }
             });
         }
     } catch (error) {
-        console.warn('[settings.js] Exceção ao tentar enviar log via runtime:', error);
+        // Erro silencioso
     }
 };
 
@@ -373,11 +378,24 @@ const saveSettings = async () => {
             logFromSettings('Configurações salvas com sucesso via chrome.storage!', 'SUCCESS');
         }
         
+        // Notificar a página principal sobre as mudanças
+        const notificationSent = notifyMainPage(config);
+        if (notificationSent) {
+            logFromSettings('Página principal notificada sobre as mudanças', 'SUCCESS');
+        } else {
+            logFromSettings('Falha ao notificar página principal', 'WARN');
+        }
+        
         // Notificar outras partes do sistema sobre mudança de configuração
         try {
             chrome.runtime.sendMessage({
                 action: 'configUpdated',
                 config: config
+            }, (response) => {
+                // Callback para evitar erro de listener assíncrono
+                if (chrome.runtime.lastError) {
+                    // Erro silencioso
+                }
             });
             logFromSettings('Notificação de atualização enviada via chrome.runtime', 'DEBUG');
         } catch (runtimeError) {
@@ -535,6 +553,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Usar StateManager se disponível
             config = window.StateManager.getConfig() || {};
             logFromSettings('Configurações carregadas via StateManager', 'SUCCESS');
+            logFromSettings(`Configurações StateManager: ${JSON.stringify(config)}`, 'DEBUG');
         } else {
             // Fallback para chrome.storage diretamente
             const result = await new Promise((resolve) => {
@@ -544,6 +563,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             config = result;
             logFromSettings('Configurações carregadas via chrome.storage', 'INFO');
+            logFromSettings(`Configurações chrome.storage: ${JSON.stringify(config)}`, 'DEBUG');
         }
         
         loadSettingsToUI(config);
@@ -563,12 +583,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else {
             logFromSettings('Elemento payoutBehavior ainda não está pronto na verificação final', 'WARN');
         }
+        
+        // *** NOVO: Adicionar botões de configurações padrão ***
+        addDefaultButtons();
     }, 1000);
 });
 
 // Função para notificar a página principal sobre as mudanças de configuração
 const notifyMainPage = (config) => {
     logFromSettings('Tentando notificar a página principal sobre as alterações de configuração...', 'INFO');
+    logFromSettings(`Configuração a ser enviada: ${JSON.stringify(config)}`, 'DEBUG');
     
     let notified = false;
     
@@ -602,6 +626,11 @@ const notifyMainPage = (config) => {
             action: 'configUpdated',
             settings: config,
             timestamp: Date.now()
+        }, (response) => {
+            // Callback para tratar resposta e evitar erro de listener assíncrono
+            if (chrome.runtime.lastError) {
+                // Erro silencioso - não precisa fazer nada
+            }
         });
         logFromSettings('Notificação enviada via chrome.runtime.sendMessage', 'SUCCESS');
         notified = true;
@@ -626,13 +655,339 @@ function toUpdateStatus(message, type = 'info', duration = 3000) {
             message: message,
             type: type,
             duration: duration
+        }, (response) => {
+            // Callback para tratar resposta e evitar erro de listener assíncrono
+            if (chrome.runtime.lastError) {
+                // Erro silencioso - não precisa fazer nada
+            }
         });
     }
 }
+
+// *** NOVO: Funções para gerenciar configurações padrão do usuário ***
+
+// Salvar configurações atuais como padrão do usuário
+const saveAsUserDefault = async () => {
+    try {
+        logFromSettings('Salvando configurações da UI como padrão...', 'INFO');
+        
+        // *** CORREÇÃO: Primeiro pegar configurações da UI ***
+        const uiConfig = getSettingsFromUI();
+        logFromSettings(`Configurações da UI coletadas: ${JSON.stringify(uiConfig)}`, 'DEBUG');
+        
+        if (window.StateManager && typeof window.StateManager.saveConfig === 'function') {
+            // Primeiro salvar as configurações normalmente
+            const saveSuccess = await window.StateManager.saveConfig(uiConfig);
+            if (!saveSuccess) {
+                throw new Error('Falha ao salvar configurações normalmente');
+            }
+            
+            // Depois salvar como padrão
+            if (typeof window.StateManager.saveAsUserDefault === 'function') {
+                const defaultSuccess = await window.StateManager.saveAsUserDefault();
+                if (defaultSuccess) {
+                    logFromSettings('Configurações salvas como padrão com sucesso!', 'SUCCESS');
+                    toUpdateStatus('Configurações salvas como padrão', 'success');
+                    
+                    // Notificar a página principal sobre as mudanças
+                    notifyMainPage(uiConfig);
+                    
+                    // Atualizar visibilidade dos botões
+                    updateDefaultButtonsVisibility();
+                    return true;
+                } else {
+                    throw new Error('StateManager.saveAsUserDefault retornou false');
+                }
+            } else {
+                throw new Error('Função saveAsUserDefault não disponível');
+            }
+        } else {
+            throw new Error('StateManager ou saveConfig não disponível');
+        }
+    } catch (error) {
+        logFromSettings('Erro ao salvar como padrão: ' + error.message, 'ERROR');
+        toUpdateStatus('Erro ao salvar como padrão', 'error');
+        return false;
+    }
+};
+
+// Carregar configurações padrão do usuário
+const loadUserDefault = async () => {
+    try {
+        logFromSettings('Carregando configurações padrão do usuário...', 'INFO');
+        
+        if (window.StateManager && typeof window.StateManager.loadUserDefault === 'function') {
+            const success = await window.StateManager.loadUserDefault();
+            if (success) {
+                logFromSettings('Configurações padrão carregadas com sucesso!', 'SUCCESS');
+                
+                // Recarregar UI com as configurações padrão
+                const config = window.StateManager.getConfig();
+                logFromSettings(`Configurações padrão carregadas: ${JSON.stringify(config)}`, 'DEBUG');
+                loadSettingsToUI(config);
+                
+                // Notificar a página principal sobre as mudanças
+                notifyMainPage(config);
+                
+                toUpdateStatus('Configurações padrão carregadas', 'success');
+                return true;
+            } else {
+                throw new Error('StateManager retornou false');
+            }
+        } else {
+            throw new Error('StateManager não disponível');
+        }
+    } catch (error) {
+        logFromSettings('Erro ao carregar configurações padrão: ' + error.message, 'ERROR');
+        toUpdateStatus('Erro ao carregar configurações padrão', 'error');
+        return false;
+    }
+};
+
+// Atualizar visibilidade dos botões de configurações padrão
+const updateDefaultButtonsVisibility = async () => {
+    try {
+        logFromSettings('Atualizando visibilidade dos botões de configurações padrão...', 'DEBUG');
+        
+        if (window.StateManager && typeof window.StateManager.hasUserDefault === 'function') {
+            const hasDefault = await window.StateManager.hasUserDefault();
+            const loadBtn = document.getElementById('load-default-btn');
+            
+            logFromSettings(`Tem configurações padrão salvas: ${hasDefault}`, 'DEBUG');
+            logFromSettings(`Botão carregar encontrado: ${!!loadBtn}`, 'DEBUG');
+            
+            if (loadBtn) {
+                if (hasDefault) {
+                    loadBtn.style.display = 'block';
+                    loadBtn.disabled = false;
+                    logFromSettings('Botão "Carregar Padrão" exibido', 'DEBUG');
+                } else {
+                    loadBtn.style.display = 'none';
+                    logFromSettings('Botão "Carregar Padrão" oculto (sem configurações padrão)', 'DEBUG');
+                }
+            } else {
+                logFromSettings('Botão "Carregar Padrão" não encontrado no DOM', 'WARN');
+            }
+        } else {
+            logFromSettings('StateManager ou função hasUserDefault não disponível', 'ERROR');
+        }
+    } catch (error) {
+        logFromSettings('Erro ao atualizar visibilidade dos botões: ' + error.message, 'ERROR');
+        console.error('Erro ao atualizar visibilidade:', error);
+    }
+};
+
+// Adicionar botões de configurações padrão do usuário
+const addDefaultButtons = () => {
+    try {
+        logFromSettings('Tentando adicionar botões de configurações padrão...', 'DEBUG');
+        
+        // Verificar se já existem os botões
+        if (document.getElementById('save-default-btn') || document.getElementById('load-default-btn')) {
+            logFromSettings('Botões de configurações padrão já existem', 'DEBUG');
+            return; // Botões já existem
+        }
+        
+        // Encontrar um local adequado para adicionar os botões (próximo ao botão salvar)
+        const saveBtn = document.getElementById('save-settings');
+        if (!saveBtn) {
+            logFromSettings('Botão salvar não encontrado, não é possível adicionar botões de configurações padrão', 'WARN');
+            return;
+        }
+        
+        logFromSettings('Botão salvar encontrado, criando botões de configurações padrão...', 'DEBUG');
+        
+        // Criar container para os botões de configurações padrão
+        const defaultContainer = document.createElement('div');
+        defaultContainer.className = 'default-buttons-container';
+        defaultContainer.style.cssText = `
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        `;
+        
+        // Botão para salvar como padrão
+        const saveDefaultBtn = document.createElement('button');
+        saveDefaultBtn.id = 'save-default-btn';
+        saveDefaultBtn.className = 'btn secondary';
+        saveDefaultBtn.style.cssText = 'min-width: 200px;';
+        saveDefaultBtn.innerHTML = `
+            <i class="fas fa-bookmark"></i>
+            <div class="button-content">
+                <span>Salvar como Padrão</span>
+                <small>Define estas configurações como padrão</small>
+            </div>
+        `;
+        
+        // Event listener para salvar como padrão
+        saveDefaultBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            logFromSettings('Botão "Salvar como Padrão" clicado', 'INFO');
+            
+            // Alterar botão para mostrar que está processando
+            saveDefaultBtn.innerHTML = `
+                <i class="fas fa-spinner fa-spin"></i>
+                <div class="button-content">
+                    <span>Salvando...</span>
+                    <small>Aguarde</small>
+                </div>
+            `;
+            saveDefaultBtn.disabled = true;
+            
+            const success = await saveAsUserDefault();
+            
+            // Restaurar botão
+            if (success) {
+                saveDefaultBtn.innerHTML = `
+                    <i class="fas fa-check"></i>
+                    <div class="button-content">
+                        <span>Salvo!</span>
+                        <small>Configurações definidas como padrão</small>
+                    </div>
+                `;
+                saveDefaultBtn.style.backgroundColor = '#4CAF50';
+                
+                setTimeout(() => {
+                    saveDefaultBtn.innerHTML = `
+                        <i class="fas fa-bookmark"></i>
+                        <div class="button-content">
+                            <span>Salvar como Padrão</span>
+                            <small>Define estas configurações como padrão</small>
+                        </div>
+                    `;
+                    saveDefaultBtn.style.backgroundColor = '';
+                    saveDefaultBtn.disabled = false;
+                }, 2000);
+            } else {
+                saveDefaultBtn.innerHTML = `
+                    <i class="fas fa-times"></i>
+                    <div class="button-content">
+                        <span>Erro!</span>
+                        <small>Falha ao salvar</small>
+                    </div>
+                `;
+                saveDefaultBtn.style.backgroundColor = '#f44336';
+                
+                setTimeout(() => {
+                    saveDefaultBtn.innerHTML = `
+                        <i class="fas fa-bookmark"></i>
+                        <div class="button-content">
+                            <span>Salvar como Padrão</span>
+                            <small>Define estas configurações como padrão</small>
+                        </div>
+                    `;
+                    saveDefaultBtn.style.backgroundColor = '';
+                    saveDefaultBtn.disabled = false;
+                }, 2000);
+            }
+        });
+        
+        // Botão para carregar padrão
+        const loadDefaultBtn = document.createElement('button');
+        loadDefaultBtn.id = 'load-default-btn';
+        loadDefaultBtn.className = 'btn secondary';
+        loadDefaultBtn.style.cssText = 'min-width: 200px; display: none;'; // Inicialmente oculto
+        loadDefaultBtn.innerHTML = `
+            <i class="fas fa-download"></i>
+            <div class="button-content">
+                <span>Carregar Padrão</span>
+                <small>Carrega suas configurações padrão</small>
+            </div>
+        `;
+        
+        // Event listener para carregar padrão
+        loadDefaultBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            logFromSettings('Botão "Carregar Padrão" clicado', 'INFO');
+            
+            // Alterar botão para mostrar que está processando
+            loadDefaultBtn.innerHTML = `
+                <i class="fas fa-spinner fa-spin"></i>
+                <div class="button-content">
+                    <span>Carregando...</span>
+                    <small>Aguarde</small>
+                </div>
+            `;
+            loadDefaultBtn.disabled = true;
+            
+            const success = await loadUserDefault();
+            
+            // Restaurar botão
+            if (success) {
+                loadDefaultBtn.innerHTML = `
+                    <i class="fas fa-check"></i>
+                    <div class="button-content">
+                        <span>Carregado!</span>
+                        <small>Configurações padrão aplicadas</small>
+                    </div>
+                `;
+                loadDefaultBtn.style.backgroundColor = '#4CAF50';
+                
+                setTimeout(() => {
+                    loadDefaultBtn.innerHTML = `
+                        <i class="fas fa-download"></i>
+                        <div class="button-content">
+                            <span>Carregar Padrão</span>
+                            <small>Carrega suas configurações padrão</small>
+                        </div>
+                    `;
+                    loadDefaultBtn.style.backgroundColor = '';
+                    loadDefaultBtn.disabled = false;
+                }, 2000);
+            } else {
+                loadDefaultBtn.innerHTML = `
+                    <i class="fas fa-times"></i>
+                    <div class="button-content">
+                        <span>Erro!</span>
+                        <small>Falha ao carregar</small>
+                    </div>
+                `;
+                loadDefaultBtn.style.backgroundColor = '#f44336';
+                
+                setTimeout(() => {
+                    loadDefaultBtn.innerHTML = `
+                        <i class="fas fa-download"></i>
+                        <div class="button-content">
+                            <span>Carregar Padrão</span>
+                            <small>Carrega suas configurações padrão</small>
+                        </div>
+                    `;
+                    loadDefaultBtn.style.backgroundColor = '';
+                    loadDefaultBtn.disabled = false;
+                }, 2000);
+            }
+        });
+        
+        // Adicionar botões ao container
+        defaultContainer.appendChild(saveDefaultBtn);
+        defaultContainer.appendChild(loadDefaultBtn);
+        
+        // Inserir container após o botão salvar
+        saveBtn.parentNode.insertBefore(defaultContainer, saveBtn.nextSibling);
+        
+        logFromSettings('Botões de configurações padrão criados e adicionados ao DOM', 'SUCCESS');
+        
+        // Atualizar visibilidade inicial após um pequeno delay
+        setTimeout(() => {
+            updateDefaultButtonsVisibility();
+        }, 100);
+        
+        logFromSettings('Botões de configurações padrão adicionados com sucesso', 'SUCCESS');
+    } catch (error) {
+        logFromSettings('Erro ao adicionar botões de configurações padrão: ' + error.message, 'ERROR');
+        console.error('Erro ao adicionar botões:', error);
+    }
+};
 
 // Exportar funções para uso em outros scripts
 window.settingsModule = {
     loadSettingsToUI,
     getSettingsFromUI,
-    saveSettings
+    saveSettings,
+    saveAsUserDefault,
+    loadUserDefault
 }; 
