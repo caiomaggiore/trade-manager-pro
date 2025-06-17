@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Trade Manager Pro",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Ferramenta avançada para gerenciamento de trades na Pocket Option",
   "permissions": [
     "storage",
