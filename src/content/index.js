@@ -264,6 +264,38 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             updateStatus('Iniciando análise...', 'info');
             addLog('Iniciando análise do gráfico...');
             
+            // ETAPA 0: Verificar payout antes da análise
+            addLog('Verificando payout antes da análise...', 'INFO');
+            try {
+                // Verificar se o PayoutController está disponível
+                const payoutController = globalThis.PayoutController || self.PayoutController || window.PayoutController;
+                
+                if (payoutController && typeof payoutController.checkPayoutBeforeAnalysis === 'function') {
+                    addLog('Executando verificação de payout...', 'INFO');
+                    updateStatus('Verificando payout...', 'info');
+                    
+                    // Aguardar verificação de payout (pode demorar se estiver aguardando melhoria)
+                    await payoutController.checkPayoutBeforeAnalysis();
+                    
+                    addLog('Verificação de payout concluída - prosseguindo com análise', 'SUCCESS');
+                } else {
+                    addLog('PayoutController não disponível - prosseguindo sem verificação de payout', 'WARN');
+                }
+            } catch (payoutError) {
+                // Se o payout for inadequado, a operação será cancelada
+                addLog(`Análise cancelada devido ao payout: ${payoutError}`, 'WARN');
+                updateStatus(`Análise cancelada: ${payoutError}`, 'warn');
+                
+                // Finalizar operação
+                if (window.StateManager) {
+                    window.StateManager.stopOperation('cancelled');
+                }
+                updateSystemOperationalStatus('Pronto');
+                
+                // Retornar erro para interromper a análise
+                throw new Error(`Análise cancelada pelo controle de payout: ${payoutError}`);
+            }
+            
             // ETAPA 1: Capturar a tela
             addLog('Iniciando captura de tela para análise...', 'INFO');
             let dataUrl;
@@ -321,6 +353,48 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             try {
                 // Obter configurações
                 const settings = window.StateManager ? window.StateManager.getConfig() || {} : {};
+                
+                // Verificar se está em modo de teste
+                if (settings.testMode) {
+                    addLog('Modo de teste ativado - usando análise simplificada', 'INFO');
+                    updateStatus('Executando análise de teste...', 'info');
+                    
+                    // Simular análise com dados mock
+                    const mockResult = {
+                        action: Math.random() > 0.5 ? 'BUY' : 'SELL',
+                        confidence: Math.floor(Math.random() * 40) + 60, // 60-100%
+                        period: settings.period ? `${settings.period}min` : '1min',
+                        value: settings.value ? `R$ ${settings.value.toFixed(2)}` : 'R$ 10,00',
+                        reason: 'Análise de teste executada com dados simulados. Este resultado não deve ser usado para operações reais.',
+                        isTestMode: true
+                    };
+                    
+                    // Finalizar operação com sucesso - só alterar status se não estiver em modo automático
+                    if (window.StateManager) {
+                        const automationState = window.StateManager.getAutomationState();
+                        const isInAutomaticMode = automationState && automationState.isRunning;
+                        
+                        if (!isInAutomaticMode) {
+                            window.StateManager.stopOperation('completed');
+                            updateSystemOperationalStatus('Pronto');
+                        }
+                    } else {
+                        updateSystemOperationalStatus('Pronto');
+                    }
+                    
+                    addLog(`Análise de teste concluída: ${mockResult.action}`, 'SUCCESS');
+                    updateStatus(`Análise de teste: ${mockResult.action}`, 'success');
+                    
+                    // Mostrar modal
+                    if (typeof showAnalysisModal === 'function') {
+                        showAnalysisModal(mockResult);
+                    }
+                    
+                    return {
+                        success: true,
+                        results: mockResult
+                    };
+                }
                 
                 // Enviar análise usando o analyze-graph.js diretamente se disponível
                 if (window.AnalyzeGraph && typeof window.AnalyzeGraph.analyzeImage === 'function') {
@@ -1333,61 +1407,86 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             addLog('Iniciando carregamento das configurações...', 'INFO');
             updateStatus('Carregando configurações...', 'info');
 
+            // Aguardar StateManager estar disponível
+            const waitForStateManager = () => {
+                return new Promise((resolveWait) => {
+                    let attempts = 0;
+                    const maxAttempts = 20;
+                    
+                    const checkStateManager = () => {
+                        attempts++;
+                        
+                        if (window.StateManager && typeof window.StateManager.getConfig === 'function') {
+                            addLog('StateManager encontrado e disponível para loadConfig', 'SUCCESS');
+                            resolveWait(true);
+                        } else if (attempts >= maxAttempts) {
+                            addLog('StateManager não encontrado após múltiplas tentativas em loadConfig', 'WARN');
+                            resolveWait(false);
+                        } else {
+                            addLog(`Aguardando StateManager em loadConfig... tentativa ${attempts}/${maxAttempts}`, 'DEBUG');
+                            setTimeout(checkStateManager, 100);
+                        }
+                    };
+                    
+                    checkStateManager();
+                });
+            };
+
             // Utilizar o StateManager para carregar as configurações
-            if (window.StateManager) {
-                addLog('Utilizando StateManager para carregar configurações', 'INFO');
-                window.StateManager.loadConfig()
-                    .then(config => {
-                        addLog('Configurações carregadas via StateManager', 'SUCCESS');
+            waitForStateManager().then(stateManagerAvailable => {
+                if (stateManagerAvailable) {
+                    addLog('Utilizando StateManager para carregar configurações', 'INFO');
+                    
+                    try {
+                        const config = window.StateManager.getConfig();
                         
-                        // Log específico para status de automação e gale
-                        addLog(`Status carregado - Gale: ${config.gale?.active} (${config.gale?.level}), Automação: ${config.automation}`, 'DEBUG');
-                        
-                        // Atualizar campos da página principal
-                        updateCurrentSettings({
-                            galeEnabled: config.gale?.active || false,
-                            galeLevel: config.gale?.level || '1.2x',
-                            galeProfit: config.gale?.level || '20%', // Adicionando galeProfit
-                            dailyProfit: config.dailyProfit || 150,
-                            stopLoss: config.stopLoss || 30,
-                            tradeValue: config.value || 10,
-                            tradeTime: config.period || 1,
-                            autoActive: config.automation || false
-                        });
-                        
-                        // Atualizar visibilidade do painel de teste do Gale
-                        updateGaleTestPanelVisibility(config.devMode);
-                        
-                        // Atualizar visibilidade dos botões principais
-                        updateUserControlsVisibility(config.automation, false);
-                        
-                        updateStatus('Configurações carregadas com sucesso', 'success');
-                        resolve(config);
-                    })
-                    .catch(error => {
-                        addLog(`Erro ao carregar configurações via StateManager: ${error.message}`, 'ERROR');
-                        updateStatus('Erro ao carregar configurações', 'error');
-                        
-                        // Em caso de erro, tentar usar a abordagem antiga como fallback
-                        loadConfigLegacy()
-                            .then(config => resolve(config))
-                            .catch(err => {
-                                addLog(`Erro também no fallback: ${err.message}`, 'ERROR');
-                                // Usar configurações padrão em último caso
-                                resolve(indexDefaultConfig);
+                        if (config) {
+                            addLog('Configurações carregadas via StateManager', 'SUCCESS');
+                            
+                            // Log específico para status de automação e gale
+                            addLog(`Status carregado - Gale: ${config.gale?.active} (${config.gale?.level}), Automação: ${config.automation}`, 'DEBUG');
+                            
+                            // Atualizar campos da página principal
+                            updateCurrentSettings({
+                                galeEnabled: config.gale?.active || false,
+                                galeLevel: config.gale?.level || '20%',
+                                galeProfit: config.gale?.level || '20%', // Adicionando galeProfit
+                                dailyProfit: config.dailyProfit || 150,
+                                stopLoss: config.stopLoss || 30,
+                                tradeValue: config.value || 10,
+                                tradeTime: config.period || 1,
+                                autoActive: config.automation || false
                             });
-                    });
-            } else {
-                // Fallback para o método antigo se o StateManager não estiver disponível
-                addLog('StateManager não encontrado, usando método legacy', 'WARN');
-                loadConfigLegacy()
-                    .then(config => resolve(config))
-                    .catch(error => {
-                        addLog(`Erro ao carregar configurações: ${error.message}`, 'ERROR');
-                        updateStatus('Erro ao carregar configurações', 'error');
-                        resolve(indexDefaultConfig);
-                    });
-            }
+                            
+                            // Atualizar dashboard
+                            updateMinPayoutDisplay(config);
+                            updateProfitLossDisplay();
+                            updateGaleLevelDisplay();
+                            
+                            // Atualizar visibilidade do painel de teste do Gale
+                            updateGaleTestPanelVisibility(config.devMode);
+                            
+                            // Atualizar visibilidade dos botões principais
+                            updateUserControlsVisibility(config.automation, false);
+                            
+                            updateStatus('Configurações carregadas com sucesso', 'success');
+                            resolve(config);
+                        } else {
+                            addLog('StateManager retornou configuração vazia, usando fallback', 'WARN');
+                            loadConfigLegacy().then(config => resolve(config));
+                        }
+                    } catch (error) {
+                        addLog(`Erro ao acessar StateManager: ${error.message}`, 'ERROR');
+                        loadConfigLegacy().then(config => resolve(config));
+                    }
+                                 } else {
+                     addLog('StateManager não disponível, usando método legacy', 'WARN');
+                     loadConfigLegacy().then(config => resolve(config));
+                 }
+             }).catch(error => {
+                addLog(`Erro ao aguardar StateManager: ${error.message}`, 'ERROR');
+                loadConfigLegacy().then(config => resolve(config));
+            });
         });
     }
 
@@ -1458,6 +1557,29 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         if (window.StateManager) {
             addLog('Registrando listener para StateManager', 'INFO');
             
+            // Carregar configurações iniciais imediatamente
+            try {
+                const initialConfig = window.StateManager.getConfig();
+                if (initialConfig) {
+                    addLog('Carregando configurações iniciais do StateManager', 'INFO');
+                    updateCurrentSettings({
+                        galeEnabled: initialConfig.gale?.active || false,
+                        galeLevel: initialConfig.gale?.level || '20%',
+                        galeProfit: initialConfig.gale?.level || '20%',
+                        dailyProfit: initialConfig.dailyProfit || 150,
+                        stopLoss: initialConfig.stopLoss || 30,
+                        tradeValue: initialConfig.value || 10,
+                        tradeTime: initialConfig.period || 1,
+                        autoActive: initialConfig.automation || false
+                    });
+                    updateMinPayoutDisplay(initialConfig);
+                    updateProfitLossDisplay();
+                    updateGaleLevelDisplay();
+                }
+            } catch (error) {
+                addLog(`Erro ao carregar configurações iniciais: ${error.message}`, 'ERROR');
+            }
+            
             // Registrar listener para atualizações de estado
             window.StateManager.subscribe((notification) => {
                 // Formato de notificação atualizado: {state, type, timestamp}
@@ -1488,6 +1610,17 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         
                         // Atualizar visibilidade do painel de teste do Gale baseado no modo desenvolvedor
                         updateGaleTestPanelVisibility(config.devMode);
+                        
+                        // Aplicar configurações de modo de teste
+                        if (config.testMode) {
+                            addLog('Modo de teste ativado - análises usarão algoritmo simplificado', 'INFO');
+                        }
+                        
+                        // Aplicar configurações de modo desenvolvedor
+                        if (config.devMode) {
+                            addLog('Modo desenvolvedor ativado - painel de testes disponível', 'INFO');
+                            setupDevAnalysisButton();
+                        }
                         
                         // Atualizar visibilidade dos botões principais baseado no estado da automação
                         updateUserControlsVisibility(config.automation, false);
@@ -2007,8 +2140,9 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 // Adicionar a classe apropriada
                 statusElement.classList.add(type, 'visible');
                 
-                // Definir o texto
-                statusElement.textContent = message;
+                // Converter quebras de linha \n para <br> e usar innerHTML
+                const formattedMessage = message.replace(/\n/g, '<br>');
+                statusElement.innerHTML = formattedMessage;
                 
                 // Auto-limpar após duração
                 if (duration > 0) {

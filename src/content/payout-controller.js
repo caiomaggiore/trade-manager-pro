@@ -53,7 +53,7 @@ class PayoutController {
     async getCurrentPayout() {
         return new Promise((resolve, reject) => {
             try {
-                this.log('Obtendo payout atual da plataforma...', 'DEBUG');
+                this.log('🔍 Obtendo payout atual da plataforma...', 'DEBUG');
                 
                 // Procurar elemento de payout na página
                 const payoutSelectors = [
@@ -61,46 +61,104 @@ class PayoutController {
                     '.payout',
                     '[data-payout]',
                     '.profit-value',
-                    '.profit-percent'
+                    '.profit-percent',
+                    // Adicionar mais seletores específicos da PocketOption
+                    '.asset-payout',
+                    '.payout-percent',
+                    '[class*="payout"]',
+                    '[class*="profit"]'
                 ];
                 
                 let payoutElement = null;
                 let payoutValue = 0;
+                let foundSelector = '';
                 
                 // Tentar encontrar o elemento de payout
                 for (const selector of payoutSelectors) {
-                    payoutElement = document.querySelector(selector);
-                    if (payoutElement) {
-                        this.log(`Elemento de payout encontrado com seletor: ${selector}`, 'DEBUG');
-                        break;
+                    const elements = document.querySelectorAll(selector);
+                    this.log(`🔎 Testando seletor "${selector}" - encontrados ${elements.length} elementos`, 'DEBUG');
+                    
+                    if (elements.length > 0) {
+                        // Testar cada elemento encontrado
+                        for (let i = 0; i < elements.length; i++) {
+                            const element = elements[i];
+                            const text = element.textContent || element.innerText || '';
+                            this.log(`📝 Elemento ${i+1}: "${text}"`, 'DEBUG');
+                            
+                            // Verificar se contém um valor de payout válido
+                            const payoutMatch = text.match(/(\d+(?:\.\d+)?)\s*%?/);
+                            if (payoutMatch) {
+                                const value = parseFloat(payoutMatch[1]);
+                                if (value >= 50 && value <= 200) { // Payout válido entre 50% e 200%
+                                    payoutElement = element;
+                                    foundSelector = selector;
+                                    this.log(`✅ Elemento de payout encontrado com seletor: ${selector} (${i+1}º elemento)`, 'SUCCESS');
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        if (payoutElement) break;
                     }
                 }
                 
                 if (payoutElement) {
                     // Extrair valor do payout
                     const payoutText = payoutElement.textContent || payoutElement.innerText || '';
+                    this.log(`📊 Texto do elemento de payout: "${payoutText}"`, 'DEBUG');
+                    
                     const payoutMatch = payoutText.match(/(\d+(?:\.\d+)?)/);
                     
                     if (payoutMatch) {
                         payoutValue = parseFloat(payoutMatch[1]);
-                        this.log(`Payout extraído: ${payoutValue}%`, 'SUCCESS');
+                        this.log(`✅ Payout extraído: ${payoutValue}% (seletor: ${foundSelector})`, 'SUCCESS');
                     } else {
-                        this.log(`Não foi possível extrair valor numérico do texto: "${payoutText}"`, 'WARN');
-                        payoutValue = 80; // Valor padrão
+                        this.log(`⚠️ Não foi possível extrair valor numérico do texto: "${payoutText}"`, 'WARN');
+                        payoutValue = 85; // Valor padrão mais realista
                     }
                 } else {
-                    this.log('Elemento de payout não encontrado, usando valor padrão', 'WARN');
-                    payoutValue = 80; // Valor padrão
+                    this.log('⚠️ Elemento de payout não encontrado, usando valor padrão', 'WARN');
+                    
+                    // Tentar uma busca mais ampla
+                    const allElements = document.querySelectorAll('*');
+                    let foundAny = false;
+                    
+                    for (const element of allElements) {
+                        const text = element.textContent || element.innerText || '';
+                        if (text.includes('%') && text.match(/\d+\s*%/)) {
+                            this.log(`🔍 Elemento com % encontrado: "${text}" (tag: ${element.tagName})`, 'DEBUG');
+                            const match = text.match(/(\d+)\s*%/);
+                            if (match) {
+                                const value = parseInt(match[1]);
+                                if (value >= 50 && value <= 200) {
+                                    payoutValue = value;
+                                    foundAny = true;
+                                    this.log(`🎯 Payout encontrado em busca ampla: ${payoutValue}%`, 'INFO');
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (!foundAny) {
+                        payoutValue = 85; // Valor padrão mais realista
+                        this.log(`🔧 Usando valor padrão: ${payoutValue}%`, 'INFO');
+                    }
                 }
                 
-                resolve({
+                const result = {
                     success: true,
                     payout: payoutValue,
-                    source: payoutElement ? 'platform' : 'default'
-                });
+                    source: payoutElement ? 'platform' : 'default',
+                    selector: foundSelector || 'none',
+                    timestamp: new Date().toISOString()
+                };
+                
+                this.log(`📈 Resultado final: ${JSON.stringify(result)}`, 'INFO');
+                resolve(result);
                 
             } catch (error) {
-                this.log(`Erro ao obter payout: ${error.message}`, 'ERROR');
+                this.log(`❌ Erro ao obter payout: ${error.message}`, 'ERROR');
                 reject(error);
             }
         });
@@ -164,22 +222,16 @@ class PayoutController {
         this.log(cancelMsg, 'WARN');
         this.updateStatus(cancelMsg, 'warn', 8000);
         
-        // Cancelar operação atual
-        if (typeof window.cancelCurrentOperation === 'function') {
-            window.cancelCurrentOperation(`Payout inadequado: ${currentPayout}% < ${minPayout}%`);
-            this.log('Operação cancelada automaticamente pelo sistema de controle de payout', 'INFO');
-        } else {
-            // Fallback: enviar mensagem para cancelar
-            try {
-                chrome.runtime.sendMessage({
-                    action: 'CANCEL_CURRENT_OPERATION',
-                    reason: `Payout inadequado: ${currentPayout}% < ${minPayout}%`,
-                    source: 'payout-control'
-                });
-                this.log('Comando de cancelamento enviado via runtime message', 'INFO');
-            } catch (error) {
-                this.log(`Erro ao enviar comando de cancelamento: ${error.message}`, 'ERROR');
-            }
+        // Cancelar operação atual via chrome.runtime
+        try {
+            chrome.runtime.sendMessage({
+                action: 'CANCEL_CURRENT_OPERATION',
+                reason: `Payout inadequado: ${currentPayout}% < ${minPayout}%`,
+                source: 'payout-control'
+            });
+            this.log('Comando de cancelamento enviado via runtime message', 'INFO');
+        } catch (error) {
+            this.log(`Erro ao enviar comando de cancelamento: ${error.message}`, 'ERROR');
         }
     }
     
@@ -205,14 +257,23 @@ class PayoutController {
         
         this.log(`Configuração de troca: categoria preferida = ${preferredCategory}`, 'DEBUG');
         
-        // Verificar se a função de troca de ativos está disponível
-        if (typeof window.ensureBestAsset === 'function') {
-            try {
-                const assetResult = await window.ensureBestAsset(minPayout, preferredCategory);
+        // Enviar comando para troca de ativos via chrome.runtime
+        try {
+            chrome.runtime.sendMessage({
+                action: 'ENSURE_BEST_ASSET',
+                minPayout: minPayout,
+                preferredCategory: preferredCategory,
+                source: 'payout-control'
+            }, (response) => {
+                if (chrome.runtime.lastError) {
+                    this.log(`❌ Erro na comunicação para troca de ativo: ${chrome.runtime.lastError.message}`, 'ERROR');
+                    reject(`ASSET_SWITCH_COMMUNICATION_ERROR: ${chrome.runtime.lastError.message}`);
+                    return;
+                }
                 
-                if (assetResult.success) {
-                    this.log(`✅ Troca de ativo realizada pelo Controle de Payout: ${assetResult.message}`, 'SUCCESS');
-                    this.updateStatus(assetResult.message, 'success', 4000);
+                if (response && response.success) {
+                    this.log(`✅ Troca de ativo realizada pelo Controle de Payout: ${response.message}`, 'SUCCESS');
+                    this.updateStatus(response.message, 'success', 4000);
                     
                     // Aguardar um pouco para a interface atualizar e resolver
                     setTimeout(() => {
@@ -220,18 +281,16 @@ class PayoutController {
                         resolve(true);
                     }, 2000);
                 } else {
-                    this.log(`❌ Falha na troca de ativo pelo Controle de Payout: ${assetResult.error}`, 'ERROR');
-                    this.updateStatus(`Erro na troca de ativo: ${assetResult.error}`, 'error', 5000);
-                    reject(`ASSET_SWITCH_FAILED: ${assetResult.error}`);
+                    const errorMsg = response ? response.error : 'Sem resposta do sistema de troca de ativos';
+                    this.log(`❌ Falha na troca de ativo pelo Controle de Payout: ${errorMsg}`, 'ERROR');
+                    this.updateStatus(`Erro na troca de ativo: ${errorMsg}`, 'error', 5000);
+                    reject(`ASSET_SWITCH_FAILED: ${errorMsg}`);
                 }
-            } catch (error) {
-                this.log(`❌ Erro na troca de ativo: ${error.message || error}`, 'ERROR');
-                this.updateStatus(`Erro na troca de ativo: ${error.message || error}`, 'error', 5000);
-                reject(`ASSET_SWITCH_ERROR: ${error.message || error}`);
-            }
-        } else {
-            this.log('❌ Função ensureBestAsset não disponível', 'ERROR');
-            reject('ASSET_SWITCH_FUNCTION_NOT_AVAILABLE');
+            });
+        } catch (error) {
+            this.log(`❌ Erro ao solicitar troca de ativo: ${error.message || error}`, 'ERROR');
+            this.updateStatus(`Erro na troca de ativo: ${error.message || error}`, 'error', 5000);
+            reject(`ASSET_SWITCH_ERROR: ${error.message || error}`);
         }
     }
     
@@ -257,7 +316,7 @@ class PayoutController {
             
             // Atualizar status visual a cada segundo com contador regressivo e quebra de linha
             this.updateStatus(
-                `⏳ Aguardando payout adequado (${minPayout}%)<br>Próxima verificação em ${nextCheckIn}s | Tempo total: ${timeStr}`, 
+                `⏳ Aguardando payout adequado (${minPayout}%) Próxima verificação em ${nextCheckIn}s | Tempo total: ${timeStr}`, 
                 'info', 
                 0
             );
@@ -265,20 +324,57 @@ class PayoutController {
             // Quando o contador chegar a zero, fazer nova verificação de payout
             if (nextCheckIn <= 0) {
                 try {
+                    this.log(`🔍 Iniciando verificação automática de payout (contador zerou)...`, 'DEBUG');
+                    
+                    // Mostrar status de verificação
+                    this.updateStatus(`🔍 Verificando payout atual...`, 'info', 2000);
+                    
                     const payoutResult = await this.getCurrentPayout();
                     const currentPayout = payoutResult.payout;
                     elapsedTime += checkInterval;
                     
-                    this.log(`Verificação automática: Payout atual ${currentPayout}% (necessário: ${minPayout}%)`, 'DEBUG');
+                    // LOG DETALHADO DO RESULTADO
+                    this.log(`📊 RESULTADO DA VERIFICAÇÃO:`, 'INFO');
+                    this.log(`   • Payout atual: ${currentPayout}%`, 'INFO');
+                    this.log(`   • Payout necessário: ${minPayout}%`, 'INFO');
+                    this.log(`   • Fonte: ${payoutResult.source}`, 'INFO');
+                    this.log(`   • Seletor usado: ${payoutResult.selector}`, 'INFO');
+                    this.log(`   • Timestamp: ${payoutResult.timestamp}`, 'INFO');
                     
-                    // Verificar se o payout melhorou
-                    if (currentPayout >= minPayout) {
+                    this.log(`🔢 Comparação: ${currentPayout} >= ${minPayout} = ${currentPayout >= minPayout}`, 'DEBUG');
+                    this.log(`📝 Tipos: currentPayout=${typeof currentPayout}, minPayout=${typeof minPayout}`, 'DEBUG');
+                    
+                    // Verificar se o payout melhorou (garantir que ambos sejam números)
+                    const currentPayoutNum = parseFloat(currentPayout);
+                    const minPayoutNum = parseFloat(minPayout);
+                    
+                    this.log(`🔄 Valores convertidos: currentPayout=${currentPayoutNum}, minPayout=${minPayoutNum}`, 'DEBUG');
+                    
+                    // MOSTRAR STATUS COM RESULTADO DA VERIFICAÇÃO
+                    this.updateStatus(
+                        `📊 Payout verificado: ${currentPayoutNum}% (necessário: ${minPayoutNum}%)`, 
+                        currentPayoutNum >= minPayoutNum ? 'success' : 'warn', 
+                        3000
+                    );
+                    
+                    if (currentPayoutNum >= minPayoutNum) {
                         this.stopMonitoring();
                         clearInterval(visualTimer);
-                        this.log(`Payout adequado alcançado! ${currentPayout}% >= ${minPayout}%. Prosseguindo com análise.`, 'SUCCESS');
-                        this.updateStatus(`✅ Payout adequado (${currentPayout}%)! Iniciando análise...`, 'success', 3000);
+                        this.log(`✅ Payout adequado alcançado! ${currentPayoutNum}% >= ${minPayoutNum}%. Prosseguindo com análise.`, 'SUCCESS');
+                        this.updateStatus(`✅ Payout adequado (${currentPayoutNum}%)! Iniciando análise...`, 'success', 3000);
                         resolve(true);
                         return;
+                    } else {
+                        this.log(`⏳ Payout ainda insuficiente: ${currentPayoutNum}% < ${minPayoutNum}%. Continuando aguardo...`, 'INFO');
+                        
+                        // Mostrar mensagem de continuação
+                        setTimeout(() => {
+                            this.updateStatus(
+                                `⏳ Payout insuficiente (${currentPayoutNum}% < ${minPayoutNum}%) - Continuando aguardo...`, 
+                                'warn', 
+                                2000
+                            );
+                        }, 3000);
                     }
                     
                     // Reset do contador para próxima verificação
@@ -287,7 +383,7 @@ class PayoutController {
                 } catch (payoutError) {
                     this.stopMonitoring();
                     clearInterval(visualTimer);
-                    this.log(`Erro ao verificar payout durante monitoramento: ${payoutError.message}`, 'ERROR');
+                    this.log(`❌ Erro ao verificar payout durante monitoramento: ${payoutError.message}`, 'ERROR');
                     this.updateStatus(`❌ Erro na verificação de payout: ${payoutError.message}`, 'error', 5000);
                     reject(`PAYOUT_READ_ERROR: ${payoutError.message}`);
                     return;
@@ -391,63 +487,47 @@ class PayoutController {
             });
         });
     }
-    
-    // Método para atualizar visibilidade dos campos na UI de configurações
-    updatePayoutBehaviorVisibility() {
-        const payoutBehaviorSelect = document.getElementById('payout-behavior-select');
-        const timeoutContainer = document.getElementById('payout-timeout-container');
-        const assetContainer = document.getElementById('asset-switching-container');
-        
-        if (!payoutBehaviorSelect || !timeoutContainer || !assetContainer) {
-            this.log('Elementos de UI não encontrados para atualizar visibilidade', 'WARN');
-            return;
-        }
-        
-        const behavior = payoutBehaviorSelect.value;
-        this.log(`Atualizando visibilidade dos campos - comportamento: ${behavior}`, 'DEBUG');
-        
-        // Resetar visibilidade
-        timeoutContainer.style.display = 'none';
-        assetContainer.style.display = 'none';
-        
-        // Mostrar campos baseado no comportamento
-        switch (behavior) {
-            case 'wait':
-                timeoutContainer.style.display = 'block';
-                this.log('Campo de intervalo de verificação exibido', 'DEBUG');
-                break;
-            case 'switch':
-                assetContainer.style.display = 'block';
-                this.log('Campo de categoria de ativos exibido', 'DEBUG');
-                break;
-            case 'cancel':
-            default:
-                this.log('Todos os campos condicionais ocultados', 'DEBUG');
-                break;
-        }
-    }
 }
 
-// Criar instância global
-window.PayoutController = new PayoutController();
+// Criar instância global usando uma abordagem compatível com MV3
+if (typeof globalThis !== 'undefined') {
+    globalThis.PayoutController = new PayoutController();
+} else if (typeof self !== 'undefined') {
+    self.PayoutController = new PayoutController();
+} else {
+    // Fallback para ambientes mais antigos
+    window.PayoutController = new PayoutController();
+}
 
-// Expor métodos principais globalmente para compatibilidade
-window.getCurrentPayout = window.PayoutController.getCurrentPayout;
-window.checkPayoutBeforeAnalysis = window.PayoutController.checkPayoutBeforeAnalysis;
-window.cancelPayoutMonitoring = window.PayoutController.cancelPayoutMonitoring;
-window.updatePayoutBehaviorVisibility = window.PayoutController.updatePayoutBehaviorVisibility.bind(window.PayoutController);
+// Expor métodos principais globalmente para compatibilidade (usando abordagem MV3)
+const payoutControllerInstance = globalThis.PayoutController || self.PayoutController || window.PayoutController;
+
+if (typeof globalThis !== 'undefined') {
+    globalThis.getCurrentPayout = payoutControllerInstance.getCurrentPayout.bind(payoutControllerInstance);
+    globalThis.checkPayoutBeforeAnalysis = payoutControllerInstance.checkPayoutBeforeAnalysis.bind(payoutControllerInstance);
+    globalThis.cancelPayoutMonitoring = payoutControllerInstance.cancelPayoutMonitoring.bind(payoutControllerInstance);
+} else if (typeof self !== 'undefined') {
+    self.getCurrentPayout = payoutControllerInstance.getCurrentPayout.bind(payoutControllerInstance);
+    self.checkPayoutBeforeAnalysis = payoutControllerInstance.checkPayoutBeforeAnalysis.bind(payoutControllerInstance);
+    self.cancelPayoutMonitoring = payoutControllerInstance.cancelPayoutMonitoring.bind(payoutControllerInstance);
+} else {
+    // Fallback para ambientes mais antigos
+    window.getCurrentPayout = payoutControllerInstance.getCurrentPayout.bind(payoutControllerInstance);
+    window.checkPayoutBeforeAnalysis = payoutControllerInstance.checkPayoutBeforeAnalysis.bind(payoutControllerInstance);
+    window.cancelPayoutMonitoring = payoutControllerInstance.cancelPayoutMonitoring.bind(payoutControllerInstance);
+}
 
 // Listener para mensagens do chrome.runtime
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'cancelPayoutMonitoring') {
-        window.PayoutController.cancelPayoutMonitoring();
+        payoutControllerInstance.cancelPayoutMonitoring();
         sendResponse({ success: true });
         return true;
     }
     
     if (message.action === 'STOP_PAYOUT_MONITORING') {
-        window.PayoutController.log(`Recebido comando para parar monitoramento: ${message.reason}`, 'INFO');
-        window.PayoutController.stopMonitoring();
+        payoutControllerInstance.log(`Recebido comando para parar monitoramento: ${message.reason}`, 'INFO');
+        payoutControllerInstance.stopMonitoring();
         sendResponse({ success: true, message: 'Monitoramento parado' });
         return true;
     }

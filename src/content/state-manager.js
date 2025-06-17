@@ -2,7 +2,7 @@
 const DEFAULT_CONFIG = {
     gale: {
         active: true,
-        level: '1.2x'
+        level: '20%'  // Corrigido para usar porcentagem ao invés de multiplicador
     },
     dailyProfit: 150,
     stopLoss: 30,
@@ -11,10 +11,13 @@ const DEFAULT_CONFIG = {
     period: 1,
     minPayout: 80,
     payoutBehavior: 'cancel',
-    payoutTimeout: 60,
-    // Novas configurações para troca de ativos
+    payoutTimeout: 5,  // Corrigido para 5 segundos como padrão
+    // Modos de desenvolvimento e teste
+    testMode: false,
+    devMode: false,
+    // Configurações para troca de ativos
     assetSwitching: {
-        enabled: true,                    // Se deve trocar ativos automaticamente
+        enabled: false,                   // Desabilitado por padrão
         minPayout: 85,                   // Payout mínimo para operações
         preferredCategory: 'crypto',     // Categoria preferida (crypto, currency, commodity, stock)
         checkBeforeAnalysis: true,       // Verificar ativo antes de análise

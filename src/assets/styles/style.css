@@ -2275,44 +2275,30 @@ input, select, textarea {
   box-sizing: border-box;
 }
 
-/* Forçar layout 50/50 mesmo em elementos ocultos */
-#asset-switching-container .panel-item-label,
+/* Forçar layout 50/50 mesmo em elementos ocultos - APENAS quando visíveis */
 #payout-timeout-container .panel-item-label {
   flex: 1;
   max-width: 50%;
 }
 
-#asset-switching-container select,
 #payout-timeout-container input {
   flex: 1;
   max-width: 50%;
   min-width: 0;
 }
 
-/* Regras mais específicas para forçar layout correto */
-#asset-switching-container.panel-item {
-  display: flex !important;
-  justify-content: space-between !important;
-  align-items: center !important;
-  gap: 12px !important;
-}
-
+/* Regras específicas para o campo de troca de ativos */
 #asset-switching-container .panel-item-label {
-  flex: 1 !important;
-  max-width: 50% !important;
-  box-sizing: border-box !important;
+    /* Garantir que o label da troca de ativos tenha o mesmo estilo */
+    flex: 1;
+    max-width: 50%;
+    text-align: left;
 }
 
 #asset-switching-container select {
-  flex: 1 !important;
-  max-width: 50% !important;
-  min-width: 0 !important;
-  box-sizing: border-box !important;
-}
-
-/* Garantir que quando o container está visível, ele mantenha o layout */
-#asset-switching-container[style*="display: block"],
-#asset-switching-container[style*="display: flex"],
-#asset-switching-container:not([style*="display: none"]) {
-  display: flex !important;
+    /* Garantir que o select da troca de ativos tenha o mesmo estilo */
+    flex: 1;
+    max-width: 50%;
+    margin: 0;
+    min-width: 0;
 }
