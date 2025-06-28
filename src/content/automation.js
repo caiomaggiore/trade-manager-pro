@@ -962,9 +962,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             
             return true; // Resposta assíncrona
         }
+        
+        // ✅ REMOVIDO: Handler desnecessário - verificação de payout já acontece ANTES da análise
     });
     
     sendToLogSystem('Handlers de mensagens configurados para integração com outros módulos', 'DEBUG');
+    
+    // ✅ EXPOSIÇÃO GLOBAL: Funções necessárias para outros módulos (como Gale System)
+    window.getCurrentPayoutForAutomation = getCurrentPayoutForAutomation;
+    window.applyPayoutBehavior = applyPayoutBehavior;
+    sendToLogSystem('✅ Funções de payout expostas globalmente para outros módulos', 'DEBUG');
 })(); 
 
 // Função para reportar erro ao StateManager

@@ -311,8 +311,7 @@ function showAnalysisModal(result) {
 
     countdownInterval = setInterval(updateCountdown, 1000);
 
-    // NOVA FUNÇÃO: Encaminha a solicitação para o content.js executar a operação
-    // Esta substitui a antiga executeTradeAction para evitar duplicação
+    // ✅ FUNÇÃO SIMPLIFICADA: Modal apenas executa, verificação de payout já foi feita ANTES da análise
     function sendTradeRequest(action) {
         if (chrome && chrome.runtime && chrome.runtime.id) {
             // Obter configurações atuais do usuário
@@ -352,7 +351,7 @@ function showAnalysisModal(result) {
                 addLog(`Enviando solicitação de operação ${action} com: valor=${tradeData.tradeValue}, período=${tradeData.tradeTime}`, 'INFO', 'trade-execution');
             }
             
-            // Enviar solicitação única para o content.js executar a operação
+            // ✅ CORREÇÃO: Modal sempre executa diretamente, pois payout já foi verificado ANTES da análise
             chrome.runtime.sendMessage({
                 action: 'EXECUTE_TRADE_ACTION',
                 tradeAction: action,

@@ -258,36 +258,63 @@
     }
     
     function triggerNewAnalysis() {
-        log('Acionando nova análise após aplicação de gale...', 'INFO');
+        log('🎯 [GALE] Acionando nova análise após aplicação de gale...', 'INFO');
         
-        // *** USAR chrome.runtime.sendMessage para verificação de payout ***
-        chrome.runtime.sendMessage({
-            action: 'CHECK_PAYOUT_FOR_ANALYSIS',
-            source: 'gale-system'
-        }, (response) => {
+        // ✅ CORREÇÃO: Usar a mesma lógica de verificação de payout da automação principal
+        chrome.storage.sync.get(['userConfig'], async (storageResult) => {
             if (chrome.runtime.lastError) {
-                log(`Erro ao solicitar verificação de payout: ${chrome.runtime.lastError.message}`, 'ERROR');
-                // Fallback para análise direta
+                log(`❌ [GALE] Erro ao ler configuração: ${chrome.runtime.lastError.message}`, 'ERROR');
+                // Fallback: análise direta após delay
                 setTimeout(() => requestActualAnalysis(), 2000);
                 return;
             }
             
-            if (!response) {
-                log('Nenhuma resposta recebida para verificação de payout. Tentando análise direta...', 'WARN');
-                setTimeout(() => requestActualAnalysis(), 2000);
-                return;
-            }
+            const config = storageResult.userConfig || {};
+            const minPayoutRequired = parseFloat(config.minPayout) || 80;
+            const payoutBehavior = config.payoutBehavior || 'wait';
             
-            if (response.success && response.shouldProceed) {
-                log('Payout verificado e aprovado. Iniciando análise do Gale...', 'SUCCESS');
-                requestActualAnalysis();
-            } else if (response.success && !response.shouldProceed) {
-                log(`Payout insuficiente detectado. ${response.reason}. Tentando novamente em 5 segundos...`, 'WARN');
-                // O sistema de automação já tratou (trocou ativo, etc)
-                // Tentar novamente após delay
-                setTimeout(() => triggerNewAnalysis(), 5000);
-            } else {
-                log(`Erro na verificação de payout: ${response.reason}. Tentando análise direta...`, 'ERROR');
+            log(`🔧 [GALE] Configuração: payout min=${minPayoutRequired}%, comportamento=${payoutBehavior}`, 'DEBUG');
+            
+            try {
+                // ✅ USAR A MESMA FUNÇÃO DA AUTOMAÇÃO PRINCIPAL
+                const payoutResult = await getCurrentPayoutForAutomation();
+                const currentPayout = payoutResult.payout;
+                
+                log(`🔍 [GALE] Payout atual: ${currentPayout}% (mínimo: ${minPayoutRequired}%)`, 'INFO');
+                
+                if (currentPayout >= minPayoutRequired) {
+                    // ✅ PAYOUT ADEQUADO: Iniciar análise diretamente
+                    log(`✅ [GALE] Payout adequado (${currentPayout}% >= ${minPayoutRequired}%). Iniciando análise...`, 'SUCCESS');
+                    requestActualAnalysis();
+                } else {
+                    // ⚠️ PAYOUT INSUFICIENTE: Aplicar comportamento configurado
+                    log(`⚠️ [GALE] Payout insuficiente (${currentPayout}% < ${minPayoutRequired}%). Aplicando comportamento: ${payoutBehavior}`, 'WARN');
+                    
+                    try {
+                        // ✅ USAR A MESMA FUNÇÃO DE COMPORTAMENTO DA AUTOMAÇÃO
+                        await applyPayoutBehavior(currentPayout, minPayoutRequired, payoutBehavior, config);
+                        
+                        log(`✅ [GALE] Comportamento de payout executado. Iniciando análise...`, 'SUCCESS');
+                        requestActualAnalysis();
+                        
+                    } catch (behaviorError) {
+                        log(`❌ [GALE] Falha no comportamento de payout: ${behaviorError}`, 'ERROR');
+                        
+                        if (behaviorError === 'USER_CANCELLED') {
+                            log('ℹ️ [GALE] Análise cancelada pelo usuário durante comportamento de payout', 'INFO');
+                        } else if (behaviorError === 'PAYOUT_INSUFFICIENT') {
+                            log(`⚠️ [GALE] Payout continua insuficiente após comportamento. Tentando novamente em 10s...`, 'WARN');
+                            setTimeout(() => triggerNewAnalysis(), 10000);
+                        } else {
+                            log(`❌ [GALE] Erro crítico no comportamento: ${behaviorError}. Tentando análise direta...`, 'ERROR');
+                            setTimeout(() => requestActualAnalysis(), 3000);
+                        }
+                    }
+                }
+                
+            } catch (payoutError) {
+                log(`❌ [GALE] Erro na verificação de payout: ${payoutError.message}`, 'ERROR');
+                // Fallback: análise direta após delay
                 setTimeout(() => requestActualAnalysis(), 2000);
             }
         });
