@@ -28,158 +28,46 @@ function toUpdateStatus(message, type = 'info', duration = 5000) {
 }
 
 // ======================================================================
-// =================== SISTEMA DE TROCA DE ATIVOS ======================
+// =================== SISTEMA DE TROCA DE ATIVOS (INTEGRAÇÃO) =========
 // ======================================================================
 
 /**
- * Função para trocar para o melhor ativo disponível baseado no payout
+ * Wrapper para trocar para o melhor ativo usando a API centralizada
  * @param {number} minPayout - Payout mínimo desejado (padrão: 85%)
  * @param {string} preferredCategory - Categoria preferida ('crypto', 'currency', etc.)
  * @returns {Promise<Object>} Resultado da operação
  */
-async function switchToBestAsset(minPayout = 85, preferredCategory = 'crypto') {
-    return new Promise((resolve, reject) => {
-        try {
-            // Log com stack trace para identificar quem está chamando esta função
-            const stack = new Error().stack;
-            sendToLogSystem(`🚨 [switchToBestAsset] CHAMADA DETECTADA - payout >= ${minPayout}%, categoria: ${preferredCategory}`, 'WARN');
-            sendToLogSystem(`🚨 [switchToBestAsset] Stack trace: ${stack}`, 'DEBUG');
-            
-            sendToLogSystem(`Iniciando troca para melhor ativo (payout >= ${minPayout}%, categoria: ${preferredCategory})`, 'INFO');
-            toUpdateStatus(`Procurando melhor ativo (>=${minPayout}%)...`, 'info', 3000);
-            
-            // Solicitar troca de ativo via background.js -> content.js
-            chrome.runtime.sendMessage({
-                action: 'TEST_SWITCH_TO_BEST_ASSET',
-                minPayout: minPayout,
-                category: preferredCategory
-            }, (response) => {
-                if (chrome.runtime.lastError) {
-                    const errorMsg = `Erro na comunicação para troca de ativo: ${chrome.runtime.lastError.message}`;
-                    sendToLogSystem(errorMsg, 'ERROR');
-                    toUpdateStatus(errorMsg, 'error', 5000);
-                    reject(new Error(errorMsg));
-                    return;
-                }
-                
-                if (response && response.success) {
-                    const successMsg = `Ativo alterado: ${response.asset.name} (${response.asset.payout}%)`;
-                    sendToLogSystem(successMsg, 'SUCCESS');
-                    toUpdateStatus(successMsg, 'success', 4000);
-                    resolve(response);
-                } else {
-                    const errorMsg = response?.error || 'Falha na troca de ativo';
-                    sendToLogSystem(errorMsg, 'ERROR');
-                    toUpdateStatus(errorMsg, 'error', 5000);
-                    reject(new Error(errorMsg));
-                }
-            });
-        } catch (error) {
-            const errorMsg = `Erro ao solicitar troca de ativo: ${error.message}`;
-            sendToLogSystem(errorMsg, 'ERROR');
-            toUpdateStatus(errorMsg, 'error', 5000);
-            reject(error);
-        }
-    });
-}
-
-/**
- * Função para verificar se o ativo atual atende ao payout mínimo
- * @param {number} minPayout - Payout mínimo desejado
- * @returns {Promise<Object>} Resultado da verificação
- */
-async function checkCurrentAssetPayout(minPayout = 85) {
-    return new Promise((resolve, reject) => {
-        try {
-            sendToLogSystem(`🔍 Verificando payout do ativo atual (mínimo: ${minPayout}%)...`, 'DEBUG');
-            
-            // Solicitar payout atual via sistema existente
-            getCurrentPayout()
-                .then(payoutResult => {
-                    const currentPayout = payoutResult.payout;
-                    const isAdequate = currentPayout >= minPayout;
-                    const needsSwitch = !isAdequate;
-                    
-                    sendToLogSystem(`📊 Resultado da verificação: Payout=${currentPayout}%, Mínimo=${minPayout}%, Adequado=${isAdequate}, NecessitaTroca=${needsSwitch}`, 'INFO');
-                    
-                    resolve({
-                        success: true,
-                        currentPayout: currentPayout,
-                        minPayout: minPayout,
-                        isAdequate: isAdequate,
-                        needsSwitch: needsSwitch
-                    });
-                })
-                .catch(error => {
-                    sendToLogSystem(`❌ Erro ao verificar payout: ${error.message}`, 'ERROR');
-                    resolve({
-                        success: false,
-                        error: error.message,
-                        needsSwitch: true // Assumir que precisa trocar em caso de erro
-                    });
-                });
-        } catch (error) {
-            sendToLogSystem(`❌ Erro na verificação de payout: ${error.message}`, 'ERROR');
-            reject(error);
-        }
-    });
-}
-
-/**
- * Função principal para garantir que estamos operando com o melhor ativo
- * @param {number} minPayout - Payout mínimo desejado
- * @param {string} preferredCategory - Categoria preferida
- * @returns {Promise<Object>} Resultado da operação
- */
-async function ensureBestAsset(minPayout = 85, preferredCategory = 'crypto') {
+async function switchToBestAssetViaAPI(minPayout = 85, preferredCategory = 'crypto') {
     try {
-        sendToLogSystem(`🔍 [ensureBestAsset] Iniciando verificação de ativo (mínimo: ${minPayout}%, categoria: ${preferredCategory})`, 'INFO');
-        toUpdateStatus(`Verificando payout atual (mín: ${minPayout}%)...`, 'info', 3000);
+        sendToLogSystem(`🔄 [AUTOMATION] Solicitando troca de ativo via nova API robusta (payout >= ${minPayout}%, categoria: ${preferredCategory})`, 'INFO');
+        toUpdateStatus(`Procurando melhor ativo (>=${minPayout}%)...`, 'info', 3000);
         
-        // Primeiro verificar o ativo atual
-        sendToLogSystem(`🔍 [ensureBestAsset] Chamando checkCurrentAssetPayout...`, 'DEBUG');
-        const currentCheck = await checkCurrentAssetPayout(minPayout);
+        // ✅ USAR NOVA FUNÇÃO WRAPPER ESPECÍFICA PARA AUTOMAÇÃO
+        // A nova função já faz todo o logging detalhado e busca sequencial
+        const result = await AssetManager.switchToBestAssetForAutomation(minPayout, preferredCategory);
         
-        sendToLogSystem(`🔍 [ensureBestAsset] Resultado da verificação: success=${currentCheck.success}, needsSwitch=${currentCheck.needsSwitch}`, 'DEBUG');
-        
-        if (currentCheck.success && !currentCheck.needsSwitch) {
-            sendToLogSystem(`✅ [ensureBestAsset] Ativo atual adequado (${currentCheck.currentPayout}% >= ${minPayout}%), MANTENDO ativo atual`, 'SUCCESS');
-            toUpdateStatus(`Ativo atual OK (${currentCheck.currentPayout}%)`, 'success', 2000);
-            return {
-                success: true,
-                action: 'kept_current',
-                currentPayout: currentCheck.currentPayout,
-                message: `Ativo atual mantido (${currentCheck.currentPayout}%)`
-            };
-        }
-        
-        // Se chegou aqui, precisa trocar de ativo
-        sendToLogSystem(`⚠️ [ensureBestAsset] Ativo atual inadequado ou não verificável. Motivo: success=${currentCheck.success}, needsSwitch=${currentCheck.needsSwitch}`, 'WARN');
-        sendToLogSystem(`🔄 [ensureBestAsset] Iniciando processo de troca de ativo...`, 'INFO');
-        toUpdateStatus(`Procurando melhor ativo (>=${minPayout}%)...`, 'warn', 4000);
-        
-        const switchResult = await switchToBestAsset(minPayout, preferredCategory);
-        
-        if (switchResult.success) {
-            sendToLogSystem(`🎯 [ensureBestAsset] Ativo alterado com sucesso: ${switchResult.asset.name} (${switchResult.asset.payout}%)`, 'SUCCESS');
-            toUpdateStatus(`Ativo alterado: ${switchResult.asset.name} (${switchResult.asset.payout}%)`, 'success', 4000);
+        if (result.success) {
+            // ✅ A nova função já faz todo o logging necessário
+            // Apenas atualizar status visual para o usuário
+            if (result.wasPreferred) {
+                toUpdateStatus(`✅ ${result.asset.name} (${result.asset.payout}%)`, 'success', 4000);
+            } else {
+                toUpdateStatus(`⚠️ Fallback: ${result.asset.name} (${result.asset.payout}%)`, 'warn', 5000);
+            }
             
-            return {
-                success: true,
-                action: 'switched',
-                asset: switchResult.asset,
-                message: switchResult.message
-            };
+            return result;
         } else {
-            throw new Error(switchResult.error || 'Falha na troca de ativo');
+            // ❌ ERRO REAL: A nova função já logou o erro
+            const errorMsg = result.error || 'UNKNOWN_ERROR: Falha na troca de ativo';
+            toUpdateStatus(errorMsg, 'error', 5000);
+            throw new Error(errorMsg);
         }
+        
     } catch (error) {
-        sendToLogSystem(`❌ [ensureBestAsset] Erro ao garantir melhor ativo: ${error.message}`, 'ERROR');
-        toUpdateStatus(`Erro na troca de ativo: ${error.message}`, 'error', 5000);
-        return {
-            success: false,
-            error: error.message
-        };
+        const errorMsg = `AUTOMATION_API_ERROR: ${error.message}`;
+        sendToLogSystem(`❌ [AUTOMATION] ${errorMsg}`, 'ERROR');
+        toUpdateStatus(errorMsg, 'error', 5000);
+        throw error;
     }
 }
 
@@ -257,39 +145,37 @@ async function handlePayoutIssue(currentPayout, minPayoutRequired, payoutBehavio
             );
             break;
             
-        case 'switch':
-            sendToLogSystem(`🔄 Trocando ativo devido a payout inadequado (${currentPayout}% < ${minPayoutRequired}%)`, 'INFO');
-            toUpdateStatus(`Trocando ativo: payout inadequado (${currentPayout}%)`, 'warn', 4000);
-            
-            try {
-                const assetConfig = config.assetSwitching || {};
-                const preferredCategory = assetConfig.preferredCategory || 'crypto';
-                
-                const assetResult = await ensureBestAsset(minPayoutRequired, preferredCategory);
-                
-                if (assetResult.success) {
-                    sendToLogSystem(`✅ Ativo trocado com sucesso durante monitoramento: ${assetResult.message}`, 'SUCCESS');
-                    toUpdateStatus(`Ativo trocado: ${assetResult.message}`, 'success', 4000);
+                        case 'switch':
+                    sendToLogSystem(`🔄 Trocando ativo devido a payout inadequado (${currentPayout}% < ${minPayoutRequired}%)`, 'INFO');
+                    toUpdateStatus(`Trocando ativo: payout inadequado (${currentPayout}%)`, 'warn', 4000);
                     
-                    // Monitoramento contínuo desabilitado - payout será verificado na próxima análise
-                } else {
-                    sendToLogSystem(`❌ Falha na troca de ativo durante monitoramento: ${assetResult.error}`, 'ERROR');
-                    toUpdateStatus(`Erro na troca de ativo: ${assetResult.error}`, 'error', 5000);
-                    
-                    // Cancelar automação se não conseguir trocar ativo
-                    if (typeof window.cancelCurrentOperation === 'function') {
-                        window.cancelCurrentOperation(`Falha na troca de ativo: ${assetResult.error}`);
+                    try {
+                        const assetConfig = config.assetSwitching || {};
+                        const preferredCategory = assetConfig.preferredCategory || 'crypto';
+                        
+                        const assetResult = await switchToBestAssetViaAPI(minPayoutRequired, preferredCategory);
+                        
+                        if (assetResult.success) {
+                            sendToLogSystem(`✅ Ativo trocado com sucesso: ${assetResult.message}`, 'SUCCESS');
+                            toUpdateStatus(`Ativo trocado: ${assetResult.message}`, 'success', 4000);
+                            
+                            // ✅ CORREÇÃO: Resolver promise para continuar fluxo de análise
+                            sendToLogSystem(`🎯 Troca de ativo concluída com sucesso. Fluxo pode prosseguir para análise.`, 'INFO');
+                            resolve(true);
+                        } else {
+                            sendToLogSystem(`❌ Falha na troca de ativo: ${assetResult.error}`, 'ERROR');
+                            toUpdateStatus(`Erro na troca de ativo: ${assetResult.error}`, 'error', 5000);
+                            
+                            // Rejeitar promise com erro específico
+                            reject(`ASSET_SWITCH_FAILED: ${assetResult.error}`);
+                        }
+                    } catch (error) {
+                        sendToLogSystem(`❌ Erro durante troca de ativo: ${error.message}`, 'ERROR');
+                        toUpdateStatus(`Erro na troca de ativo: ${error.message}`, 'error', 5000);
+                        
+                        // Rejeitar promise com erro
+                        reject(`ASSET_SWITCH_ERROR: ${error.message}`);
                     }
-                }
-            } catch (error) {
-                sendToLogSystem(`❌ Erro durante troca de ativo: ${error.message}`, 'ERROR');
-                toUpdateStatus(`Erro na troca de ativo: ${error.message}`, 'error', 5000);
-                
-                // Cancelar automação em caso de erro
-                if (typeof window.cancelCurrentOperation === 'function') {
-                    window.cancelCurrentOperation(`Erro na troca de ativo: ${error.message}`);
-                }
-            }
             break;
             
         default:
@@ -319,9 +205,10 @@ async function executeTradeWithAssetCheck(action, config = {}, autoSwitchAsset =
             sendToLogSystem(`Verificando ativo antes da operação (min payout: ${minPayout}%, categoria: ${preferredCategory})`, 'INFO');
             
             try {
-                // Garantir que estamos no melhor ativo
-                await ensureBestAsset(minPayout, preferredCategory);
+                // Garantir que estamos no melhor ativo usando API centralizada
+                await switchToBestAssetViaAPI(minPayout, preferredCategory);
             } catch (assetError) {
+                // ❌ ERRO REAL: Nenhum ativo encontrado em nenhuma categoria
                 sendToLogSystem(`Erro ao verificar/trocar ativo: ${assetError.message}`, 'ERROR');
                 throw new Error(`Falha na verificação de ativo: ${assetError.message}`);
             }
@@ -366,8 +253,8 @@ async function executeAnalysisWithAssetCheck(config = {}) {
             sendToLogSystem(`Verificando ativo antes da análise (min payout: ${minPayout}%, categoria: ${preferredCategory})`, 'INFO');
             
             try {
-                // Garantir que estamos no melhor ativo
-                await ensureBestAsset(minPayout, preferredCategory);
+                // Garantir que estamos no melhor ativo usando API centralizada
+                await switchToBestAssetViaAPI(minPayout, preferredCategory);
             } catch (assetError) {
                 sendToLogSystem(`Erro ao verificar/trocar ativo: ${assetError.message}`, 'ERROR');
                 // Para análise, não interromper se falhar ao trocar ativo
@@ -396,20 +283,18 @@ async function executeAnalysisWithAssetCheck(config = {}) {
     }, 'executeAnalysisWithAssetCheck', config);
 }
 
-// Função para obter payout atual - DELEGADA PARA PayoutController
-async function getCurrentPayout() {
-    // Usar o PayoutController se disponível
+// Wrapper para obter payout atual usando a API centralizada
+async function getCurrentPayoutForAutomation() {
+    // Usar o PayoutController se disponível (método preferido)
     if (window.PayoutController && typeof window.PayoutController.getCurrentPayout === 'function') {
-        sendToLogSystem('Delegando obtenção de payout para PayoutController', 'DEBUG');
+        sendToLogSystem('🔄 [Automation] Usando PayoutController para obter payout', 'DEBUG');
         return window.PayoutController.getCurrentPayout();
     }
     
-    // Fallback: implementação básica via content.js
-    sendToLogSystem('PayoutController não disponível, usando implementação via content.js', 'WARN');
+    // Fallback: usar a mesma API que o painel de desenvolvimento
+    sendToLogSystem('🔄 [Automation] PayoutController não disponível, usando API via chrome.runtime', 'DEBUG');
     return new Promise((resolve, reject) => {
         try {
-            sendToLogSystem('🔍 Solicitando payout atual ao content.js...', 'DEBUG');
-            
             // Timeout de segurança
             const timeoutId = setTimeout(() => {
                 const errorMsg = 'Timeout: Solicitação de payout demorou mais de 8 segundos';
@@ -417,7 +302,7 @@ async function getCurrentPayout() {
                 reject(new Error(errorMsg));
             }, 8000);
             
-            // Solicitar payout ao content.js via chrome.runtime
+            // Usar a mesma API que o painel de desenvolvimento usa
             chrome.runtime.sendMessage({
                 action: 'GET_CURRENT_PAYOUT'
             }, (response) => {
@@ -448,19 +333,133 @@ async function getCurrentPayout() {
     });
 }
 
-// Função para verificar payout antes de análise - DELEGADA PARA PayoutController
-async function checkPayoutBeforeAnalysis() {
-    // Usar o PayoutController se disponível
+// Wrapper para verificar payout antes de análise usando a API centralizada
+async function checkPayoutBeforeAnalysisForAutomation() {
+    // Usar o PayoutController se disponível (método preferido)
     if (window.PayoutController && typeof window.PayoutController.checkPayoutBeforeAnalysis === 'function') {
-        sendToLogSystem('Delegando verificação de payout para PayoutController', 'DEBUG');
+        sendToLogSystem('🔄 [Automation] Usando PayoutController para verificação de payout', 'DEBUG');
         return window.PayoutController.checkPayoutBeforeAnalysis();
     }
     
-    // Fallback: implementação básica
-    sendToLogSystem('PayoutController não disponível, usando implementação básica', 'WARN');
+    // Fallback: continuar sem verificação (sistema legado)
+    sendToLogSystem('⚠️ [Automation] PayoutController não disponível, continuando sem verificação de payout', 'WARN');
     return new Promise((resolve) => {
         sendToLogSystem('Verificação de payout ignorada - PayoutController não carregado', 'WARN');
         resolve(true); // Continuar sem verificação
+    });
+}
+
+/**
+ * Aplicar comportamento de payout configurado diretamente
+ * @param {number} currentPayout - Payout atual detectado
+ * @param {number} minPayoutRequired - Payout mínimo configurado
+ * @param {string} payoutBehavior - Comportamento configurado ('cancel', 'wait', 'switch')
+ * @param {Object} config - Configurações completas do usuário
+ * @returns {Promise} Resolve se comportamento executado com sucesso, reject se falhar
+ */
+async function applyPayoutBehavior(currentPayout, minPayoutRequired, payoutBehavior, config) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            sendToLogSystem(`🔧 Aplicando comportamento de payout: ${payoutBehavior} (${currentPayout}% < ${minPayoutRequired}%)`, 'INFO');
+            
+            switch (payoutBehavior) {
+                case 'wait':
+                    sendToLogSystem(`⏳ Aguardando payout melhorar (${currentPayout}% → ${minPayoutRequired}%)`, 'INFO');
+                    toUpdateStatus(`Aguardando payout melhorar: ${currentPayout}% → ${minPayoutRequired}%`, 'info', 0);
+                    
+                    // Usar PayoutController para aguardar se disponível
+                    if (window.PayoutController && typeof window.PayoutController.waitForPayoutImprovement === 'function') {
+                        sendToLogSystem('🔄 Usando PayoutController.waitForPayoutImprovement', 'DEBUG');
+                        
+                        const checkInterval = parseInt(config.payoutTimeout) || 5;
+                        window.PayoutController.waitForPayoutImprovement(
+                            minPayoutRequired, 
+                            checkInterval, 
+                            () => {
+                                sendToLogSystem('✅ Payout melhorou! Retomando automação...', 'SUCCESS');
+                                toUpdateStatus('Payout adequado! Retomando automação...', 'success', 3000);
+                                resolve(true);
+                            },
+                            (error) => {
+                                if (error === 'USER_CANCELLED') {
+                                    sendToLogSystem('🛑 Aguardo de payout cancelado pelo usuário', 'INFO');
+                                    toUpdateStatus('Aguardo cancelado', 'info', 3000);
+                                    reject('USER_CANCELLED');
+                                } else {
+                                    sendToLogSystem(`❌ Erro durante aguardo de payout: ${error}`, 'ERROR');
+                                    reject(error);
+                                }
+                            }
+                        );
+                    } else {
+                        // Fallback: aguardo simples
+                        sendToLogSystem('⚠️ PayoutController não disponível, usando aguardo simples', 'WARN');
+                        setTimeout(() => {
+                            sendToLogSystem('⏰ Aguardo simples concluído, prosseguindo...', 'INFO');
+                            resolve(true);
+                        }, 10000); // 10 segundos de aguardo simples
+                    }
+                    break;
+                    
+                case 'switch':
+                    sendToLogSystem(`🔄 Trocando ativo devido a payout inadequado (${currentPayout}% < ${minPayoutRequired}%)`, 'INFO');
+                    toUpdateStatus(`Trocando ativo: payout inadequado (${currentPayout}%)`, 'warn', 4000);
+                    
+                    try {
+                        const assetConfig = config.assetSwitching || {};
+                        const preferredCategory = assetConfig.preferredCategory || 'crypto';
+                        
+                        // Usar a função existente do painel de desenvolvimento
+                        sendToLogSystem(`🔄 Chamando TEST_SWITCH_TO_BEST_ASSET via chrome.runtime (categoria: ${preferredCategory})`, 'DEBUG');
+                        
+                        chrome.runtime.sendMessage({
+                            action: 'TEST_SWITCH_TO_BEST_ASSET',
+                            minPayout: minPayoutRequired,
+                            category: preferredCategory
+                        }, (response) => {
+                            if (chrome.runtime.lastError) {
+                                const errorMsg = `Erro na comunicação para troca de ativo: ${chrome.runtime.lastError.message}`;
+                                sendToLogSystem(errorMsg, 'ERROR');
+                                toUpdateStatus(errorMsg, 'error', 5000);
+                                reject(`ASSET_SWITCH_COMMUNICATION_ERROR: ${errorMsg}`);
+                                return;
+                            }
+                            
+                            if (response && response.success) {
+                                const successMsg = `Ativo trocado com sucesso: ${response.asset?.name || 'Novo ativo'} (${response.asset?.payout || 'N/A'}%)`;
+                                sendToLogSystem(successMsg, 'SUCCESS');
+                                toUpdateStatus(successMsg, 'success', 4000);
+                                
+                                // Aguardar um pouco para a interface atualizar
+                                setTimeout(() => {
+                                    sendToLogSystem('✅ Troca de ativo concluída, prosseguindo com análise', 'SUCCESS');
+                                    resolve(true);
+                                }, 2000);
+                            } else {
+                                const errorMsg = response?.error || 'Falha na troca de ativo';
+                                sendToLogSystem(`❌ Falha na troca de ativo: ${errorMsg}`, 'ERROR');
+                                toUpdateStatus(`Erro na troca de ativo: ${errorMsg}`, 'error', 5000);
+                                reject(`ASSET_SWITCH_FAILED: ${errorMsg}`);
+                            }
+                        });
+                        
+                    } catch (error) {
+                        sendToLogSystem(`❌ Erro durante troca de ativo: ${error.message}`, 'ERROR');
+                        toUpdateStatus(`Erro na troca de ativo: ${error.message}`, 'error', 5000);
+                        reject(`ASSET_SWITCH_ERROR: ${error.message}`);
+                    }
+                    break;
+                    
+                default:
+                    sendToLogSystem(`❌ Comportamento de payout desconhecido: ${payoutBehavior}`, 'ERROR');
+                    toUpdateStatus(`Erro: comportamento desconhecido (${payoutBehavior})`, 'error', 5000);
+                    reject(`UNKNOWN_BEHAVIOR: ${payoutBehavior}`);
+            }
+            
+        } catch (error) {
+            sendToLogSystem(`❌ Erro crítico na aplicação do comportamento de payout: ${error.message}`, 'ERROR');
+            reject(`CRITICAL_ERROR: ${error.message}`);
+        }
     });
 }
 
@@ -630,18 +629,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 // *** CORREÇÃO: Obter configurações de payout diretamente do config ***
                 // O payoutBehavior define o comportamento, não apenas assetSwitching.enabled
                 const minPayoutRequired = parseFloat(config.minPayout) || 80;
-                const payoutBehavior = config.payoutBehavior || 'cancel';
+                const payoutBehavior = config.payoutBehavior || 'wait';
                 
                 // Log da configuração de payout para debug
                 sendToLogSystem(`🔧 [runAutomationCheck] Configuração de payout: minimo=${minPayoutRequired}%, comportamento=${payoutBehavior}`, 'DEBUG');
                 
                 // *** LÓGICA CORRIGIDA: Verificar payout atual ANTES de decidir trocar ***
                 sendToLogSystem(`🔍 Verificando payout atual (mínimo: ${minPayoutRequired}%)...`, 'INFO');
+                sendToLogSystem(`🔍 [DEBUG] Chamando getCurrentPayout()...`, 'DEBUG');
                 
-                getCurrentPayout()
-                    .then(payoutResult => {
+                getCurrentPayoutForAutomation()
+                    .then(async (payoutResult) => {
                         const currentPayout = payoutResult.payout;
-                        sendToLogSystem(`Payout atual capturado: ${currentPayout}% (mínimo: ${minPayoutRequired}%)`, 'INFO');
+                        sendToLogSystem(`✅ Payout atual capturado: ${currentPayout}% (mínimo: ${minPayoutRequired}%)`, 'INFO');
                         
                         if (currentPayout >= minPayoutRequired) {
                             // ✅ PAYOUT ADEQUADO - Prosseguir diretamente com análise
@@ -651,8 +651,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                             // Clicar no botão de análise IMEDIATAMENTE
                             try {
                     if (analyzeBtn) {
-                                    sendToLogSystem('Clicando #analyzeBtn para iniciar análise (payout adequado)', 'DEBUG');
+                                    sendToLogSystem('🖱️ [DEBUG] Clicando #analyzeBtn para iniciar análise (payout adequado)', 'DEBUG');
                         analyzeBtn.click();
+                                    sendToLogSystem('🖱️ [DEBUG] Click executado com sucesso', 'DEBUG');
                                     
                                     // Monitoramento contínuo desabilitado - payout será verificado na próxima análise
                     } else {
@@ -667,60 +668,59 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                             }
                         } else {
                             // ⚠️ PAYOUT INSUFICIENTE - Aplicar comportamento configurado pelo usuário
-                            sendToLogSystem(`⚠️ Payout insuficiente (${currentPayout}% < ${minPayoutRequired}%). Verificando comportamento configurado...`, 'WARN');
+                            sendToLogSystem(`⚠️ Payout insuficiente (${currentPayout}% < ${minPayoutRequired}%). Aplicando comportamento: ${payoutBehavior}`, 'WARN');
                             
-                            // Usar a função checkPayoutBeforeAnalysis que já implementa todos os comportamentos
-                            checkPayoutBeforeAnalysis()
-                                .then(() => {
-                                    // Se chegou aqui, o payout foi aprovado (seja por espera ou troca)
-                                    sendToLogSystem('✅ Payout aprovado após verificação. Iniciando análise...', 'SUCCESS');
-                                    
-                                    // Clicar no botão de análise
-                                    try {
-                                        if (analyzeBtn) {
-                                            sendToLogSystem('Clicando #analyzeBtn após aprovação de payout', 'DEBUG');
-                                            analyzeBtn.click();
-                                            
-                                            // Monitoramento contínuo desabilitado - payout será verificado na próxima análise
-                                        } else {
-                                            const errorMsg = 'Botão #analyzeBtn não encontrado após aprovação de payout';
-                                            sendToLogSystem(errorMsg, 'ERROR');
-                                            toUpdateStatus(errorMsg, 'error', 5000);
-                                        }
-                                    } catch (error) {
-                                        const errorMsg = `Erro ao clicar em #analyzeBtn após aprovação: ${error.message}`;
+                            // APLICAR COMPORTAMENTO CONFIGURADO DIRETAMENTE
+                            try {
+                                await applyPayoutBehavior(currentPayout, minPayoutRequired, payoutBehavior, config);
+                                
+                                // Se chegou aqui, o comportamento foi executado com sucesso
+                                sendToLogSystem('✅ Comportamento de payout executado com sucesso. Iniciando análise...', 'SUCCESS');
+                                toUpdateStatus('Ativo adequado! Iniciando análise...', 'success', 3000);
+                                
+                                // Clicar no botão de análise
+                                try {
+                                    if (analyzeBtn) {
+                                        sendToLogSystem('🖱️ [ANÁLISE] Clicando #analyzeBtn após execução do comportamento de payout', 'INFO');
+                                        analyzeBtn.click();
+                                        sendToLogSystem('🖱️ [ANÁLISE] Click executado - análise iniciada', 'SUCCESS');
+                                    } else {
+                                        const errorMsg = 'Botão #analyzeBtn não encontrado após comportamento de payout';
                                         sendToLogSystem(errorMsg, 'ERROR');
                                         toUpdateStatus(errorMsg, 'error', 5000);
                                     }
-                                })
-                                .catch(error => {
-                                    // Payout foi rejeitado ou houve erro
-                                    if (error === 'PAYOUT_INSUFFICIENT') {
-                                        const cancelMsg = `Análise cancelada: Payout atual (${currentPayout}%) abaixo do mínimo (${minPayoutRequired}%)`;
-                                        sendToLogSystem(cancelMsg, 'WARN');
-                                        toUpdateStatus(cancelMsg, 'warn', 5000);
-                                    } else if (error === 'USER_CANCELLED') {
-                                        sendToLogSystem('Análise cancelada pelo usuário durante aguardo de payout', 'INFO');
-                                        toUpdateStatus('Aguardo de payout cancelado pelo usuário', 'info', 3000);
-
-                                    } else if (error.startsWith('ASSET_SWITCH_FAILED:')) {
-                                        const failureReason = error.replace('ASSET_SWITCH_FAILED: ', '');
-                                        sendToLogSystem(`Falha na troca de ativo: ${failureReason}`, 'ERROR');
-                                        toUpdateStatus(`Falha na troca de ativo: ${failureReason}`, 'error', 5000);
-                                    } else if (error.startsWith('ASSET_SWITCH_ERROR:')) {
-                                        const errorReason = error.replace('ASSET_SWITCH_ERROR: ', '');
-                                        sendToLogSystem(`Erro na troca de ativo: ${errorReason}`, 'ERROR');
-                                        toUpdateStatus(`Erro na troca de ativo: ${errorReason}`, 'error', 5000);
-                                    } else {
-                                        sendToLogSystem(`❌ Erro na verificação de payout: ${error}`, 'ERROR');
-                                        toUpdateStatus(`Erro na verificação de payout: ${error}`, 'error', 5000);
-                                        
-                                        // Cancelar operação em caso de erro
-                                        if (typeof window.cancelCurrentOperation === 'function') {
-                                            window.cancelCurrentOperation(`Erro na verificação de payout: ${error}`);
-                                        }
+                                } catch (clickError) {
+                                    const errorMsg = `Erro ao clicar em #analyzeBtn: ${clickError.message}`;
+                                    sendToLogSystem(errorMsg, 'ERROR');
+                                    toUpdateStatus(errorMsg, 'error', 5000);
+                                }
+                                
+                            } catch (behaviorError) {
+                                // Comportamento falhou - tratar erro
+                                sendToLogSystem(`❌ Falha na execução do comportamento de payout: ${behaviorError}`, 'ERROR');
+                                
+                                if (behaviorError === 'PAYOUT_INSUFFICIENT') {
+                                    const cancelMsg = `Análise cancelada: Payout atual (${currentPayout}%) abaixo do mínimo (${minPayoutRequired}%)`;
+                                    sendToLogSystem(cancelMsg, 'WARN');
+                                    toUpdateStatus(cancelMsg, 'warn', 5000);
+                                } else if (behaviorError === 'USER_CANCELLED') {
+                                    sendToLogSystem('Análise cancelada pelo usuário durante execução do comportamento', 'INFO');
+                                    toUpdateStatus('Operação cancelada pelo usuário', 'info', 3000);
+                                } else if (behaviorError.includes('ASSET_SWITCH')) {
+                                    const errorMsg = `Erro na troca de ativo: ${behaviorError}`;
+                                    sendToLogSystem(errorMsg, 'ERROR');
+                                    toUpdateStatus(errorMsg, 'error', 5000);
+                                } else {
+                                    const errorMsg = `Erro no comportamento de payout: ${behaviorError}`;
+                                    sendToLogSystem(errorMsg, 'ERROR');
+                                    toUpdateStatus(errorMsg, 'error', 5000);
+                                    
+                                    // Cancelar operação em caso de erro crítico
+                                    if (typeof window.cancelCurrentOperation === 'function') {
+                                        window.cancelCurrentOperation(`Erro crítico: ${behaviorError}`);
                                     }
-                                });
+                                }
+                            }
                         }
                     })
                     .catch(error => {
@@ -883,7 +883,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message.action === 'CHECK_PAYOUT_FOR_ANALYSIS' && message.source === 'gale-system') {
             sendToLogSystem('Gale System solicitou verificação de payout. Processando...', 'INFO');
             
-            checkPayoutBeforeAnalysis()
+            checkPayoutBeforeAnalysisForAutomation()
                 .then(() => {
                     sendToLogSystem('Payout verificado e aprovado para Gale System', 'SUCCESS');
                     sendResponse({ 
@@ -946,7 +946,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         
         // Handler para obter payout atual solicitado pelo Gale System
         if (message.action === 'GET_CURRENT_PAYOUT' && message.source === 'gale-system') {
-            getCurrentPayout()
+            getCurrentPayoutForAutomation()
                 .then(payout => {
                     sendResponse({ 
                         success: true, 
