@@ -137,7 +137,7 @@ const applySettingsToUI = (config) => {
 
     // Configurar comportamento de payout insuficiente
     if (settingsUI.payoutBehavior) {
-        settingsUI.payoutBehavior.value = config.payoutBehavior || 'cancel';
+        settingsUI.payoutBehavior.value = config.payoutBehavior || 'wait';
         logFromSettings(`Comportamento de payout configurado: ${settingsUI.payoutBehavior.value}`, 'DEBUG');
     }
 
@@ -283,7 +283,7 @@ const getSettingsFromUI = () => {
         testMode: settingsUI.toggleTestMode.checked,
         devMode: settingsUI.toggleDevMode.checked,
         minPayout: parseInt(settingsUI.minPayout.value) || 80,
-        payoutBehavior: settingsUI.payoutBehavior ? settingsUI.payoutBehavior.value || 'cancel' : 'cancel',
+                    payoutBehavior: settingsUI.payoutBehavior ? settingsUI.payoutBehavior.value || 'wait' : 'wait',
         payoutTimeout: parseInt(settingsUI.payoutTimeout.value) || 5,
         // Configurações de troca de ativos
         assetSwitching: {
@@ -339,7 +339,7 @@ const saveSettings = async () => {
             testMode: settingsUI.toggleTestMode.checked,
             devMode: settingsUI.toggleDevMode.checked,
             minPayout: parseInt(settingsUI.minPayout.value) || 80,
-            payoutBehavior: settingsUI.payoutBehavior.value || 'cancel',
+            payoutBehavior: settingsUI.payoutBehavior.value || 'wait',
             payoutTimeout: parseInt(settingsUI.payoutTimeout.value) || 5,
             // Configurações de troca de ativos
             assetSwitching: {

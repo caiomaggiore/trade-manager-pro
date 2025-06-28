@@ -361,11 +361,56 @@ function validateAndFixDataUrl(dataUrl) {
     return dataUrl; // Retornar a original, mesmo que inválida
 }
 
+/**
+ * Captura a tela e executa análise integrada
+ * @returns {Promise<boolean>} Sucesso da operação
+ */
+async function captureAndAnalyze() {
+    try {
+        logCapture('Iniciando processo integrado de captura e análise...', 'INFO');
+        
+        // Capturar a tela para análise
+        const dataUrl = await captureForAnalysis();
+        logCapture('Captura realizada com sucesso, iniciando análise...', 'SUCCESS');
+        
+        // Executar análise via chrome.runtime
+        return new Promise((resolve, reject) => {
+            chrome.runtime.sendMessage({
+                action: 'START_ANALYSIS',
+                source: 'capture-screen-integrated',
+                trigger: 'capture_and_analyze',
+                imageData: dataUrl
+            }, (response) => {
+                if (chrome.runtime.lastError) {
+                    const errorMsg = `Erro ao iniciar análise: ${chrome.runtime.lastError.message}`;
+                    logCapture(errorMsg, 'ERROR');
+                    reject(new Error(errorMsg));
+                    return;
+                }
+                
+                if (response && response.success) {
+                    logCapture('Análise iniciada com sucesso após captura integrada', 'SUCCESS');
+                    resolve(true);
+                } else {
+                    const errorMsg = response?.error || 'Falha ao iniciar análise';
+                    logCapture(`Erro na análise: ${errorMsg}`, 'ERROR');
+                    reject(new Error(errorMsg));
+                }
+            });
+        });
+        
+    } catch (error) {
+        logCapture(`Erro no processo integrado de captura e análise: ${error.message}`, 'ERROR');
+        throw error;
+    }
+}
+
 // Exportar API global
 window.CaptureScreen = {
     captureScreenSimple,
     captureForAnalysis,
     captureAndShow,
+    captureAndAnalyze,
     validateAndFixDataUrl,
     detectEnvironment
 };

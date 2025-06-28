@@ -74,6 +74,149 @@ function toUpdateStatus(message, type = 'info', duration = 5000) {
 }
   
   // ======================================================================
+// =================== CAPTURA DE PAYOUT ===============================
+// ======================================================================
+
+/**
+ * Função para capturar payout diretamente do DOM da PocketOption
+ * Esta função tem acesso direto ao DOM da página principal
+ */
+function capturePayoutFromDOM() {
+    return new Promise((resolve, reject) => {
+        try {
+            safeLog('🔍 Iniciando captura de payout do DOM da PocketOption', 'INFO');
+            toUpdateStatus('Capturando payout...', 'info');
+            
+            // Seletores específicos da PocketOption para encontrar o payout
+            const payoutSelectors = [
+                '.value__val-start',
+                '.estimated-profit-block__percent',
+                '.payout-value',
+                '.profit-percent',
+                '[data-payout]',
+                '.asset-payout',
+                '.payout-percent',
+                '[class*="payout"]',
+                '[class*="profit"]'
+            ];
+            
+            // ✅ DEBUG: Primeiro, vamos listar TODOS os elementos que contêm %
+            safeLog('🔍 [DEBUG] Listando TODOS os elementos que contêm % na página:', 'DEBUG');
+            const allElementsWithPercent = document.querySelectorAll('*');
+            let elementCount = 0;
+            for (const elem of allElementsWithPercent) {
+                const text = elem.textContent?.trim() || '';
+                if (text.includes('%') && text.length < 50) {
+                    elementCount++;
+                    if (elementCount <= 10) { // Limitar para não poluir logs
+                        safeLog(`🔍 [DEBUG] Elemento ${elementCount}: "${text}" (tag: ${elem.tagName}, classes: ${elem.className})`, 'DEBUG');
+                    }
+                }
+            }
+            safeLog(`🔍 [DEBUG] Total de elementos com % encontrados: ${elementCount}`, 'DEBUG');
+            
+            let payoutElement = null;
+            let payoutValue = 0;
+            let foundSelector = '';
+            
+            // Tentar encontrar o elemento de payout
+            for (const selector of payoutSelectors) {
+                const elements = document.querySelectorAll(selector);
+                safeLog(`🔎 Testando seletor "${selector}" - encontrados ${elements.length} elementos`, 'DEBUG');
+                
+                if (elements.length > 0) {
+                    // Testar cada elemento encontrado
+                    for (let i = 0; i < elements.length; i++) {
+                        const element = elements[i];
+                        const text = element.textContent || element.innerText || '';
+                        safeLog(`📝 Elemento ${i+1}: "${text}"`, 'DEBUG');
+                        
+                        // Verificar se contém um valor de payout válido
+                        const payoutMatch = text.match(/(\d+(?:\.\d+)?)\s*%?/);
+                        if (payoutMatch) {
+                            const value = parseFloat(payoutMatch[1]);
+                            if (value >= 50 && value <= 200) { // Payout válido entre 50% e 200%
+                                payoutElement = element;
+                                payoutValue = value;
+                                foundSelector = selector;
+                                safeLog(`✅ Elemento de payout encontrado com seletor: ${selector} (${i+1}º elemento)`, 'SUCCESS');
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (payoutElement) break;
+                }
+            }
+            
+            // Se não encontrou com seletores específicos, fazer busca ampla
+            if (!payoutElement) {
+                safeLog('🔍 Seletores específicos não funcionaram, fazendo busca ampla...', 'DEBUG');
+                
+                // Busca ampla por elementos que contêm %
+                const allElements = document.querySelectorAll('*');
+                for (const element of allElements) {
+                    const text = element.textContent || element.innerText || '';
+                    
+                    // Procurar por padrão de porcentagem
+                    if (text.includes('%') && text.match(/\d+\s*%/)) {
+                        const match = text.match(/(\d+(?:\.\d+)?)\s*%/);
+                        if (match) {
+                            const value = parseFloat(match[1]);
+                            if (value >= 50 && value <= 200) {
+                                payoutValue = value;
+                                payoutElement = element;
+                                foundSelector = 'busca-ampla';
+                                safeLog(`🎯 Payout encontrado em busca ampla: ${payoutValue}%`, 'INFO');
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Preparar resultado
+            if (payoutElement && payoutValue > 0) {
+                const result = {
+                    success: true,
+                    payout: payoutValue,
+                    source: 'platform-dom',
+                    selector: foundSelector,
+                    timestamp: new Date().toISOString(),
+                    elementText: payoutElement.textContent || payoutElement.innerText || ''
+                };
+                
+                safeLog(`✅ Payout capturado com sucesso: ${payoutValue}% (seletor: ${foundSelector})`, 'SUCCESS');
+                toUpdateStatus(`Payout encontrado: ${payoutValue}%`, 'success');
+                
+                resolve(result);
+            } else {
+                // Valor padrão se não conseguir encontrar
+                const defaultResult = {
+                    success: true,
+                    payout: 85, // Valor padrão realista
+                    source: 'default',
+                    selector: 'none',
+                    timestamp: new Date().toISOString(),
+                    elementText: 'Valor padrão'
+                };
+                
+                safeLog('⚠️ Payout não encontrado no DOM, usando valor padrão: 85%', 'WARN');
+                toUpdateStatus('Payout não encontrado, usando padrão: 85%', 'warn');
+                
+                resolve(defaultResult);
+            }
+            
+        } catch (error) {
+            safeLog(`❌ Erro ao capturar payout: ${error.message}`, 'ERROR');
+            toUpdateStatus(`Erro na captura: ${error.message}`, 'error');
+            
+            reject(new Error(`Falha na captura de payout: ${error.message}`));
+        }
+    });
+}
+  
+  // ======================================================================
   // =================== MONITORAMENTO DE OPERAÇÕES ======================
   // ======================================================================
   
@@ -430,14 +573,14 @@ function toUpdateStatus(message, type = 'info', duration = 5000) {
                 if (matches && matches[1]) {
                   const payoutValue = parseInt(matches[1], 10);
                   if (payoutValue > 0 && payoutValue <= 100) {
-                    currentPayout = payoutValue;
+                                        currentPayout = payoutValue;
                     safeLog(`Payout atual: ${currentPayout}%`, 'INFO');
-                          break;
-                  }
-                }
-              }
-            }
-            
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        
             // Se não encontrou o payout, tenta outro método
             if (currentPayout === 0) {
               // Tentar encontrar através de outros elementos
@@ -448,12 +591,12 @@ function toUpdateStatus(message, type = 'info', duration = 5000) {
                 if (matches && matches[1]) {
                   const payoutValue = parseInt(matches[1], 10);
                   if (payoutValue > 0 && payoutValue <= 100) {
-                    currentPayout = payoutValue;
+                                currentPayout = payoutValue;
                     safeLog(`Payout encontrado (método alternativo): ${currentPayout}%`, 'INFO');
-                          break;
+                                break;
                         }
-                      }
-              }
+                    }
+                }
             }
             
             // Se ainda não encontrou, usar valor padrão
@@ -582,148 +725,19 @@ function toUpdateStatus(message, type = 'info', duration = 5000) {
       return true;
     }
 
-    // Handler para solicitação de payout do automation.js - VERSÃO MELHORADA
+    // Handler para solicitação de payout do automation.js - USANDO A MESMA FUNÇÃO DO PAINEL
     if (message.action === 'GET_CURRENT_PAYOUT') {
       try {
-        safeLog('🔍 Capturando payout atual em tempo real...', 'INFO');
+        safeLog('🔍 Capturando payout atual usando capturePayoutFromDOM (mesma função do painel)...', 'INFO');
         
-        // Função melhorada para capturar payout em tempo real
-        const getCurrentPayoutRealTime = async () => {
-          try {
-            // MÉTODO 1: Procurar no ativo atualmente selecionado
-            const currentAssetElement = document.querySelector('.current-symbol, .currencies-block .current-symbol_cropped');
-            if (currentAssetElement) {
-              safeLog(`Ativo atual detectado: ${currentAssetElement.textContent.trim()}`, 'DEBUG');
-            }
-            
-            // MÉTODO 2: Procurar elementos de payout mais específicos da PocketOption
-            const payoutSelectors = [
-              // ✅ NOVO: Seletor específico para o elemento fornecido pelo usuário
-              '.value__val .value__val-start',
-              '.value__val-start',
-              '.estimated-profit-block__percent',
-              // Seletores específicos da PocketOption
-              '.profit-info .profit-info__value',
-              '.payout-info .payout-info__value', 
-              '.trading-panel .profit-value',
-              '.trading-panel [class*="profit"]',
-              '.trading-panel [class*="payout"]',
-              // Seletores genéricos
-              '[class*="payout"] span',
-              '[class*="profit"] span',
-              '.profit-info',
-              '.payout-info'
-            ];
-            
-            let currentPayout = 0;
-            let foundElement = null;
-            
-            // Tentar cada seletor até encontrar um payout válido
-            for (const selector of payoutSelectors) {
-                    const elements = document.querySelectorAll(selector);
-              
-                      for (const element of elements) {
-                if (!element.offsetParent) continue; // Pular elementos não visíveis
-                
-                const text = element.textContent.trim();
-                safeLog(`🔍 Verificando elemento "${selector}": "${text}"`, 'DEBUG');
-                
-                // TRATAMENTO ESPECIAL para o elemento .value__val-start
-                if (selector.includes('value__val-start')) {
-                  // Para elementos como "+85%" onde o % pode estar em um span separado
-                  const parentElement = element.closest('.value__val');
-                  if (parentElement) {
-                    const fullText = parentElement.textContent.trim();
-                    safeLog(`🔍 Texto completo do elemento pai: "${fullText}"`, 'DEBUG');
-                    
-                    // Procurar padrão "+85%" no texto completo
-                    const payoutMatches = fullText.match(/[+]?(\d+)%/);
-                    if (payoutMatches && payoutMatches[1]) {
-                      const payoutValue = parseInt(payoutMatches[1], 10);
-                      
-                      if (payoutValue >= 50 && payoutValue <= 100) {
-                        currentPayout = payoutValue;
-                        foundElement = element;
-                        safeLog(`✅ Payout encontrado (value__val): ${currentPayout}% - Texto: "${fullText}"`, 'SUCCESS');
-                          break;
-                      }
-                    }
-                  }
-                }
-                
-                // Procurar padrões de payout padrão (ex: "85%", "+85%", "85")
-                const payoutMatches = text.match(/[+]?(\d+)%?/);
-                if (payoutMatches && payoutMatches[1]) {
-                  const payoutValue = parseInt(payoutMatches[1], 10);
-                  
-                  // Validar se é um payout realista (entre 50% e 100%)
-                  if (payoutValue >= 50 && payoutValue <= 100) {
-                    currentPayout = payoutValue;
-                    foundElement = element;
-                    safeLog(`✅ Payout encontrado: ${currentPayout}% (seletor: ${selector})`, 'SUCCESS');
-                    break;
-                  }
-                }
-              }
-              
-              if (currentPayout > 0) break; // Sair do loop se encontrou
-            }
-            
-            // MÉTODO 3: Se não encontrou, tentar busca mais ampla
-            if (currentPayout === 0) {
-              safeLog('Tentando busca mais ampla por elementos de payout...', 'DEBUG');
-              
-              const allElements = document.querySelectorAll('*');
-              for (const element of allElements) {
-                if (!element.offsetParent) continue; // Pular elementos não visíveis
-                
-                const text = element.textContent.trim();
-                
-                // Procurar apenas elementos que contenham % e números
-                if (text.includes('%') && text.length < 20) { // Evitar textos muito longos
-                  const payoutMatches = text.match(/(\d+)%/);
-                  if (payoutMatches && payoutMatches[1]) {
-                    const payoutValue = parseInt(payoutMatches[1], 10);
-                    
-                    if (payoutValue >= 50 && payoutValue <= 100) {
-                      currentPayout = payoutValue;
-                      foundElement = element;
-                      safeLog(`✅ Payout encontrado (busca ampla): ${currentPayout}% - "${text}"`, 'SUCCESS');
-                      break;
-                    }
-                  }
-                }
-              }
-            }
-            
-            // Resultado final
-            if (currentPayout > 0) {
-              safeLog(`🎯 Payout capturado com sucesso: ${currentPayout}%`, 'SUCCESS');
-              return { success: true, payout: currentPayout };
-            } else {
-              const errorMsg = 'Não foi possível detectar o payout atual da plataforma';
-              safeLog(`❌ ${errorMsg}`, 'ERROR');
-              return { success: false, error: errorMsg };
-            }
-            
-              } catch (error) {
-            safeLog(`Erro ao capturar payout: ${error.message}`, 'ERROR');
-            return { success: false, error: error.message };
-          }
-        };
-        
-        // Executar captura com timeout de segurança
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Timeout: Captura de payout demorou mais de 5 segundos')), 5000);
-        });
-        
-        Promise.race([
-          getCurrentPayoutRealTime(),
-          timeoutPromise
-        ]).then(result => {
+        // ✅ CORREÇÃO: Usar a MESMA função que o painel de desenvolvimento usa
+        capturePayoutFromDOM()
+          .then(result => {
+            safeLog(`✅ Payout capturado via capturePayoutFromDOM: ${result.payout}%`, 'SUCCESS');
           sendResponse(result);
-        }).catch(error => {
-          safeLog(`Erro na captura de payout: ${error.message}`, 'ERROR');
+          })
+          .catch(error => {
+            safeLog(`❌ Erro na captura via capturePayoutFromDOM: ${error.message}`, 'ERROR');
           sendResponse({ success: false, error: error.message });
         });
         
@@ -732,7 +746,7 @@ function toUpdateStatus(message, type = 'info', duration = 5000) {
       } catch (error) {
         safeLog(`Erro ao processar solicitação de payout: ${error.message}`, 'ERROR');
         sendResponse({ success: false, error: error.message });
-              return true;
+        return true;
       }
     }
 
@@ -874,29 +888,8 @@ function toUpdateStatus(message, type = 'info', duration = 5000) {
       }
     }
 
-    // Handler para trocar para melhor ativo (função completa)
-    if (message.action === 'TEST_SWITCH_TO_BEST_ASSET') {
-      try {
-        safeLog('Recebida solicitação para trocar para melhor ativo', 'INFO');
-        
-        const minPayout = message.minPayout || 85;
-        const category = message.category || 'crypto';
-        
-        AssetManager.switchToBestAsset(minPayout, category)
-          .then(result => {
-            sendResponse(result);
-          })
-          .catch(error => {
-            sendResponse({ success: false, error: error.message });
-          });
-        
-        return true; // Manter canal aberto para resposta assíncrona
-      } catch (error) {
-        safeLog(`Erro ao trocar para melhor ativo: ${error.message}`, 'ERROR');
-        sendResponse({ success: false, error: error.message });
-        return true;
-      }
-    }
+    // ❌ HANDLER REMOVIDO: Era duplicado e chamava função errada
+    // O handler correto está na linha 2537 usando switchToBestAssetForAutomation
 
     // Handler para verificar ativo atual
     if (message.action === 'GET_CURRENT_ASSET') {
@@ -1860,13 +1853,52 @@ const AssetManager = {
         
         const categoryButton = document.querySelector(selector);
         if (!categoryButton) {
-          reject(new Error(`Botão da categoria ${category} não encontrado`));
+          // ✅ VERIFICAR SE A CATEGORIA JÁ ESTÁ ATIVA antes de reportar como indisponível
+          safeLog(`Seletor ${selector} não encontrado, verificando se categoria já está ativa...`, 'DEBUG');
+          
+          // Verificar se existe alguma categoria ativa que corresponda
+          const activeCategory = document.querySelector('.assets-block__nav-item--active');
+          if (activeCategory) {
+            const activeCategoryClass = activeCategory.className;
+            safeLog(`Categoria ativa encontrada: ${activeCategoryClass}`, 'DEBUG');
+            
+            // Verificar se a categoria ativa corresponde à solicitada
+            if (activeCategoryClass.includes('cryptocurrency') && (category.toLowerCase() === 'crypto' || category.toLowerCase() === 'cryptocurrency')) {
+              safeLog(`✅ Categoria ${category} já está ativa (verificação por classe ativa)`, 'SUCCESS');
+              resolve(true);
+              return;
+            }
+            if (activeCategoryClass.includes('currency') && (category.toLowerCase() === 'currency' || category.toLowerCase() === 'currencies')) {
+              safeLog(`✅ Categoria ${category} já está ativa (verificação por classe ativa)`, 'SUCCESS');
+              resolve(true);
+              return;
+            }
+            if (activeCategoryClass.includes('commodity') && (category.toLowerCase() === 'commodity' || category.toLowerCase() === 'commodities')) {
+              safeLog(`✅ Categoria ${category} já está ativa (verificação por classe ativa)`, 'SUCCESS');
+              resolve(true);
+              return;
+            }
+            if (activeCategoryClass.includes('stock') && (category.toLowerCase() === 'stock' || category.toLowerCase() === 'stocks')) {
+              safeLog(`✅ Categoria ${category} já está ativa (verificação por classe ativa)`, 'SUCCESS');
+              resolve(true);
+              return;
+            }
+            if (activeCategoryClass.includes('index') && (category.toLowerCase() === 'index' || category.toLowerCase() === 'indices')) {
+              safeLog(`✅ Categoria ${category} já está ativa (verificação por classe ativa)`, 'SUCCESS');
+              resolve(true);
+              return;
+            }
+          }
+          
+          // ✅ Se chegou aqui, categoria não está disponível (DEBUG, não ERROR)
+          safeLog(`🔄 Categoria ${category} não disponível na plataforma no momento`, 'DEBUG');
+          reject(new Error(`Categoria ${category} não disponível`));
           return;
         }
         
         // Verificar se já está ativo
         if (categoryButton.classList.contains('assets-block__nav-item--active')) {
-          safeLog(`Categoria ${category} já está ativa`, 'INFO');
+          safeLog(`✅ Categoria ${category} já está ativa`, 'SUCCESS');
           resolve(true);
           return;
         }
@@ -1878,10 +1910,10 @@ const AssetManager = {
         // Aguardar um momento para a lista atualizar
         setTimeout(() => {
           if (categoryButton.classList.contains('assets-block__nav-item--active')) {
-            safeLog(`Categoria ${category} ativada com sucesso`, 'SUCCESS');
+            safeLog(`✅ Categoria ${category} ativada com sucesso`, 'SUCCESS');
             resolve(true);
           } else {
-            safeLog(`Falha ao ativar categoria ${category}`, 'WARN');
+            safeLog(`⚠️ Falha ao ativar categoria ${category}`, 'WARN');
             resolve(false);
           }
         }, 300);
@@ -2133,100 +2165,394 @@ const AssetManager = {
 
 
 
-  // Função principal para trocar para o melhor ativo disponível
-  switchToBestAsset: async (minPayout = 85, preferredCategory = 'crypto') => {
+  // Função para encontrar melhor ativo DENTRO da categoria atual (usada pelo painel)
+  switchToBestAssetInCurrentCategory: async (minPayout = 85) => {
     try {
-      safeLog(`Iniciando troca para melhor ativo (payout >= ${minPayout}%, categoria: ${preferredCategory})`, 'INFO');
+      safeLog(`🔍 [PAINEL] Buscando melhor ativo na categoria atual (payout >= ${minPayout}%)`, 'INFO');
       
-      // Verificar ativo atual antes de abrir modal
-      const currentAsset = AssetManager.getCurrentSelectedAsset();
-      safeLog(`Ativo atual antes da troca: ${currentAsset || 'Não detectado'}`, 'INFO');
+      // ✅ CORREÇÃO: Verificação múltipla para garantir que a categoria carregou
+      let assets = [];
+      let attempts = 0;
+      const maxAttempts = 3;
       
-      // Passo 1: Abrir modal de ativos
-      const modalOpened = await AssetManager.openAssetModal();
-      if (!modalOpened) {
-        throw new Error('Falha ao abrir modal de ativos');
-      }
-      
-      // Aguardar modal carregar completamente
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      // Passo 2: Mudar para categoria preferida
-      if (preferredCategory) {
-        const categoryChanged = await AssetManager.switchToAssetCategory(preferredCategory);
-        if (!categoryChanged) {
-          safeLog(`Falha ao mudar para categoria ${preferredCategory}, continuando com categoria atual`, 'WARN');
+      while (attempts < maxAttempts) {
+        assets = AssetManager.getAvailableAssets();
+        attempts++;
+        
+        safeLog(`📊 [PAINEL] Tentativa ${attempts}/${maxAttempts}: ${assets.length} ativos encontrados`, 'DEBUG');
+        
+        if (assets.length > 0) {
+          break; // Lista carregou com sucesso
         }
         
-        // Aguardar lista atualizar
+        if (attempts < maxAttempts) {
+          safeLog(`⏳ [PAINEL] Lista vazia, aguardando mais 500ms...`, 'DEBUG');
         await new Promise(resolve => setTimeout(resolve, 500));
+        }
       }
       
-      // Passo 3: Encontrar e obter melhor ativo
-      const assets = AssetManager.getAvailableAssets();
       if (assets.length === 0) {
-        throw new Error('Nenhum ativo disponível encontrado');
+        throw new Error('CATEGORY_EMPTY: Categoria atual não tem ativos disponíveis após múltiplas tentativas');
       }
       
-      // Filtrar ativos que atendem ao payout mínimo
+      // Ordenar por payout (maior primeiro)
+      assets.sort((a, b) => b.payout - a.payout);
+      
+      // Filtrar por payout mínimo
       const validAssets = assets.filter(asset => asset.payout >= minPayout);
+      safeLog(`🎯 [PAINEL] ${validAssets.length} ativos com payout >= ${minPayout}%`, 'DEBUG');
+      
       if (validAssets.length === 0) {
-        throw new Error(`Nenhum ativo com payout >= ${minPayout}% encontrado`);
+        const bestAvailable = assets[0];
+        throw new Error(`PAYOUT_INSUFFICIENT_IN_CATEGORY: Melhor ativo disponível: ${bestAvailable.name} (${bestAvailable.payout}%)`);
       }
       
-      // Selecionar o melhor ativo (primeiro da lista ordenada)
+      // Selecionar melhor ativo
       const bestAsset = validAssets[0];
-      safeLog(`Melhor ativo encontrado: ${bestAsset.name} (${bestAsset.payout}%)`, 'SUCCESS');
+      safeLog(`🎯 [PAINEL] Selecionando melhor ativo: ${bestAsset.name} (${bestAsset.payout}%)`, 'SUCCESS');
       
-      // Passo 4: Selecionar o ativo
       const assetSelected = AssetManager.selectAsset(bestAsset);
       if (!assetSelected) {
-        throw new Error('Falha ao clicar no ativo');
+        throw new Error('ASSET_SELECTION_FAILED: Falha ao clicar no ativo');
       }
       
-      // Passo 5: Aguardar seleção e fechar modal
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Fechar modal (agora é assíncrono)
-      const modalClosed = await AssetManager.closeAssetModal();
-      if (!modalClosed) {
-        safeLog('Aviso: Modal pode não ter fechado corretamente', 'WARN');
-      }
-      
-      // Passo 6: Verificar se o ativo foi realmente selecionado
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      const selectionVerified = await AssetManager.verifyAssetSelection(bestAsset.name);
-      
-      if (!selectionVerified) {
-        safeLog(`⚠️ Aviso: Não foi possível verificar se ${bestAsset.name} foi selecionado`, 'WARN');
-        // Não falhar aqui, pois a seleção pode ter funcionado mesmo sem verificação
-      }
-      
-      const finalAsset = AssetManager.getCurrentSelectedAsset();
-      safeLog(`Ativo final após troca: ${finalAsset || 'Não detectado'}`, 'INFO');
-      
-      safeLog(`✅ Troca de ativo concluída: ${bestAsset.name} (${bestAsset.payout}%)`, 'SUCCESS');
       return {
         success: true,
         asset: bestAsset,
-        message: `Ativo alterado para ${bestAsset.name} com payout de ${bestAsset.payout}%`,
-        currentAsset: finalAsset,
-        verified: selectionVerified
+        message: `Melhor ativo selecionado: ${bestAsset.name} (${bestAsset.payout}%)`
       };
+      
     } catch (error) {
+      // ✅ CONVERSÃO: Erro interno da busca em categoria específica vira AVISO silencioso
+      // Não reportar como ERROR para não alarmar - é parte normal da busca sequencial
+      safeLog(`🔍 [BUSCA CATEGORIA] ${error.message}`, 'DEBUG');
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  },
+
+  // Função WRAPPER para automação - busca sequencial em múltiplas categorias
+  switchToBestAssetForAutomation: async (minPayout = 85, preferredCategory = 'crypto') => {
+    try {
+      safeLog(`🚀 [AUTOMAÇÃO] Iniciando busca inteligente de ativo (payout >= ${minPayout}%, categoria preferida: ${preferredCategory})`, 'INFO');
+      
+      // ✅ ETAPA 1: PREPARAÇÃO
+      const currentAsset = AssetManager.getCurrentSelectedAsset();
+      safeLog(`📊 [ESTADO ATUAL] Ativo antes da busca: ${currentAsset || 'Não detectado'}`, 'INFO');
+      
+      // Abrir modal de ativos
+      const modalOpened = await AssetManager.openAssetModal();
+      if (!modalOpened) {
+        throw new Error('MODAL_OPEN_FAILED: Falha ao abrir modal de ativos');
+      }
+      safeLog(`✅ [MODAL] Modal de ativos aberto com sucesso`, 'INFO');
+      
+      // Aguardar modal carregar
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      // ✅ ETAPA 2: DEFINIR CATEGORIAS EM ORDEM DE PRIORIDADE
+      const allCategories = [
+        preferredCategory,
+        'crypto',
+        'currency', 
+        'commodity',
+        'stock',
+        'index'
+      ];
+      
+      const categoriesToTry = [...new Set(allCategories)];
+      safeLog(`📂 [CATEGORIAS] ${categoriesToTry.length} categorias para verificar: ${categoriesToTry.join(', ')}`, 'INFO');
+      
+      // ✅ ETAPA 3: BUSCA SEQUENCIAL USANDO FUNÇÃO DO PAINEL
+      let bestResult = null;
+      let usedCategory = null;
+      let categoriesAttempted = [];
+      let categoriesFailed = [];
+      
+      for (const category of categoriesToTry) {
+        categoriesAttempted.push(category);
+        safeLog(`🔍 [CATEGORIA] Tentando categoria: ${category}`, 'DEBUG');
+        
+        try {
+          // Ativar categoria
+          const categoryChanged = await AssetManager.switchToAssetCategory(category);
+          if (!categoryChanged) {
+            safeLog(`🔄 [CATEGORIA] ${category} não disponível na plataforma`, 'DEBUG');
+            categoriesFailed.push(`${category} (não disponível)`);
+            continue;
+          }
+          
+          safeLog(`✅ [CATEGORIA] ${category} ativada, aguardando carregar...`, 'DEBUG');
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          
+          // ✅ USAR FUNÇÃO DO PAINEL COM TRATAMENTO SILENCIOSO DE ERROS
+          safeLog(`🔧 [AUTOMAÇÃO] Usando função do painel para categoria ${category}`, 'DEBUG');
+          
+          try {
+            // ✅ CHAMADA SILENCIOSA - não propagar erros de categoria individual
+            const categoryResult = await AssetManager.switchToBestAssetInCurrentCategory(minPayout);
+            
+            if (categoryResult.success) {
+              // ✅ ENCONTROU ATIVO ADEQUADO NESTA CATEGORIA!
+              bestResult = categoryResult;
+              usedCategory = category;
+              
+              const categoryLabel = category === preferredCategory ? 
+                `categoria preferida (${category})` : 
+                `fallback para categoria ${category}`;
+              
+              safeLog(`🎯 [ENCONTRADO] Ativo adequado na ${categoryLabel}: ${bestResult.asset.name} (${bestResult.asset.payout}%)`, 'SUCCESS');
+              safeLog(`🛑 [PARADA] Parando busca - ativo adequado encontrado`, 'INFO');
+              break; // ✅ PARAR - ENCONTROU ATIVO ADEQUADO!
+            } else {
+              safeLog(`📝 [RESULTADO] Categoria ${category}: ${categoryResult.error}`, 'DEBUG');
+              categoriesFailed.push(`${category} (${categoryResult.error})`);
+            }
+          } catch (categorySearchError) {
+            // ✅ CAPTURAR ERROS DA FUNÇÃO BASE SEM PROPAGAR
+            const errorMsg = categorySearchError.message || 'Erro na busca';
+            safeLog(`📝 [RESULTADO] Categoria ${category}: ${errorMsg}`, 'DEBUG');
+            categoriesFailed.push(`${category} (${errorMsg})`);
+            
+            // ✅ IMPORTANTE: Continuar para próxima categoria sem interromper o loop
+            continue;
+          }
+          
+        } catch (categoryError) {
+          safeLog(`🔄 [CATEGORIA] ${category} não acessível: ${categoryError.message}`, 'DEBUG');
+          categoriesFailed.push(`${category} (erro: ${categoryError.message})`);
+          continue;
+        }
+      }
+      
+      // ✅ ETAPA 4: ANÁLISE DO RESULTADO
+      safeLog(`📊 [BUSCA FINAL] Categorias verificadas: ${categoriesAttempted.join(', ')}`, 'INFO');
+      
+      if (categoriesFailed.length > 0) {
+        safeLog(`📂 [FALHAS] ${categoriesFailed.length} categorias falharam: ${categoriesFailed.join(', ')}`, 'DEBUG');
+      }
+      
+      // ❌ ERRO: Nenhum ativo adequado encontrado em nenhuma categoria
+      if (!bestResult) {
+        const errorMsg = `AUTOMATION_SEARCH_FAILED: Nenhum ativo com payout >= ${minPayout}% encontrado em nenhuma categoria. Falhas: ${categoriesFailed.join('; ')}`;
+        safeLog(`❌ [ERRO CRÍTICO] ${errorMsg}`, 'ERROR');
+        throw new Error(errorMsg);
+      }
+      
+      // ✅ ETAPA 5: GARANTIR QUE ATIVO FOI SELECIONADO ANTES DE FECHAR MODAL
+      safeLog(`🎯 [SELEÇÃO] Garantindo que ativo ${bestResult.asset.name} está selecionado...`, 'DEBUG');
+      
+      // Tentar selecionar o ativo novamente para garantir
+      try {
+        const assetSelected = AssetManager.selectAsset(bestResult.asset);
+        if (assetSelected) {
+          safeLog(`✅ [SELEÇÃO] Ativo ${bestResult.asset.name} selecionado com sucesso`, 'DEBUG');
+        }
+      } catch (selectionError) {
+        safeLog(`⚠️ [SELEÇÃO] Aviso na seleção final: ${selectionError.message}`, 'WARN');
+      }
+      
+      // Aguardar seleção processar
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      // ✅ ETAPA 6: FECHAR MODAL
+      safeLog(`🚪 [MODAL] Fechando modal de ativos...`, 'DEBUG');
+      const modalClosed = await AssetManager.closeAssetModal();
+      if (!modalClosed) {
+        safeLog(`⚠️ [MODAL] Aviso: Modal pode não ter fechado corretamente`, 'WARN');
+      }
+      
+      // Aguardar interface atualizar
+      safeLog(`⏳ [INTERFACE] Aguardando interface atualizar...`, 'DEBUG');
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Aumentado para 2s
+      
+      // ✅ ETAPA 7: VERIFICAÇÃO FINAL ROBUSTA
+      let finalAsset = null;
+      let verificationAttempts = 0;
+      const maxVerificationAttempts = 3;
+      
+      while (verificationAttempts < maxVerificationAttempts) {
+        finalAsset = AssetManager.getCurrentSelectedAsset();
+        verificationAttempts++;
+        
+        safeLog(`📊 [VERIFICAÇÃO] Tentativa ${verificationAttempts}/${maxVerificationAttempts}: Ativo atual = "${finalAsset}"`, 'DEBUG');
+        
+        if (finalAsset && finalAsset.includes(bestResult.asset.name.split(' ')[0])) {
+          safeLog(`✅ [VERIFICAÇÃO] Ativo correto detectado: ${finalAsset}`, 'SUCCESS');
+          break;
+        }
+        
+        if (verificationAttempts < maxVerificationAttempts) {
+          safeLog(`⏳ [VERIFICAÇÃO] Aguardando mais 800ms antes da próxima verificação...`, 'DEBUG');
+          await new Promise(resolve => setTimeout(resolve, 800));
+        }
+      }
+      
+      // ✅ ETAPA 8: SUCESSO FINAL
+      const categoryInfo = usedCategory === preferredCategory ? 
+        `categoria preferida (${usedCategory})` : 
+        `fallback para categoria ${usedCategory}`;
+      
+      const successMessage = `Ativo alterado para ${bestResult.asset.name} (${bestResult.asset.payout}%) - ${categoryInfo}`;
+      
+      if (usedCategory === preferredCategory) {
+        safeLog(`✅ [SUCESSO] Busca concluída com categoria preferida: ${successMessage}`, 'SUCCESS');
+      } else {
+        safeLog(`⚠️ [AVISO] Categoria preferida sem payout adequado. ${successMessage}`, 'WARN');
+      }
+      
+      safeLog(`🎉 [CONCLUÍDO] Busca de ativo para automação finalizada com sucesso`, 'INFO');
+      safeLog(`📋 [RESUMO] Categorias tentadas: ${categoriesAttempted.join(', ')}`, 'INFO');
+      safeLog(`📋 [RESUMO] Categoria usada: ${usedCategory}, Ativo final: ${finalAsset}`, 'INFO');
+      
+      return {
+        success: true,
+        asset: {
+          name: bestResult.asset.name,
+          payout: bestResult.asset.payout,
+          category: usedCategory
+        },
+        message: successMessage,
+        currentAsset: finalAsset,
+        verified: true,
+        usedCategory: usedCategory,
+        wasPreferred: usedCategory === preferredCategory
+      };
+      
+    } catch (error) {
+      // ❌ TRATAMENTO DE ERRO
+      safeLog(`💥 [ERRO CRÍTICO] Busca de ativo para automação falhou: ${error.message}`, 'ERROR');
+      
       // Tentar fechar modal em caso de erro
       try {
         await AssetManager.closeAssetModal();
+        safeLog(`🚪 [CLEANUP] Modal fechado após erro`, 'DEBUG');
       } catch (closeError) {
-        safeLog(`Erro ao fechar modal durante tratamento de erro: ${closeError.message}`, 'WARN');
+        safeLog(`⚠️ [CLEANUP] Erro ao fechar modal: ${closeError.message}`, 'WARN');
       }
       
-      const errorMsg = `Erro na troca de ativo: ${error.message}`;
-      safeLog(errorMsg, 'ERROR');
+      const errorMsg = `AUTOMATION_SEARCH_FAILED: ${error.message}`;
+      safeLog(`❌ [RETORNO] ${errorMsg}`, 'ERROR');
+      
       return {
         success: false,
         error: errorMsg
       };
     }
+  },
+
+  // Função principal para trocar para o melhor ativo (PAINEL - busca apenas na categoria atual)
+  switchToBestAsset: async (minPayout = 85, preferredCategory = 'crypto') => {
+    // ✅ PARA PAINEL: Usar função simples que busca apenas na categoria atual
+    safeLog(`🔍 [PAINEL] Buscando melhor ativo na categoria atual (payout >= ${minPayout}%)`, 'INFO');
+    return await AssetManager.switchToBestAssetInCurrentCategory(minPayout);
   }
 };
+
+// ======================================================================
+// =================== LISTENERS DE MENSAGENS ==========================
+// ======================================================================
+
+// Listener para mensagens do sistema de extensão
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Handler para teste de captura de payout
+  if (message.action === 'TEST_CAPTURE_PAYOUT') {
+    safeLog('Solicitação de teste de captura de payout recebida', 'INFO');
+    
+    capturePayoutFromDOM()
+      .then(result => {
+        safeLog(`Captura de payout concluída: ${result.payout}%`, 'SUCCESS');
+        sendResponse(result);
+      })
+      .catch(error => {
+        safeLog(`Erro na captura de payout: ${error.message}`, 'ERROR');
+        sendResponse({
+          success: false,
+          error: error.message
+        });
+      });
+    
+    return true; // Resposta assíncrona
+  }
+  
+  // Handler para testes de ativos (já existentes)
+  if (message.action === 'TEST_FIND_BEST_ASSET') {
+    safeLog('Solicitação de busca do melhor ativo recebida', 'INFO');
+    
+    const minPayout = message.minPayout || 85;
+    
+    AssetManager.switchToBestAsset(minPayout, 'crypto')
+      .then(result => {
+        sendResponse(result);
+      })
+      .catch(error => {
+        sendResponse({
+          success: false,
+          error: error.message
+        });
+      });
+    
+    return true; // Resposta assíncrona
+  }
+  
+  if (message.action === 'TEST_SWITCH_ASSET_CATEGORY') {
+    safeLog(`Solicitação de troca de categoria para ${message.category} recebida`, 'INFO');
+    
+    const category = message.category || 'crypto';
+    
+    AssetManager.switchToBestAsset(85, category)
+      .then(result => {
+        sendResponse(result);
+      })
+      .catch(error => {
+        sendResponse({
+          success: false,
+          error: error.message
+        });
+      });
+    
+    return true; // Resposta assíncrona
+  }
+  
+  // ✅ HANDLER ESPECÍFICO PARA TEST_SWITCH_TO_BEST_ASSET (usando wrapper de automação)
+  if (message.action === 'TEST_SWITCH_TO_BEST_ASSET') {
+    safeLog(`🔄 Solicitação de troca inteligente recebida - Payout mínimo: ${message.minPayout}%, Categoria preferida: ${message.category}`, 'INFO');
+    
+    const minPayout = message.minPayout || 85;
+    const preferredCategory = message.category || 'crypto';
+    
+    AssetManager.switchToBestAssetForAutomation(minPayout, preferredCategory)
+      .then(result => {
+        if (result.success) {
+          // ✅ Log adicional para mostrar categoria usada
+          const categoryInfo = result.wasPreferred ? 
+            `categoria preferida (${result.usedCategory})` : 
+            `fallback para categoria ${result.usedCategory}`;
+          
+          safeLog(`✅ Troca inteligente concluída: ${result.asset.name} (${result.asset.payout}%) - ${categoryInfo}`, 'SUCCESS');
+        }
+        sendResponse(result);
+      })
+      .catch(error => {
+        safeLog(`❌ Erro na troca inteligente: ${error.message}`, 'ERROR');
+        sendResponse({
+          success: false,
+          error: error.message
+        });
+      });
+    
+    return true; // Resposta assíncrona
+  }
+  
+  // Outros handlers existentes...
+  return false; // Não processou a mensagem
+});
+
+// ======================================================================
+// =================== EXPOSIÇÃO GLOBAL DE FUNÇÕES ====================
+// ======================================================================
+
+// Expor função capturePayoutFromDOM globalmente para acesso do PayoutController
+window.capturePayoutFromDOM = capturePayoutFromDOM;

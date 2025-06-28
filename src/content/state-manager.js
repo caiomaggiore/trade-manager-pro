@@ -10,7 +10,7 @@ const DEFAULT_CONFIG = {
     value: 10,
     period: 1,
     minPayout: 80,
-    payoutBehavior: 'cancel',
+    payoutBehavior: 'wait',
     payoutTimeout: 5,  // Corrigido para 5 segundos como padrão
     // Modos de desenvolvimento e teste
     testMode: false,

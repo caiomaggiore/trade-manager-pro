@@ -242,42 +242,16 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             updateSystemOperationalStatus('Operando...');
             
             updateStatus('Iniciando análise...', 'info');
-            addLog('Iniciando análise do gráfico...');
+            addLog('🚀 [RUNANALYSIS] Iniciando análise do gráfico...');
+            addLog('🚀 [RUNANALYSIS] Função runAnalysis chamada com sucesso', 'DEBUG');
             
-            // ETAPA 0: Verificar payout antes da análise
-            addLog('Verificando payout antes da análise...', 'INFO');
-            try {
-                // Verificar se o PayoutController está disponível
-                const payoutController = globalThis.PayoutController || self.PayoutController || window.PayoutController;
-                
-                if (payoutController && typeof payoutController.checkPayoutBeforeAnalysis === 'function') {
-                    addLog('Executando verificação de payout...', 'INFO');
-                    updateStatus('Verificando payout...', 'info');
-                    
-                    // Aguardar verificação de payout (pode demorar se estiver aguardando melhoria)
-                    await payoutController.checkPayoutBeforeAnalysis();
-                    
-                    addLog('Verificação de payout concluída - prosseguindo com análise', 'SUCCESS');
-                } else {
-                    addLog('PayoutController não disponível - prosseguindo sem verificação de payout', 'WARN');
-                }
-            } catch (payoutError) {
-                // Se o payout for inadequado, a operação será cancelada
-                addLog(`Análise cancelada devido ao payout: ${payoutError}`, 'WARN');
-                updateStatus(`Análise cancelada: ${payoutError}`, 'warn');
-                
-                // Finalizar operação
-                if (window.StateManager) {
-                    window.StateManager.stopOperation('cancelled');
-                }
-                updateSystemOperationalStatus('Pronto');
-                
-                // Retornar erro para interromper a análise
-                throw new Error(`Análise cancelada pelo controle de payout: ${payoutError}`);
-            }
+            // NOTA: Verificação de payout removida do runAnalysis para evitar duplicação
+            // A verificação de payout agora é feita APENAS na automação (automation.js)
+            // antes de chamar runAnalysis, eliminando verificações duplicadas
+            addLog('ℹ️ [RUNANALYSIS] Payout já verificado pela automação - prosseguindo diretamente com análise', 'INFO');
             
             // ETAPA 1: Capturar a tela
-            addLog('Iniciando captura de tela para análise...', 'INFO');
+            addLog('📸 [RUNANALYSIS] Iniciando captura de tela para análise...', 'INFO');
             let dataUrl;
             
             // Verificar se o módulo de captura está disponível
@@ -313,7 +287,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             // Agora usar o módulo de captura
             try {
                 dataUrl = await window.CaptureScreen.captureForAnalysis();
-                addLog('Captura de tela para análise concluída com sucesso', 'SUCCESS');
+                addLog('✅ [RUNANALYSIS] Captura de tela para análise concluída com sucesso', 'SUCCESS');
             } catch (captureError) {
                 throw new Error(`Falha ao capturar tela para análise: ${captureError.message}`);
             }
@@ -328,7 +302,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             window.lastCapturedImageTimestamp = Date.now();
             
             // ETAPA 2: Processar a análise
-            addLog('Iniciando etapa de processamento de análise...', 'INFO');
+            addLog('🧠 [RUNANALYSIS] Iniciando etapa de processamento de análise...', 'INFO');
             
             try {
                 // Obter configurações
@@ -378,9 +352,10 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 
                 // Enviar análise usando o analyze-graph.js diretamente se disponível
                 if (window.AnalyzeGraph && typeof window.AnalyzeGraph.analyzeImage === 'function') {
-                    addLog('Usando módulo AnalyzeGraph para processamento...', 'INFO');
+                    addLog('🧠 [RUNANALYSIS] Usando módulo AnalyzeGraph para processamento...', 'INFO');
                     
                     const analysisResult = await window.AnalyzeGraph.analyzeImage(dataUrl, settings);
+                    addLog('🧠 [RUNANALYSIS] AnalyzeGraph.analyzeImage concluído', 'DEBUG');
                     
                     // Formatar resultado
                     const formattedResult = {
@@ -933,28 +908,38 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     // Expor função globalmente para uso em outros módulos
     window.cancelCurrentOperation = cancelCurrentOperation;
 
-    // Função para capturar e analisar
+    // Função para capturar e analisar - delegada para CaptureScreen
     async function captureAndAnalyze() {
         try {
             addLog('Iniciando processo integrado de captura e análise...', 'INFO');
             
             // Usar o módulo de captura centralizado
-            if (window.CaptureScreen) {
-                // Capturar a tela para análise usando a função centralizada
-                await window.CaptureScreen.captureForAnalysis();
-                addLog('Captura realizada com sucesso pelo módulo centralizado', 'SUCCESS');
-                // Executar a análise com a imagem já capturada
-                await runAnalysis();
+            if (window.CaptureScreen && typeof window.CaptureScreen.captureAndAnalyze === 'function') {
+                const success = await window.CaptureScreen.captureAndAnalyze();
+                if (success) {
+                    addLog('Processo integrado de captura e análise concluído com sucesso', 'SUCCESS');
+                    updateStatus('Captura e análise realizadas com sucesso', 'success');
+                } else {
+                    addLog('Falha no processo integrado de captura e análise', 'ERROR');
+                    updateStatus('Falha na captura e análise', 'error');
+                }
             } else {
-                // Fallback para o método antigo se o módulo não estiver disponível
-                addLog('Módulo CaptureScreen não disponível, tentando método alternativo', 'WARN');
-                const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-                const response = await chrome.tabs.sendMessage(tab.id, { action: 'CAPTURE_SCREENSHOT' });
-                if (response && response.success) {
-                    updateStatus('Captura realizada com sucesso', 'success');
+                // Fallback para método separado
+                addLog('Módulo CaptureScreen.captureAndAnalyze não disponível, usando método separado', 'WARN');
+                if (window.CaptureScreen && typeof window.CaptureScreen.captureForAnalysis === 'function') {
+                    await window.CaptureScreen.captureForAnalysis();
+                    addLog('Captura realizada com sucesso pelo módulo centralizado', 'SUCCESS');
                     await runAnalysis();
                 } else {
-                    updateStatus('Erro ao capturar a tela', 'error');
+                    addLog('Módulo CaptureScreen não disponível, tentando método alternativo', 'WARN');
+                    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                    const response = await chrome.tabs.sendMessage(tab.id, { action: 'CAPTURE_SCREENSHOT' });
+                    if (response && response.success) {
+                        updateStatus('Captura realizada com sucesso', 'success');
+                        await runAnalysis();
+                    } else {
+                        updateStatus('Erro ao capturar a tela', 'error');
+                    }
                 }
             }
         } catch (error) {
@@ -1065,58 +1050,20 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         
         if (elements.captureScreen) {
             elements.captureScreen.addEventListener('click', async () => {
-                addLog('Botão de captura clicado no index', 'INFO');
+                addLog('Botão de captura clicado - delegando para CaptureScreen', 'INFO');
                 
                 try {
                     // Usar o sistema centralizado de captura
                     if (window.CaptureScreen && typeof window.CaptureScreen.captureAndShow === 'function') {
-                        try {
-                            // Chamar a função simplificada que captura e mostra em uma janela popup
-                            await window.CaptureScreen.captureAndShow();
-                            updateStatus('Captura de tela realizada com sucesso', 'success');
-                        } catch (error) {
-                            addLog(`Erro ao capturar tela: ${error.message}`, 'ERROR');
-                            updateStatus('Falha na captura de tela', 'error');
-                        }
+                        await window.CaptureScreen.captureAndShow();
+                        updateStatus('Captura de tela realizada com sucesso', 'success');
                     } else {
-                        // Se o módulo não estiver disponível, carregar dinamicamente
-                        addLog('Módulo de captura não está disponível, tentando carregamento dinâmico', 'WARN');
-                        updateStatus('Carregando módulo de captura...', 'info');
-                        
-                        // Tentar carregar o módulo dinamicamente
-                        const script = document.createElement('script');
-                        script.src = '../content/capture-screen.js';
-                        
-                        // Promise para aguardar o carregamento do script
-                        await new Promise((resolve, reject) => {
-                            script.onload = () => {
-                                addLog('Módulo de captura carregado dinamicamente', 'SUCCESS');
-                                resolve();
-                            };
-                            script.onerror = (err) => {
-                                addLog(`Erro ao carregar módulo de captura: ${err}`, 'ERROR');
-                                reject(new Error('Falha ao carregar módulo de captura'));
-                            };
-                            document.head.appendChild(script);
-                        });
-                        
-                        // Verificar novamente se o módulo está disponível após o carregamento
-                        if (window.CaptureScreen && typeof window.CaptureScreen.captureAndShow === 'function') {
-                            try {
-                                await window.CaptureScreen.captureAndShow();
-                                updateStatus('Captura realizada com sucesso', 'success');
-                            } catch (captureError) {
-                                addLog(`Erro após carregamento dinâmico: ${captureError.message}`, 'ERROR');
-                                updateStatus('Falha na captura de tela', 'error');
-                            }
-                        } else {
-                            addLog('Módulo carregado, mas função captureAndShow não disponível', 'ERROR');
-                            updateStatus('Erro no sistema de captura', 'error');
-                        }
+                        addLog('Módulo CaptureScreen não disponível', 'ERROR');
+                        updateStatus('Módulo de captura não disponível', 'error');
                     }
                 } catch (error) {
-                    addLog(`Erro geral na captura: ${error.message}`, 'ERROR');
-                    updateStatus('Erro no processo de captura', 'error');
+                    addLog(`Erro na captura: ${error.message}`, 'ERROR');
+                    updateStatus('Erro na captura de tela', 'error');
                 }
             });
         }
@@ -2545,101 +2492,126 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 }
             };
             
-            // Função auxiliar para formatar lista de ativos
-            const formatAssetsList = (assets) => {
-                if (!assets || assets.length === 0) return 'Nenhum ativo encontrado';
-                
-                return assets.map((asset, index) => 
-                    `${index + 1}. ${asset.name} - ${asset.payout}%${asset.isSelected ? ' (SELECIONADO)' : ''}`
-                ).join('<br>');
-            };
+
             
             // Event listener para buscar melhor ativo
             if (testFindBestAssetBtn) {
-                testFindBestAssetBtn.addEventListener('click', () => {
+                testFindBestAssetBtn.addEventListener('click', async () => {
                     const minPayout = parseInt(minPayoutInput?.value || '85', 10);
                     updateAssetTestResult(`Buscando melhor ativo (payout >= ${minPayout}%)...`);
                     
-                    chrome.runtime.sendMessage({
-                        action: 'TEST_FIND_BEST_ASSET',
-                        minPayout: minPayout
-                    }, (response) => {
-                        if (chrome.runtime.lastError) {
-                            updateAssetTestResult(`Erro: ${chrome.runtime.lastError.message}`, true);
-                            return;
-                        }
-                        
-                        if (response && response.success) {
-                            const asset = response.asset;
-                            let resultText = `✅ ${response.message}<br><br>`;
-                            resultText += `<strong>Todos os ativos encontrados:</strong><br>`;
-                            resultText += formatAssetsList(response.allAssets);
-                            updateAssetTestResult(resultText);
-                        } else {
-                            let errorText = `❌ ${response?.error || 'Falha ao buscar ativo'}`;
-                            if (response?.allAssets && response.allAssets.length > 0) {
-                                errorText += `<br><br><strong>Ativos disponíveis:</strong><br>`;
-                                errorText += formatAssetsList(response.allAssets);
-                            }
-                            updateAssetTestResult(errorText, true);
-                        }
-                    });
+                    try {
+                        const result = await testFindBestAsset(minPayout);
+                        updateAssetTestResult(result.message);
+                    } catch (error) {
+                        updateAssetTestResult(typeof error === 'string' ? error : error.message, true);
+                    }
                 });
             }
 
             // Event listener para mudar para moedas
             if (testSwitchToCurrencyBtn) {
-                testSwitchToCurrencyBtn.addEventListener('click', () => {
+                testSwitchToCurrencyBtn.addEventListener('click', async () => {
                     updateAssetTestResult('Mudando para categoria Currencies...');
                     
-                    chrome.runtime.sendMessage({
-                        action: 'TEST_SWITCH_ASSET_CATEGORY',
-                        category: 'currency'
-                    }, (response) => {
-                        if (chrome.runtime.lastError) {
-                            updateAssetTestResult(`Erro: ${chrome.runtime.lastError.message}`, true);
-                            return;
-                        }
-                        
-                        if (response && response.success) {
-                            let resultText = `✅ ${response.message}<br><br>`;
-                            resultText += `<strong>Ativos de ${response.category}:</strong><br>`;
-                            resultText += formatAssetsList(response.assets);
-                            updateAssetTestResult(resultText);
-                        } else {
-                            updateAssetTestResult(`❌ ${response?.error || 'Falha ao mudar categoria'}`, true);
-                        }
-                    });
+                    try {
+                        const result = await testSwitchAssetCategory('currency');
+                        updateAssetTestResult(result.message);
+                    } catch (error) {
+                        updateAssetTestResult(typeof error === 'string' ? error : error.message, true);
+                    }
                 });
             }
             
             // Event listener para mudar para crypto
             if (testSwitchToCryptoBtn) {
-                testSwitchToCryptoBtn.addEventListener('click', () => {
+                testSwitchToCryptoBtn.addEventListener('click', async () => {
                     updateAssetTestResult('Mudando para categoria Cryptocurrencies...');
                     
-                    chrome.runtime.sendMessage({
-                        action: 'TEST_SWITCH_ASSET_CATEGORY',
-                        category: 'crypto'
-                    }, (response) => {
-                        if (chrome.runtime.lastError) {
-                            updateAssetTestResult(`Erro: ${chrome.runtime.lastError.message}`, true);
-                            return;
-                        }
-                        
-                        if (response && response.success) {
-                            let resultText = `✅ ${response.message}<br><br>`;
-                            resultText += `<strong>Ativos de ${response.category}:</strong><br>`;
-                            resultText += formatAssetsList(response.assets);
-                            updateAssetTestResult(resultText);
-                        } else {
-                            updateAssetTestResult(`❌ ${response?.error || 'Falha ao mudar categoria'}`, true);
-                        }
-                    });
+                    try {
+                        const result = await testSwitchAssetCategory('crypto');
+                        updateAssetTestResult(result.message);
+                    } catch (error) {
+                        updateAssetTestResult(typeof error === 'string' ? error : error.message, true);
+                    }
                 });
             }
             
             addLog('Botões de teste de ativos configurados', 'INFO');
+
+            // =================== BOTÃO DE TESTE DE PAYOUT ===================
+            // Configurar botão de teste de captura de payout
+            const testCapturePayoutBtn = document.getElementById('test-capture-payout');
+            const payoutResult = document.getElementById('payout-result');
+            
+            if (testCapturePayoutBtn) {
+                testCapturePayoutBtn.addEventListener('click', async () => {
+                    // Atualizar resultado na tela
+                    if (payoutResult) {
+                        payoutResult.textContent = 'Capturando payout...';
+                        payoutResult.style.backgroundColor = '#f0f8ff';
+                    }
+                    
+                    addLog('Iniciando teste de captura de payout via content.js', 'INFO');
+                    updateStatus('Capturando payout do DOM...', 'info');
+                    
+                    try {
+                        // ✅ CORREÇÃO: Usar chrome.runtime para comunicar com content.js que tem acesso ao DOM
+                        const response = await new Promise((resolve, reject) => {
+                            // Timeout de segurança
+                            const timeoutId = setTimeout(() => {
+                                reject(new Error('Timeout: Captura de payout demorou mais de 10 segundos'));
+                            }, 10000);
+                            
+                            chrome.runtime.sendMessage({
+                                action: 'TEST_CAPTURE_PAYOUT'
+                            }, (response) => {
+                                clearTimeout(timeoutId);
+                                
+                                if (chrome.runtime.lastError) {
+                                    reject(new Error(`Erro de comunicação: ${chrome.runtime.lastError.message}`));
+                                    return;
+                                }
+                                
+                                if (!response || !response.success) {
+                                    reject(new Error(response?.error || 'Erro desconhecido na captura'));
+                                    return;
+                                }
+                                
+                                resolve(response);
+                            });
+                        });
+                        
+                        const message = `Payout: ${response.payout}% (Fonte: ${response.source})`;
+                        addLog(`Payout capturado com sucesso: ${message}`, 'SUCCESS');
+                        updateStatus(message, 'success');
+                        
+                        // Atualizar elemento de resultado na interface
+                        if (payoutResult) {
+                            payoutResult.innerHTML = `
+                                <div><strong>Resultado:</strong> ${response.payout}%</div>
+                                <div><strong>Fonte:</strong> ${response.source}</div>
+                                <div><strong>Seletor:</strong> ${response.selector || 'N/A'}</div>
+                                <div><strong>Timestamp:</strong> ${response.timestamp || 'N/A'}</div>
+                            `;
+                            payoutResult.style.backgroundColor = '#ddffdd';
+                        }
+                    } catch (error) {
+                        const errorMsg = error.message || error;
+                        addLog(`Erro na captura: ${errorMsg}`, 'ERROR');
+                        updateStatus(`Erro: ${errorMsg}`, 'error');
+                        
+                        if (payoutResult) {
+                            payoutResult.textContent = `Erro: ${errorMsg}`;
+                            payoutResult.style.backgroundColor = '#ffdddd';
+                        }
+                    }
+                });
+                
+                addLog('Botão de teste de captura de payout configurado (via PayoutController)', 'INFO');
+            } else {
+                addLog('Botão de teste de captura de payout não encontrado', 'WARN');
+            }
 
             // =================== BOTÕES DE DEBUG DO MODAL ===================
             // Configurar botões de debug para testar abertura/fechamento do modal
@@ -2661,148 +2633,57 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
 
             // Event listener para abrir modal (debug)
             if (debugOpenModalBtn) {
-                debugOpenModalBtn.addEventListener('click', () => {
+                debugOpenModalBtn.addEventListener('click', async () => {
                     updateModalDebugResult('🔄 Executando: AssetManager.openAssetModal()...');
                     
-                    chrome.runtime.sendMessage({
-                        action: 'TEST_OPEN_ASSET_MODAL'
-                    }, (response) => {
-                        if (chrome.runtime.lastError) {
-                            updateModalDebugResult(`❌ ERRO: ${chrome.runtime.lastError.message}`, true);
-                            return;
-                        }
-                        
-                        if (response && response.success) {
-                            updateModalDebugResult(`✅ SUCESSO: ${response.message}`);
-                        } else {
-                            updateModalDebugResult(`❌ FALHA: ${response?.error || 'Erro desconhecido'}`, true);
-                        }
-                    });
+                    try {
+                        const result = await testOpenAssetModal();
+                        updateModalDebugResult(result);
+                    } catch (error) {
+                        updateModalDebugResult(error, true);
+                    }
                 });
             }
 
             // Event listener para fechar modal (debug)
             if (debugCloseModalBtn) {
-                debugCloseModalBtn.addEventListener('click', () => {
+                debugCloseModalBtn.addEventListener('click', async () => {
                     updateModalDebugResult('🔄 Executando: AssetManager.closeAssetModal()...');
                     
-                    chrome.runtime.sendMessage({
-                        action: 'CLOSE_ASSET_MODAL'
-                    }, (response) => {
-                        if (chrome.runtime.lastError) {
-                            updateModalDebugResult(`❌ ERRO: ${chrome.runtime.lastError.message}`, true);
-                            return;
-                        }
-                        
-                        if (response && response.success) {
-                            updateModalDebugResult(`✅ SUCESSO: ${response.message}`);
-                        } else {
-                            updateModalDebugResult(`❌ FALHA: ${response?.error || 'Erro desconhecido'}`, true);
-                        }
-                    });
+                    try {
+                        const result = await testCloseAssetModal();
+                        updateModalDebugResult(result);
+                    } catch (error) {
+                        updateModalDebugResult(error, true);
+                    }
                 });
             }
 
             // Event listener para verificar status do modal
             if (debugCheckStatusBtn) {
-                debugCheckStatusBtn.addEventListener('click', () => {
+                debugCheckStatusBtn.addEventListener('click', async () => {
                     updateModalDebugResult('🔍 Verificando status do modal...');
                     
-                    // Executar script para verificar status do modal na página
-                    chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-                        if (!tabs || !tabs.length) {
-                            updateModalDebugResult('❌ ERRO: Aba ativa não encontrada', true);
-                            return;
-                        }
-                        
-                        chrome.scripting.executeScript({
-                            target: { tabId: tabs[0].id },
-                            func: () => {
-                                // Verificar elementos do modal
-                                const assetButton = document.querySelector('.currencies-block .pair-number-wrap');
-                                const activeControl = document.querySelector('.currencies-block__in.active');
-                                const modal = document.querySelector('.drop-down-modal.drop-down-modal--quotes-list');
-                                const currentAsset = document.querySelector('.current-symbol, .currencies-block .current-symbol_cropped');
-                                
-                                return {
-                                    assetButtonExists: !!assetButton,
-                                    modalIsActive: !!activeControl,
-                                    modalExists: !!modal,
-                                    modalVisible: modal ? (modal.style.display !== 'none' && modal.offsetParent !== null) : false,
-                                    currentAsset: currentAsset ? currentAsset.textContent.trim() : 'Não detectado',
-                                    timestamp: new Date().toLocaleTimeString()
-                                };
-                            }
-                        }, (results) => {
-                            if (chrome.runtime.lastError) {
-                                updateModalDebugResult(`❌ ERRO: ${chrome.runtime.lastError.message}`, true);
-                                return;
-                            }
-                            
-                            if (results && results[0] && results[0].result) {
-                                const status = results[0].result;
-                                let statusText = `📊 STATUS DO MODAL [${status.timestamp}]:\n`;
-                                statusText += `• Botão de controle: ${status.assetButtonExists ? '✅' : '❌'}\n`;
-                                statusText += `• Modal ativo (classe): ${status.modalIsActive ? '✅ ABERTO' : '❌ FECHADO'}\n`;
-                                statusText += `• Modal existe: ${status.modalExists ? '✅' : '❌'}\n`;
-                                statusText += `• Modal visível: ${status.modalVisible ? '✅' : '❌'}\n`;
-                                statusText += `• Ativo atual: ${status.currentAsset}`;
-                                
-                                updateModalDebugResult(statusText.replace(/\n/g, '<br>'));
-                            } else {
-                                updateModalDebugResult('❌ ERRO: Nenhum resultado retornado', true);
-                            }
-                        });
-                    });
+                    try {
+                        const result = await checkModalStatus();
+                        updateModalDebugResult(result);
+                    } catch (error) {
+                        updateModalDebugResult(error, true);
+                    }
                 });
             }
 
             // Event listener para toggle do modal (abrir/fechar automaticamente)
             if (debugToggleModalBtn) {
-                debugToggleModalBtn.addEventListener('click', () => {
+                debugToggleModalBtn.addEventListener('click', async () => {
                     updateModalDebugResult('🔄 Executando toggle do modal...');
                     
-                    // Primeiro verificar status
-                    chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-                        if (!tabs || !tabs.length) {
-                            updateModalDebugResult('❌ ERRO: Aba ativa não encontrada', true);
-                            return;
-                        }
-                        
-                        chrome.scripting.executeScript({
-                            target: { tabId: tabs[0].id },
-                            func: () => {
-                                const activeControl = document.querySelector('.currencies-block__in.active');
-                                return !!activeControl; // true se modal estiver aberto
-                            }
-                        }, (results) => {
-                            if (chrome.runtime.lastError) {
-                                updateModalDebugResult(`❌ ERRO: ${chrome.runtime.lastError.message}`, true);
-                                return;
-                            }
-                            
-                            const isModalOpen = results && results[0] && results[0].result;
-                            const action = isModalOpen ? 'CLOSE_ASSET_MODAL' : 'TEST_OPEN_ASSET_MODAL';
-                            const actionText = isModalOpen ? 'fechar' : 'abrir';
-                            
-                            updateModalDebugResult(`🔄 Modal está ${isModalOpen ? 'ABERTO' : 'FECHADO'}, tentando ${actionText}...`);
-                            
-                            chrome.runtime.sendMessage({
-                                action: action
-                            }, (response) => {
-                                if (chrome.runtime.lastError) {
-                                    updateModalDebugResult(`❌ ERRO: ${chrome.runtime.lastError.message}`, true);
-                                    return;
-                                }
-                                
-                                if (response && response.success) {
-                                    updateModalDebugResult(`✅ SUCESSO: Modal ${isModalOpen ? 'fechado' : 'aberto'} com sucesso!`);
-                                } else {
-                                    updateModalDebugResult(`❌ FALHA: ${response?.error || 'Erro desconhecido'}`, true);
-                                }
-                            });
-                        });
-                    });
+                    try {
+                        const result = await testToggleModal();
+                        updateModalDebugResult(result);
+                    } catch (error) {
+                        updateModalDebugResult(error, true);
+                    }
                 });
             }
 
