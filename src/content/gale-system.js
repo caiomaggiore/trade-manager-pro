@@ -285,8 +285,8 @@
                 if (currentPayout >= minPayoutRequired) {
                     // ✅ PAYOUT ADEQUADO: Iniciar análise diretamente
                     log(`✅ [GALE] Payout adequado (${currentPayout}% >= ${minPayoutRequired}%). Iniciando análise...`, 'SUCCESS');
-                    requestActualAnalysis();
-                } else {
+                requestActualAnalysis();
+            } else {
                     // ⚠️ PAYOUT INSUFICIENTE: Aplicar comportamento configurado
                     log(`⚠️ [GALE] Payout insuficiente (${currentPayout}% < ${minPayoutRequired}%). Aplicando comportamento: ${payoutBehavior}`, 'WARN');
                     

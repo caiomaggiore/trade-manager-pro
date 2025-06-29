@@ -250,11 +250,11 @@ function showAnalysisModal(result) {
             clearInterval(countdownInterval);
             modal.style.display = 'none';
             if (autoExecutionEnabled) {
-                // Registrar tentativa de execução automática
+                // ✅ CORREÇÃO: Execução automática SEM resetar status
                 if (typeof addLog === 'function') {
-                    addLog('Tentativa de executar operação automaticamente após fechamento do modal', 'INFO', 'trade-execution');
+                    addLog('✅ [MODAL] Executando operação automaticamente - status mantido como "Operando..."', 'INFO');
                 } else if (typeof sendToLogSystem === 'function') {
-                    sendToLogSystem('Tentativa de executar operação automaticamente após fechamento do modal', 'INFO');
+                    sendToLogSystem('Executando operação automaticamente após fechamento do modal', 'INFO');
                 }
                 
                 if (result.action === 'WAIT') {
@@ -293,16 +293,46 @@ function showAnalysisModal(result) {
                         }
                     }
                 } else if (result.action !== 'WAIT') {
-                    // Encaminhar a execução para o content.js apenas uma vez
-                    // Gerar um identificador único para esta operação automática
+                    // ✅ CORREÇÃO: Executar operação automática SEM resetar status
                     const autoOperationId = `auto_${result.action}_${Date.now()}`;
+                    
+                    // ✅ DEBUG: Verificar status antes da execução automática
                     if (typeof addLog === 'function') {
-                        addLog(`Iniciando operação automática ${autoOperationId} após fechamento do modal`, 'INFO', 'trade-execution');
+                        addLog('🔍 [MODAL DEBUG] Status ANTES da execução automática', 'DEBUG');
+                        if (window.StateManager) {
+                            const status = window.StateManager.getOperationalStatus();
+                            addLog(`🔍 [MODAL DEBUG] Status atual: ${status.status}`, 'DEBUG');
+                        }
+                    } else if (typeof sendToLogSystem === 'function') {
+                        sendToLogSystem('🔍 [MODAL DEBUG] Status ANTES da execução automática', 'DEBUG');
+                        if (window.StateManager) {
+                            const status = window.StateManager.getOperationalStatus();
+                            sendToLogSystem(`🔍 [MODAL DEBUG] Status atual: ${status.status}`, 'DEBUG');
+                        }
+                        addLog(`✅ [MODAL] Operação automática ${autoOperationId} executada - status mantido`, 'INFO');
                     } else if (typeof sendToLogSystem === 'function') {
                         sendToLogSystem(`Iniciando operação automática ${autoOperationId} após fechamento do modal`, 'INFO');
                     }
                     
+                    // Executar sem resetar status - deve manter "Operando..." até ordem fechar
                     sendTradeRequest(result.action);
+                    
+                    // ✅ DEBUG: Verificar status depois da execução automática
+                    setTimeout(() => {
+                        if (typeof addLog === 'function') {
+                            addLog('🔍 [MODAL DEBUG] Status DEPOIS da execução automática (500ms após)', 'DEBUG');
+                            if (window.StateManager) {
+                                const status = window.StateManager.getOperationalStatus();
+                                addLog(`🔍 [MODAL DEBUG] Status atual: ${status.status}`, 'DEBUG');
+                            }
+                        } else if (typeof sendToLogSystem === 'function') {
+                            sendToLogSystem('🔍 [MODAL DEBUG] Status DEPOIS da execução automática (500ms após)', 'DEBUG');
+                            if (window.StateManager) {
+                                const status = window.StateManager.getOperationalStatus();
+                                sendToLogSystem(`🔍 [MODAL DEBUG] Status atual: ${status.status}`, 'DEBUG');
+                            }
+                        }
+                    }, 500);
                 }
             }
         }
@@ -398,9 +428,46 @@ function showAnalysisModal(result) {
         clearInterval(countdownInterval);
         modal.style.display = 'none';
         autoExecutionEnabled = false;
+        
+        // ✅ DEBUG: Verificar status antes da execução
+        if (typeof addLog === 'function') {
+            addLog('🔍 [MODAL DEBUG] Status ANTES da execução da operação', 'DEBUG');
+            if (window.StateManager) {
+                const status = window.StateManager.getOperationalStatus();
+                addLog(`🔍 [MODAL DEBUG] Status atual: ${status.status}`, 'DEBUG');
+            }
+        } else if (typeof sendToLogSystem === 'function') {
+            sendToLogSystem('🔍 [MODAL DEBUG] Status ANTES da execução da operação', 'DEBUG');
+            if (window.StateManager) {
+                const status = window.StateManager.getOperationalStatus();
+                sendToLogSystem(`🔍 [MODAL DEBUG] Status atual: ${status.status}`, 'DEBUG');
+            }
+        }
+        
+        // ✅ CORREÇÃO: Executar operação SEM resetar status - deve manter "Operando..." até ordem fechar
         sendTradeRequest(result.action);
+        
+        // ✅ DEBUG: Verificar status depois da execução
+        setTimeout(() => {
+            if (typeof addLog === 'function') {
+                addLog('🔍 [MODAL DEBUG] Status DEPOIS da execução da operação (500ms após)', 'DEBUG');
+                if (window.StateManager) {
+                    const status = window.StateManager.getOperationalStatus();
+                    addLog(`🔍 [MODAL DEBUG] Status atual: ${status.status}`, 'DEBUG');
+                }
+            } else if (typeof sendToLogSystem === 'function') {
+                sendToLogSystem('🔍 [MODAL DEBUG] Status DEPOIS da execução da operação (500ms após)', 'DEBUG');
+                if (window.StateManager) {
+                    const status = window.StateManager.getOperationalStatus();
+                    sendToLogSystem(`🔍 [MODAL DEBUG] Status atual: ${status.status}`, 'DEBUG');
+                }
+            }
+        }, 500);
+        
         if (typeof logAndUpdateStatus === 'function') {
-            logAndUpdateStatus('Operação executada manualmente pelo usuário', 'INFO', 'trade-execution', true);
+            logAndUpdateStatus('Operação executada manualmente pelo usuário - aguardando resultado', 'INFO', 'trade-execution', true);
+        } else if (typeof addLog === 'function') {
+            addLog('✅ [MODAL] Operação executada manualmente - status mantido como "Operando..."', 'INFO');
         }
     };
     waitButton.onclick = () => {
@@ -465,13 +532,13 @@ function showAnalysisModal(result) {
         modal.style.display = 'none';
         autoExecutionEnabled = false;
         
-        // Usar a função global de cancelamento para garantir consistência
+        // ✅ CORREÇÃO: Fechar modal SEM executar operação = cancelar
         if (typeof window.cancelCurrentOperation === 'function') {
             window.cancelCurrentOperation('Modal de análise fechado pelo usuário');
         } else {
             // Fallback para o comportamento anterior
-        if (typeof logAndUpdateStatus === 'function') {
-            logAndUpdateStatus('Modal fechado pelo usuário (operação cancelada)', 'INFO', 'ui', true);
+            if (typeof logAndUpdateStatus === 'function') {
+                logAndUpdateStatus('Modal fechado pelo usuário (operação cancelada)', 'INFO', 'ui', true);
             }
         }
     };
@@ -498,13 +565,13 @@ function showAnalysisModal(result) {
             modal.style.display = 'none';
             autoExecutionEnabled = false;
             
-            // Usar a função global de cancelamento para garantir consistência
+            // ✅ CORREÇÃO: Clicar fora do modal SEM executar operação = cancelar
             if (typeof window.cancelCurrentOperation === 'function') {
                 window.cancelCurrentOperation('Modal de análise fechado ao clicar fora');
             } else {
                 // Fallback para o comportamento anterior
-            if (typeof logAndUpdateStatus === 'function') {
-                logAndUpdateStatus('Modal fechado ao clicar fora (operação cancelada)', 'INFO', 'ui', true);
+                if (typeof logAndUpdateStatus === 'function') {
+                    logAndUpdateStatus('Modal fechado ao clicar fora (operação cancelada)', 'INFO', 'ui', true);
                 }
             }
         }

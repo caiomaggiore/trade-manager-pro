@@ -2290,7 +2290,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                             
                             // *** RESETAR STATUS E INTERFACE ***
                             setTimeout(() => {
-                                updateSystemOperationalStatus('PRONTO');
+                                updateSystemOperationalStatus('Pronto');
                                 updateAutomationStatusUI(false); // Desativar controles de automação
                                 
                                 // Resetar StateManager se disponível
@@ -2304,7 +2304,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                                     }
                                 }
                                 
-                                addLog('🎯 Sistema resetado para "PRONTO" após meta atingida', 'SUCCESS');
+                                addLog('🎯 Sistema resetado para "Pronto" após meta atingida', 'SUCCESS');
                             }, 2000);
                             break;
                         default:
@@ -2930,10 +2930,10 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             // Log do evento recebido
             console.log('[Index] Evento crítico recebido:', request.action);
             
-            // Resetar status para PRONTO após evento crítico
-            setTimeout(() => {
-                updateSystemOperationalStatus('Pronto');
-                console.log('[Index] Status resetado para PRONTO após:', request.action);
+                                    // Resetar status para "Pronto" após evento crítico
+                        setTimeout(() => {
+                            updateSystemOperationalStatus('Pronto');
+                            console.log('[Index] Status resetado para "Pronto" após:', request.action);
                 
                 // Notificação especial para TARGET_REACHED
                 if (request.action === 'TARGET_REACHED') {

@@ -90,7 +90,7 @@ window.TradeManager.History = (function() {
             <td>${new Date(operation.timestamp).toLocaleTimeString()}</td>
             <td>${operation.symbol}</td>
             <td>${operation.status === 'Open' ? 'OPEN' : operation.success ? 'GANHOU' : 'PERDEU'}</td>
-            <td>${operation.profit <= 0 ? `${operation.amount.replace('.', ',')}` : operation.action.replace('.', ',')}</td>
+            <td>${operation.amount.replace('.', ',')}</td>
             <td>${operation.status === 'Open' ? `0` : `${operation.success ? `+ ${operation.profit.replace('.', ',')}`  : `- ${operation.amount.replace('.', ',')}`}`}</td>        
         `;
 

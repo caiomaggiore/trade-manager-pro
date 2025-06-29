@@ -394,30 +394,54 @@ class StateManager {
     startOperation(operationType = 'analysis') {
         this.updateOperationalStatus('Operando...');
         
-        // Atualizar estado de automação também
-        this.updateAutomationState(true, {
-            id: Date.now(),
-            type: operationType,
-            startTime: new Date().toISOString(),
-            status: 'running'
-        });
+        // ✅ CORREÇÃO: Não alterar estado de automação se não estiver configurada como ativa
+        const config = this.getConfig();
+        const isAutomationConfigured = config.automation === true;
+        
+        if (isAutomationConfigured) {
+            // Apenas atualizar estado se automação estiver configurada como ativa
+            this.updateAutomationState(true, {
+                id: Date.now(),
+                type: operationType,
+                startTime: new Date().toISOString(),
+                status: 'running'
+            });
+        }
+        // Se automação não estiver ativa, não alterar o estado
         
         // Operação iniciada
     }
 
-    // Novo método para finalizar operação
+    // ✅ CORREÇÃO: Finalizar operação baseado no contexto
     stopOperation(reason = 'completed') {
         const wasInError = this.operationalStatus.status === 'Parado Erro';
+        const config = this.getConfig();
+        const isAutomationActive = config.automation === true;
         
-        if (!wasInError) {
+        // ✅ CORREÇÃO: Só resetar status se for cancelamento ou erro
+        // Para operações executadas (manual ou automático), manter "Operando..." até ordem fechar
+        if (reason === 'cancelled' || reason === 'error' || wasInError) {
+            // Cancelamento ou erro: resetar imediatamente
+            if (!wasInError) {
+                this.updateOperationalStatus('Pronto');
+            }
+        } else if (reason === 'completed' && isAutomationActive) {
+            // Automação ativa: pode resetar status (controlado pela automação)
             this.updateOperationalStatus('Pronto');
         }
+        // ✅ MODO MANUAL com 'completed': NÃO resetar status - manter "Operando..." até ordem fechar
         
-        // Limpar estado de automação
-        const config = this.getConfig();
-        this.updateAutomationState(config.automation || false, null);
+        // Limpar estado de automação apenas se necessário
+        if (reason === 'cancelled' || reason === 'error') {
+            this.updateAutomationState(isAutomationActive, null);
+        }
         
-        // Operação finalizada
+        // Log da ação
+        if (reason === 'completed' && !isAutomationActive) {
+            // Modo manual: operação executada mas status mantido
+        } else {
+            // Outros casos: operação finalizada
+        }
     }
 
     // Novo método para reset manual do status de erro
@@ -485,7 +509,7 @@ class StateManager {
                     request.action === 'TARGET_REACHED' ||
                     request.action === 'LIMITS_VIOLATION') {
                     
-                    // Resetar status para PRONTO após parada crítica
+                    // Resetar status para "Pronto" após parada crítica
                     setTimeout(() => {
                         this.updateOperationalStatus('Pronto');
                         // Status resetado após evento crítico
