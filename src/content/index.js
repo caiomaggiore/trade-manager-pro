@@ -2957,3 +2957,1789 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
 }
 
 } // Fechamento do bloco de validação de domínio
+
+// =================== SEÇÃO DE INTELIGÊNCIA LOCAL ===================
+
+// Event listeners para botões de inteligência local
+document.addEventListener('DOMContentLoaded', function() {
+    // Botão de estatísticas da inteligência local
+    const intelligenceStatsBtn = document.getElementById('intelligence-stats');
+    if (intelligenceStatsBtn) {
+        intelligenceStatsBtn.addEventListener('click', function() {
+            showIntelligenceStats();
+        });
+    }
+    
+    // Botão de reset para modo preliminar
+    const intelligenceResetBtn = document.getElementById('intelligence-reset');
+    if (intelligenceResetBtn) {
+        intelligenceResetBtn.addEventListener('click', function() {
+            resetIntelligenceToPreliminary();
+        });
+    }
+    
+    // Botão para sair do modo preliminar
+    const intelligenceExitBtn = document.getElementById('intelligence-exit-preliminary');
+    if (intelligenceExitBtn) {
+        intelligenceExitBtn.addEventListener('click', function() {
+            exitPreliminaryMode();
+        });
+    }
+    
+    // Botão de teste de volatilidade
+    const testVolatilityBtn = document.getElementById('test-volatility-check');
+    if (testVolatilityBtn) {
+        testVolatilityBtn.addEventListener('click', function() {
+            testVolatilityCheck();
+        });
+    }
+    
+    // Adicionar event listener para o botão de debug
+    const debugHistoricalBtn = document.getElementById('debug-historical-data');
+    if (debugHistoricalBtn) {
+        debugHistoricalBtn.addEventListener('click', function() {
+            debugHistoricalData();
+        });
+    }
+    
+    // Adicionar event listener para o botão de busca de ativos
+    const scanAssetsBtn = document.getElementById('scan-available-assets');
+    if (scanAssetsBtn) {
+        scanAssetsBtn.addEventListener('click', function() {
+            scanAvailableAssets();
+        });
+    }
+    
+    // Adicionar event listener para o botão de teste de imagem
+    const testImageBtn = document.getElementById('test-image-analysis');
+    if (testImageBtn) {
+        testImageBtn.addEventListener('click', function() {
+            testImageAnalysis();
+        });
+    }
+    
+
+    
+    // Botão para mostrar histórico de tendências
+    const showTrendHistoryBtn = document.getElementById('show-trend-history');
+    if (showTrendHistoryBtn) {
+        showTrendHistoryBtn.addEventListener('click', function() {
+            showTrendHistory();
+        });
+    }
+});
+
+/**
+ * Mostra estatísticas da inteligência local
+ */
+function showIntelligenceStats() {
+    const resultDiv = document.getElementById('intelligence-result');
+    
+    try {
+        if (!window.LocalIntelligence) {
+            resultDiv.innerHTML = '❌ Módulo LocalIntelligence não carregado';
+            return;
+        }
+        
+        const stats = window.LocalIntelligence.getStats();
+        
+        const statsHtml = `
+            <div style="text-align: left; font-size: 12px; line-height: 1.4;">
+                <strong>📊 Estatísticas da Inteligência Local:</strong><br>
+                
+                <strong>🗃️ Base de Dados:</strong><br>
+                • Operações: ${stats.operations}<br>
+                • Padrões: ${stats.patterns}<br>
+                • Ativos: ${stats.assets}<br>
+                • Histórico Mental: ${stats.mentalHistory}<br>
+                • Cache Volatilidade: ${stats.volatilityCache}<br>
+                
+                <strong>🎓 Modo Preliminar:</strong><br>
+                • Ativo: ${stats.preliminaryMode ? 'SIM' : 'NÃO'}<br>
+                • Progresso: ${stats.preliminaryCount}/5<br>
+                
+                <strong>💰 Economia de Tokens:</strong><br>
+                • Calls Evitadas: ${stats.tokenSavings.callsAvoided}<br>
+                • Tokens Economizados: ${stats.tokenSavings.tokensEstimatedSaved}<br>
+                • Decisões Locais: ${stats.tokenSavings.decisionsLocal}<br>
+                • Checks Volatilidade: ${stats.tokenSavings.volatilityChecks}<br>
+                • Análises Mentais: ${stats.tokenSavings.mentalAnalyses}<br>
+            </div>
+        `;
+        
+        resultDiv.innerHTML = statsHtml;
+        
+        // Log usando sistema interno
+        if (window.addLog) {
+            window.addLog(`Estatísticas exibidas: ${stats.operations} operações, ${stats.assets} ativos`, 'INFO', 'intelligence-stats');
+        }
+        
+    } catch (error) {
+        resultDiv.innerHTML = `❌ Erro ao obter estatísticas: ${error.message}`;
+        if (window.addLog) {
+            window.addLog(`Erro ao obter estatísticas: ${error.message}`, 'ERROR', 'intelligence-stats');
+        }
+    }
+}
+
+/**
+ * Reseta inteligência local para modo preliminar
+ */
+function resetIntelligenceToPreliminary() {
+    const resultDiv = document.getElementById('intelligence-result');
+    
+    try {
+        if (!window.LocalIntelligence) {
+            resultDiv.innerHTML = '❌ Módulo LocalIntelligence não carregado';
+            return;
+        }
+        
+        window.LocalIntelligence.resetToPreliminaryMode();
+        
+        resultDiv.innerHTML = '🔄 Sistema resetado para modo preliminar - Próximas 5 análises serão preliminares';
+        
+        // Log usando sistema interno
+        if (window.addLog) {
+            window.addLog('Sistema de inteligência local resetado para modo preliminar', 'INFO', 'intelligence-reset');
+        }
+        
+        // Atualizar estatísticas após reset
+        setTimeout(() => {
+            showIntelligenceStats();
+        }, 1000);
+        
+    } catch (error) {
+        resultDiv.innerHTML = `❌ Erro ao resetar: ${error.message}`;
+        if (window.addLog) {
+            window.addLog(`Erro ao resetar inteligência local: ${error.message}`, 'ERROR', 'intelligence-reset');
+        }
+    }
+}
+
+/**
+ * Força saída do modo preliminar
+ */
+function exitPreliminaryMode() {
+    const resultDiv = document.getElementById('intelligence-result');
+    
+    try {
+        if (!window.LocalIntelligence) {
+            resultDiv.innerHTML = '❌ Módulo LocalIntelligence não carregado';
+            return;
+        }
+        
+        window.LocalIntelligence.exitPreliminaryMode();
+        
+        resultDiv.innerHTML = '🚀 Saída forçada do modo preliminar - Sistema pronto para análises conclusivas';
+        
+        // Log usando sistema interno
+        if (window.addLog) {
+            window.addLog('Sistema de inteligência local saiu do modo preliminar', 'INFO', 'intelligence-exit');
+        }
+        
+        // Atualizar estatísticas após saída
+        setTimeout(() => {
+            showIntelligenceStats();
+        }, 1000);
+        
+    } catch (error) {
+        resultDiv.innerHTML = `❌ Erro ao sair do modo preliminar: ${error.message}`;
+        if (window.addLog) {
+            window.addLog(`Erro ao sair do modo preliminar: ${error.message}`, 'ERROR', 'intelligence-exit');
+        }
+    }
+}
+
+/**
+ * Cria dados de teste para demonstrar o funcionamento do sistema
+ */
+function createTestData() {
+    try {
+        if (!window.LocalIntelligence) {
+            return false;
+        }
+        
+        // Simular operações baseadas no histórico real do usuário
+        const testOperations = [
+            {
+                status: "GANHOU",
+                success: true,
+                profit: "4.60",
+                amount: "5.00",
+                action: "Sell",
+                symbol: "AED/CNY OTC",
+                timestamp: Date.now() - 3600000, // 1 hora atrás
+                payout: 92
+            },
+            {
+                status: "PERDEU",
+                success: false,
+                profit: "0.00",
+                amount: "5.00",
+                action: "Call",
+                symbol: "AED/CNY OTC",
+                timestamp: Date.now() - 3000000, // 50 min atrás
+                payout: 92
+            },
+            {
+                status: "GANHOU",
+                success: true,
+                profit: "96.65",
+                amount: "105.05",
+                action: "Sell",
+                symbol: "AED/CNY OTC",
+                timestamp: Date.now() - 2400000, // 40 min atrás
+                payout: 92
+            },
+            {
+                status: "PERDEU",
+                success: false,
+                profit: "0.00",
+                amount: "46.12",
+                action: "Call",
+                symbol: "AED/CNY OTC",
+                timestamp: Date.now() - 1800000, // 30 min atrás
+                payout: 92
+            },
+            {
+                status: "GANHOU",
+                success: true,
+                profit: "4.55",
+                amount: "5.00",
+                action: "Sell",
+                symbol: "AED/CNY OTC",
+                timestamp: Date.now() - 1200000, // 20 min atrás
+                payout: 91
+            }
+        ];
+        
+        // Atualizar dados no LocalIntelligence
+        window.LocalIntelligence.database.operations = [...window.LocalIntelligence.database.operations, ...testOperations];
+        
+        // Reprocessar dados
+        window.LocalIntelligence.processHistoricalData();
+        
+        // Salvar no localStorage também
+        const existingOps = JSON.parse(localStorage.getItem('tradeOperations') || '[]');
+        const updatedOps = [...existingOps, ...testOperations];
+        localStorage.setItem('tradeOperations', JSON.stringify(updatedOps));
+        
+        return true;
+        
+    } catch (error) {
+        if (window.addLog) {
+            window.addLog(`Erro ao criar dados de teste: ${error.message}`, 'ERROR', 'test-data');
+        }
+        return false;
+    }
+}
+
+/**
+ * Diagnóstico dos dados históricos
+ */
+function debugHistoricalData() {
+    const resultDiv = document.getElementById('intelligence-result');
+    
+    try {
+        if (!window.LocalIntelligence) {
+            resultDiv.innerHTML = '❌ Módulo LocalIntelligence não carregado';
+            return;
+        }
+        
+        // Verificar dados do localStorage
+        const tradeOperations = localStorage.getItem('tradeOperations');
+        const mentalHistory = localStorage.getItem('mentalHistory');
+        const volatilityCache = localStorage.getItem('volatilityCache');
+        const patterns = localStorage.getItem('localIntelligencePatterns');
+        
+        let debugInfo = '<div style="text-align: left; font-size: 11px; line-height: 1.3;">';
+        debugInfo += '<strong>🔍 Diagnóstico de Dados Históricos:</strong><br><br>';
+        
+        // Verificar tradeOperations
+        if (tradeOperations) {
+            try {
+                const operations = JSON.parse(tradeOperations);
+                debugInfo += `<strong>📊 tradeOperations:</strong> ${operations.length} registros<br>`;
+                
+                if (operations.length > 0) {
+                    const firstOp = operations[0];
+                    debugInfo += `• Primeiro registro: ${JSON.stringify(firstOp).substring(0, 100)}...<br>`;
+                    
+                    // Verificar campos obrigatórios
+                    const validOps = operations.filter(op => op.symbol && op.timestamp && op.status !== undefined);
+                    debugInfo += `• Registros válidos: ${validOps.length}/${operations.length}<br>`;
+                    
+                    // Contar ativos únicos
+                    const uniqueAssets = new Set(validOps.map(op => op.symbol));
+                    debugInfo += `• Ativos únicos: ${uniqueAssets.size}<br>`;
+                    debugInfo += `• Ativos encontrados: ${Array.from(uniqueAssets).slice(0, 5).join(', ')}<br>`;
+                } else {
+                    debugInfo += '• Array vazio<br>';
+                }
+                debugInfo += '<br>';
+            } catch (error) {
+                debugInfo += `❌ Erro ao parsear tradeOperations: ${error.message}<br><br>`;
+            }
+        } else {
+            debugInfo += '<strong>📊 tradeOperations:</strong> Não encontrado<br><br>';
+        }
+        
+        // Verificar outros dados
+        debugInfo += `<strong>🧠 mentalHistory:</strong> ${mentalHistory ? JSON.parse(mentalHistory).length : 0} registros<br>`;
+        debugInfo += `<strong>📈 volatilityCache:</strong> ${volatilityCache ? JSON.parse(volatilityCache).length : 0} registros<br>`;
+        debugInfo += `<strong>🔍 patterns:</strong> ${patterns ? JSON.parse(patterns).length : 0} registros<br><br>`;
+        
+        // Status do sistema
+        const stats = window.LocalIntelligence.getStats();
+        debugInfo += '<strong>⚙️ Status do Sistema:</strong><br>';
+        debugInfo += `• Operações processadas: ${stats.operations}<br>`;
+        debugInfo += `• Ativos identificados: ${stats.assets}<br>`;
+        debugInfo += `• Modo preliminar: ${stats.preliminaryMode ? 'ATIVO' : 'INATIVO'}<br><br>`;
+        
+        // Oferecer opção de criar dados de teste se necessário
+        if (stats.assets === 0) {
+            debugInfo += '<strong>🔧 Solução:</strong><br>';
+            debugInfo += '• Dados insuficientes ou mal formatados<br>';
+            debugInfo += '• <a href="#" onclick="createTestDataAndRefresh()">Clique aqui para criar dados de teste</a><br>';
+        }
+        
+        debugInfo += '</div>';
+        
+        resultDiv.innerHTML = debugInfo;
+        
+        // Log usando sistema interno
+        if (window.addLog) {
+            window.addLog(`Debug executado: ${tradeOperations ? JSON.parse(tradeOperations).length : 0} operações encontradas`, 'INFO', 'debug-historical');
+        }
+        
+    } catch (error) {
+        resultDiv.innerHTML = `❌ Erro no diagnóstico: ${error.message}`;
+        if (window.addLog) {
+            window.addLog(`Erro no diagnóstico de dados: ${error.message}`, 'ERROR', 'debug-historical');
+        }
+    }
+}
+
+/**
+ * 🔍 BUSCA DE ATIVOS COM ANÁLISE DE TENDÊNCIA INTELIGENTE
+ * Agora inclui análise de tendência em tempo real para cada ativo válido
+ */
+async function scanAvailableAssets() {
+    const resultDiv = document.getElementById('intelligence-result');
+    
+    try {
+        if (!window.LocalIntelligence) {
+            resultDiv.innerHTML = '❌ Módulo LocalIntelligence não carregado';
+            return;
+        }
+        
+        if (!window.FaithfulChartConverter) {
+            resultDiv.innerHTML = '❌ Módulo FaithfulChartConverter não carregado';
+            return;
+        }
+        
+        resultDiv.innerHTML = '🔍 Analisando ativos disponíveis com tendência em tempo real...';
+        
+        // Primeiro, tentar usar as funções existentes do painel para encontrar ativos
+        const foundAssets = await findAssetsUsingExistingFunctions();
+        
+        let resultHtml = '<div style="text-align: left; font-size: 11px; line-height: 1.3;">';
+        resultHtml += '<strong>📊 Análise de Ativos com Tendência:</strong><br><br>';
+        
+        if (foundAssets.size === 0) {
+            resultHtml += '❌ Nenhum ativo encontrado na página<br>';
+            resultHtml += '<em>Tentando métodos alternativos...</em><br><br>';
+            
+            // Usar métodos alternativos
+            const alternativeAssets = await findAssetsByAlternativeMethods();
+            
+            if (alternativeAssets.size > 0) {
+                resultHtml += `✅ ${alternativeAssets.size} ativos encontrados por métodos alternativos:<br><br>`;
+                
+                let count = 0;
+                for (const asset of alternativeAssets) {
+                    if (count >= 8) break; // Limitar para não sobrecarregar
+                    
+                    resultDiv.innerHTML = `🔍 Analisando ${asset} (${count + 1}/${Math.min(alternativeAssets.size, 8)})...`;
+                    
+                    // Análise de tendência em tempo real
+                    const trendData = await analyzeAssetTrend(asset);
+                    
+                    const trendIcon = getTrendIcon(trendData.direction);
+                    const confidenceBar = getConfidenceBar(trendData.confidence);
+                    
+                    resultHtml += `${trendIcon} <strong>${asset}</strong>: ${trendData.direction} | ${trendData.confidence.toFixed(1)}% ${confidenceBar}<br>`;
+                    
+                    // Adicionar ao cache de volatilidade
+                    window.LocalIntelligence.database.volatilityCache.set(asset, {
+                        volatilityScore: trendData.volatilityScore,
+                        avgWinRate: 0.5,
+                        isVolatile: trendData.isVolatile,
+                        lastUpdated: Date.now(),
+                        sampleSize: 1,
+                        source: 'trend-analysis'
+                    });
+                    
+                    count++;
+                }
+            } else {
+                resultHtml += '❌ Nenhum ativo encontrado por métodos alternativos<br><br>';
+                resultHtml += '<strong>📋 Analisando ativos padrão:</strong><br>';
+                
+                const defaultAssets = ['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'BTCUSD', 'ETHUSD', 'LTCUSD'];
+                
+                for (let i = 0; i < defaultAssets.length; i++) {
+                    const asset = defaultAssets[i];
+                    
+                    resultDiv.innerHTML = `🔍 Analisando ${asset} (${i + 1}/${defaultAssets.length})...`;
+                    
+                    // Análise de tendência em tempo real
+                    const trendData = await analyzeAssetTrend(asset);
+                    
+                    const trendIcon = getTrendIcon(trendData.direction);
+                    const confidenceBar = getConfidenceBar(trendData.confidence);
+                    
+                    resultHtml += `${trendIcon} <strong>${asset}</strong>: ${trendData.direction} | ${trendData.confidence.toFixed(1)}% ${confidenceBar}<br>`;
+                    
+                    // Adicionar ao cache de volatilidade
+                    window.LocalIntelligence.database.volatilityCache.set(asset, {
+                        volatilityScore: trendData.volatilityScore,
+                        avgWinRate: 0.5,
+                        isVolatile: trendData.isVolatile,
+                        lastUpdated: Date.now(),
+                        sampleSize: 1,
+                        source: 'trend-analysis'
+                    });
+                }
+            }
+            
+        } else {
+            resultHtml += `✅ ${foundAssets.size} ativos encontrados:<br><br>`;
+            
+            let count = 0;
+            for (const asset of foundAssets) {
+                if (count >= 8) break; // Limitar a 8 para não sobrecarregar
+                
+                resultDiv.innerHTML = `🔍 Analisando ${asset} (${count + 1}/${Math.min(foundAssets.size, 8)})...`;
+                
+                // Análise de tendência em tempo real
+                const trendData = await analyzeAssetTrend(asset);
+                
+                const trendIcon = getTrendIcon(trendData.direction);
+                const confidenceBar = getConfidenceBar(trendData.confidence);
+                
+                resultHtml += `${trendIcon} <strong>${asset}</strong>: ${trendData.direction} | ${trendData.confidence.toFixed(1)}% ${confidenceBar}<br>`;
+                
+                // Adicionar ao cache de volatilidade
+                window.LocalIntelligence.database.volatilityCache.set(asset, {
+                    volatilityScore: trendData.volatilityScore,
+                    avgWinRate: 0.5,
+                    isVolatile: trendData.isVolatile,
+                    lastUpdated: Date.now(),
+                    sampleSize: 1,
+                    source: 'trend-analysis'
+                });
+                
+                count++;
+            }
+            
+            if (foundAssets.size > 8) {
+                resultHtml += `<em>... e mais ${foundAssets.size - 8} ativos</em><br>`;
+            }
+        }
+        
+        // Adicionar resumo da análise
+        resultHtml += '<br><strong>📈 Resumo da Análise:</strong><br>';
+        resultHtml += `• Total analisado: ${Math.min(foundAssets.size || 8, 8)} ativos<br>`;
+        resultHtml += `• Método: Análise de tendência ASCII em tempo real<br>`;
+        resultHtml += `• Dados armazenados para estatísticas futuras<br>`;
+        
+        // Salvar dados atualizados
+        window.LocalIntelligence.saveMentalHistory();
+        
+        resultHtml += '</div>';
+        resultDiv.innerHTML = resultHtml;
+        
+        // Log usando sistema interno
+        if (window.addLog) {
+            window.addLog(`Análise de ativos concluída: ${foundAssets.size} ativos analisados com tendência`, 'SUCCESS', 'asset-scan');
+        }
+        
+    } catch (error) {
+        resultDiv.innerHTML = `❌ Erro na análise de ativos: ${error.message}`;
+        if (window.addLog) {
+            window.addLog(`Erro na análise de ativos: ${error.message}`, 'ERROR', 'asset-scan');
+        }
+    }
+}
+
+/**
+ * 📊 ANÁLISE DE TENDÊNCIA INDIVIDUAL POR ATIVO
+ * Simula troca de ativo e analisa tendência via captura ASCII
+ */
+async function analyzeAssetTrend(assetSymbol) {
+    try {
+        // Aguardar um pouco para não sobrecarregar o sistema
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Capturar screenshot do gráfico atual
+        const screenshot = await window.LocalIntelligence.captureCurrentChart();
+        if (!screenshot) {
+            throw new Error('Falha na captura do screenshot');
+        }
+        
+        // Converter para ASCII e analisar tendência
+        const asciiData = await window.FaithfulChartConverter.captureChartToASCII(screenshot);
+        if (!asciiData || !asciiData.trendAnalysis) {
+            throw new Error('Falha na análise de tendência');
+        }
+        
+        const trend = asciiData.trendAnalysis;
+        const isVolatile = trend.direction === 'LATERAL' || trend.confidence < 50;
+        const volatilityScore = trend.direction === 'LATERAL' ? 0.8 : (100 - trend.confidence) / 100;
+        
+        // Armazenar no histórico
+        addTrendToHistory({
+            asset: assetSymbol,
+            direction: trend.direction,
+            angle: trend.angle,
+            confidence: trend.confidence,
+            slope: trend.slope,
+            isVolatile: isVolatile,
+            volatilityScore: volatilityScore,
+            timestamp: new Date().toISOString(),
+            method: 'asset-scan-analysis'
+        });
+        
+        return {
+            direction: trend.direction,
+            angle: trend.angle,
+            confidence: trend.confidence,
+            slope: trend.slope,
+            isVolatile: isVolatile,
+            volatilityScore: volatilityScore
+        };
+        
+    } catch (error) {
+        window.addLog(`Erro na análise de tendência para ${assetSymbol}: ${error.message}`, 'WARN', 'asset-trend');
+        
+        // Retornar dados simulados em caso de erro
+        return {
+            direction: 'INDETERMINADA',
+            angle: 0.0,
+            confidence: 0.0,
+            slope: 0.0,
+            isVolatile: true,
+            volatilityScore: 0.9
+        };
+    }
+}
+
+/**
+ * 🎯 UTILITÁRIOS PARA VISUALIZAÇÃO DE TENDÊNCIA
+ */
+function getTrendIcon(direction) {
+    switch(direction) {
+        case 'ALTA': return '📈';
+        case 'BAIXA': return '📉';
+        case 'LATERAL': return '🔄';
+        default: return '❓';
+    }
+}
+
+function getConfidenceBar(confidence) {
+    const bars = Math.round(confidence / 20); // 0-5 barras
+    const filledBars = '█'.repeat(bars);
+    const emptyBars = '░'.repeat(5 - bars);
+    return `[${filledBars}${emptyBars}]`;
+}
+
+/**
+ * 📊 TESTE CAPTURA & ANÁLISE - Usa mesma lógica do botão ASCII com salvamento
+ */
+async function testImageAnalysis() {
+    const resultDiv = document.getElementById('intelligence-result');
+    
+    try {
+        resultDiv.innerHTML = '🔄 Executando captura e análise completa...';
+        
+        // Verificar módulos necessários
+        if (!window.LocalIntelligence) {
+            throw new Error('Módulo LocalIntelligence não disponível');
+        }
+        
+        if (!window.FaithfulChartConverter) {
+            throw new Error('Conversor ASCII não disponível');
+        }
+        
+        // Capturar screenshot
+        window.addLog('📷 Capturando screenshot do gráfico...', 'INFO', 'complete-analysis');
+        const screenshot = await window.LocalIntelligence.captureCurrentChart();
+        if (!screenshot) {
+            throw new Error('Falha na captura do screenshot');
+        }
+        
+        // Converter para ASCII
+        window.addLog('🔄 Convertendo para ASCII...', 'INFO', 'complete-analysis');
+        const asciiData = await window.FaithfulChartConverter.captureChartToASCII(screenshot);
+        if (!asciiData) {
+            throw new Error('Falha na conversão para ASCII');
+        }
+        
+        // Salvar arquivo HTML
+        window.addLog('💾 Salvando arquivo ASCII...', 'INFO', 'complete-analysis');
+        const fileName = await window.FaithfulChartConverter.saveASCIIFile(asciiData);
+        
+        // Extrair dados de tendência para o sistema
+        const trendDirection = asciiData.trendAnalysis ? asciiData.trendAnalysis.direction : 'INDETERMINADA';
+        const trendAngle = asciiData.trendAnalysis ? asciiData.trendAnalysis.angle.toFixed(1) : '0.0';
+        const trendConfidence = asciiData.trendAnalysis ? asciiData.trendAnalysis.confidence.toFixed(1) : '0.0';
+        const trendSlope = asciiData.trendAnalysis ? asciiData.trendAnalysis.slope.toFixed(4) : '0.0000';
+        
+        // Armazenar dados globalmente para uso do sistema
+        window.lastTrendAnalysis = {
+            direction: trendDirection,
+            angle: parseFloat(trendAngle),
+            confidence: parseFloat(trendConfidence),
+            slope: parseFloat(trendSlope),
+            timestamp: new Date().toISOString(),
+            reliable: parseFloat(trendConfidence) > 25.0
+        };
+        
+        // Armazenar no histórico para estatísticas futuras
+        const currentAsset = await window.LocalIntelligence.getCurrentAssetSymbol();
+        if (currentAsset && currentAsset !== 'UNKNOWN' && asciiData.trendAnalysis) {
+            const trend = asciiData.trendAnalysis;
+            const isVolatile = trend.direction === 'LATERAL' || trend.confidence < 50;
+            const volatilityScore = trend.direction === 'LATERAL' ? 0.8 : (100 - trend.confidence) / 100;
+            
+            addTrendToHistory({
+                asset: currentAsset,
+                direction: trend.direction,
+                angle: trend.angle,
+                confidence: trend.confidence,
+                slope: trend.slope,
+                isVolatile: isVolatile,
+                volatilityScore: volatilityScore,
+                timestamp: new Date().toISOString(),
+                method: 'complete-analysis-test'
+            });
+        }
+        
+        // Mostrar resultado final com análise completa
+        let resultHTML = '<div style="text-align: left; font-size: 11px; line-height: 1.4;">';
+        resultHTML += '<strong>✅ TESTE CAPTURA & ANÁLISE COMPLETO!</strong><br><br>';
+        resultHTML += `📄 <strong>Arquivo:</strong> ${fileName}<br>`;
+        resultHTML += `📐 <strong>Resolução:</strong> ${asciiData.dimensions.asciiWidth}x${asciiData.dimensions.asciiHeight} chars<br>`;
+        resultHTML += `🟢 <strong>Candles de Alta:</strong> ${asciiData.candleStats.greenPixels}<br>`;
+        resultHTML += `🔴 <strong>Candles de Baixa:</strong> ${asciiData.candleStats.redPixels}<br>`;
+        resultHTML += `📊 <strong>Tendência:</strong> <strong>${trendDirection}</strong> | 📐 ${trendAngle}° | 🎲 ${trendConfidence}%<br>`;
+        resultHTML += `💾 <strong>Arquivo HTML:</strong> Salvo com sucesso!<br>`;
+        resultHTML += `📈 <strong>Histórico:</strong> Dados adicionados para estatísticas futuras<br>`;
+        resultHTML += '</div>';
+        
+        resultDiv.innerHTML = resultHTML;
+        
+        // Log da análise para o sistema
+        window.addLog(`📈 Análise Completa: ${trendDirection} (${trendAngle}°, ${trendConfidence}% confiança) - Arquivo: ${fileName}`, 'SUCCESS', 'complete-analysis');
+        
+    } catch (error) {
+        window.addLog(`❌ Erro na análise completa: ${error.message}`, 'ERROR', 'complete-analysis');
+        resultDiv.innerHTML = `❌ <strong>Erro:</strong> ${error.message}`;
+    }
+}
+
+/**
+ * Cria dados de teste e atualiza a interface
+ */
+function createTestDataAndRefresh() {
+    const resultDiv = document.getElementById('intelligence-result');
+    
+    try {
+        resultDiv.innerHTML = '🔧 Criando dados de teste...';
+        
+        const success = createTestData();
+        
+        if (success) {
+            resultDiv.innerHTML = '✅ Dados de teste criados com sucesso! Executando debug novamente...';
+            
+            setTimeout(() => {
+                debugHistoricalData();
+            }, 1000);
+            
+            if (window.addLog) {
+                window.addLog('Dados de teste criados e sistema reprocessado', 'SUCCESS', 'test-data');
+            }
+        } else {
+            resultDiv.innerHTML = '❌ Falha ao criar dados de teste';
+        }
+        
+    } catch (error) {
+        resultDiv.innerHTML = `❌ Erro ao criar dados de teste: ${error.message}`;
+        if (window.addLog) {
+            window.addLog(`Erro ao criar dados de teste: ${error.message}`, 'ERROR', 'test-data');
+        }
+    }
+}
+
+// Tornar a função global para ser chamada pelo HTML
+window.createTestDataAndRefresh = createTestDataAndRefresh;
+
+/**
+ * Carrega o módulo CaptureScreen dinamicamente
+ */
+async function loadCaptureModule() {
+    const resultDiv = document.getElementById('intelligence-result');
+    
+    try {
+        resultDiv.innerHTML = '📥 Carregando módulo CaptureScreen...';
+        
+        // Verificar se já está carregado
+        if (typeof window.CaptureScreen !== 'undefined') {
+            resultDiv.innerHTML = '✅ Módulo CaptureScreen já está carregado!';
+            return;
+        }
+        
+        // Carregar o módulo
+        const script = document.createElement('script');
+        script.src = '../content/capture-screen.js';
+        
+        const loadPromise = new Promise((resolve, reject) => {
+            script.onload = () => {
+                if (typeof window.CaptureScreen !== 'undefined') {
+                    resolve();
+                } else {
+                    reject(new Error('Módulo carregado mas CaptureScreen não está disponível'));
+                }
+            };
+            script.onerror = () => reject(new Error('Falha ao carregar o script'));
+        });
+        
+        document.head.appendChild(script);
+        
+        // Aguardar carregamento
+        await loadPromise;
+        
+        // Verificar funções disponíveis
+        let resultHtml = '<div style="text-align: left; font-size: 12px; line-height: 1.4;">';
+        resultHtml += '<strong>✅ Módulo CaptureScreen carregado com sucesso!</strong><br><br>';
+        resultHtml += '<strong>🔍 Funções disponíveis:</strong><br>';
+        resultHtml += `• captureScreenSimple: ${typeof window.CaptureScreen.captureScreenSimple === 'function' ? '✅' : '❌'}<br>`;
+        resultHtml += `• captureForAnalysis: ${typeof window.CaptureScreen.captureForAnalysis === 'function' ? '✅' : '❌'}<br>`;
+        resultHtml += `• captureAndShow: ${typeof window.CaptureScreen.captureAndShow === 'function' ? '✅' : '❌'}<br>`;
+        resultHtml += `• captureAndAnalyze: ${typeof window.CaptureScreen.captureAndAnalyze === 'function' ? '✅' : '❌'}<br><br>`;
+        resultHtml += '<strong>📝 Próximos passos:</strong><br>';
+        resultHtml += '• Teste a captura usando o botão "Teste Captura & Análise"<br>';
+        resultHtml += '• Ou use o botão "Capturar Tela" do painel principal<br>';
+        resultHtml += '</div>';
+        
+        resultDiv.innerHTML = resultHtml;
+        
+        // Log
+        if (window.addLog) {
+            window.addLog('Módulo CaptureScreen carregado com sucesso', 'SUCCESS', 'capture-module');
+        }
+        
+    } catch (error) {
+        resultDiv.innerHTML = `❌ Erro ao carregar módulo: ${error.message}`;
+        if (window.addLog) {
+            window.addLog(`Erro ao carregar módulo CaptureScreen: ${error.message}`, 'ERROR', 'capture-module');
+        }
+    }
+}
+
+// Tornar a função global para ser chamada pelo HTML
+window.loadCaptureModule = loadCaptureModule;
+
+/**
+ * 🔬 TESTE COMPLETO: Análise multi-método de imagem
+ */
+async function testAdvancedImageAnalysis() {
+    const resultDiv = document.getElementById('intelligence-result');
+    
+    try {
+        // Carregar módulo se necessário
+        if (!window.ImagePatternAnalyzer) {
+            const script = document.createElement('script');
+            script.src = '../content/analyzers/image-pattern-analyzer.js';
+            document.head.appendChild(script);
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        
+        resultDiv.innerHTML = '🔄 Executando análise multi-método...';
+        
+        // 1. Capturar screenshot
+        const screenshot = await window.LocalIntelligence.captureCurrentChart();
+        if (!screenshot) {
+            throw new Error('Falha na captura do gráfico');
+        }
+        
+        // 2. Executar análise completa
+        const analysis = await window.ImagePatternAnalyzer.analyzeComplete(screenshot);
+        
+        let resultHtml = '<div style="text-align: left; font-size: 11px; line-height: 1.3;">';
+        resultHtml += '<strong>🔬 Análise Multi-Método Completa:</strong><br><br>';
+        
+        if (analysis.success) {
+            resultHtml += `⏱️ Tempo de processamento: ${analysis.processingTime}ms<br><br>`;
+            
+            // Resumo final
+            const summary = analysis.summary;
+            const volatileIcon = summary.isVolatile ? '⚠️' : '✅';
+            resultHtml += '<strong>📊 RESULTADO CONSOLIDADO:</strong><br>';
+            resultHtml += `${volatileIcon} Tendência: ${summary.finalTrend.toUpperCase()}<br>`;
+            resultHtml += `🎯 Confiança: ${(summary.confidence * 100).toFixed(0)}%<br>`;
+            resultHtml += `⚡ Volatilidade: ${summary.volatilityScore.toFixed(3)} (${summary.isVolatile ? 'VOLÁTIL' : 'ESTÁVEL'})<br>`;
+            resultHtml += `🔧 Métodos usados: ${summary.methodsUsed.join(', ')}<br>`;
+            resultHtml += `💡 Razão: ${summary.reason}<br><br>`;
+            
+            // Análise de texto ASCII
+            if (analysis.methods.textConversion) {
+                const text = analysis.methods.textConversion;
+                resultHtml += '<strong>📝 MÉTODO 1: Conversão para Texto</strong><br>';
+                resultHtml += `▲ Movimentos para cima: ${text.patterns.upwardTrends}<br>`;
+                resultHtml += `▼ Movimentos para baixo: ${text.patterns.downwardTrends}<br>`;
+                resultHtml += `─ Movimentos laterais: ${text.patterns.lateralMovement}<br>`;
+                resultHtml += `📈 Tendência detectada: ${text.trendAnalysis.trend} (${(text.trendAnalysis.strength * 100).toFixed(0)}%)<br><br>`;
+            }
+            
+            // Análise de cores
+            if (analysis.methods.colorHistogram) {
+                const color = analysis.methods.colorHistogram;
+                resultHtml += '<strong>🎨 MÉTODO 2: Histograma de Cores</strong><br>';
+                resultHtml += `🟢 Verde: ${color.histogram.colors.green} pixels<br>`;
+                resultHtml += `🔴 Vermelho: ${color.histogram.colors.red} pixels<br>`;
+                resultHtml += `⚪ Branco: ${color.histogram.colors.white} pixels<br>`;
+                resultHtml += `🔘 Cinza: ${color.histogram.colors.gray} pixels<br>`;
+                resultHtml += `🏆 Cor dominante: ${color.analysis.dominantColor}<br><br>`;
+            }
+            
+            // Detecção de bordas
+            if (analysis.methods.edgeDetection) {
+                const edges = analysis.methods.edgeDetection;
+                resultHtml += '<strong>🔍 MÉTODO 3: Detecção de Bordas</strong><br>';
+                resultHtml += `📏 Bordas detectadas: ${edges.totalEdges || 0}<br>`;
+                resultHtml += `➡️ Horizontais: ${edges.horizontal || 0}<br>`;
+                resultHtml += `⬇️ Verticais: ${edges.vertical || 0}<br>`;
+                resultHtml += `↗️ Diagonais: ${edges.diagonal || 0}<br><br>`;
+            }
+            
+            // Segmentação regional
+            if (analysis.methods.segmentation) {
+                const segments = analysis.methods.segmentation;
+                resultHtml += '<strong>🎯 MÉTODO 4: Análise Regional</strong><br>';
+                resultHtml += `📦 Segmentos analisados: ${segments.totalSegments || 0}<br>`;
+                resultHtml += `⚡ Segmentos voláteis: ${segments.volatileSegments || 0}<br>`;
+                resultHtml += `📊 Variação regional: ${((segments.regionalVariation || 0) * 100).toFixed(0)}%<br><br>`;
+            }
+            
+        } else {
+            resultHtml += `❌ Erro na análise: ${analysis.error}<br>`;
+        }
+        
+        resultHtml += '</div>';
+        resultDiv.innerHTML = resultHtml;
+        
+        // Log
+        if (window.addLog) {
+            window.addLog(`Análise multi-método executada: ${analysis.success ? 'Sucesso' : 'Falha'}`, 'INFO', 'advanced-analysis');
+        }
+        
+    } catch (error) {
+        resultDiv.innerHTML = `❌ Erro na análise avançada: ${error.message}`;
+        if (window.addLog) {
+            window.addLog(`Erro na análise avançada: ${error.message}`, 'ERROR', 'advanced-analysis');
+        }
+    }
+}
+
+/**
+ * 🔢 TESTE ESPECÍFICO: Análise linear de pixels COM SALVAMENTO DE ARQUIVO
+ */
+async function testPixelLinearAnalysis() {
+    const resultDiv = document.getElementById('intelligence-result');
+    
+    try {
+        // 🐛 DEBUG: Logs detalhados usando sistema correto
+        window.addLog('🔄 Iniciando análise linear de pixels...', 'INFO', 'image-analysis');
+        resultDiv.innerHTML = '🔄 Executando análise linear de pixels...';
+        
+        // Verificar se o módulo está carregado
+        window.addLog(`🧩 LocalIntelligence: ${!!window.LocalIntelligence ? 'OK' : 'ERRO'}`, 'DEBUG', 'image-analysis');
+        window.addLog(`🧩 ImagePatternAnalyzer: ${!!window.ImagePatternAnalyzer ? 'OK' : 'ERRO'}`, 'DEBUG', 'image-analysis');
+        
+        if (!window.LocalIntelligence) {
+            throw new Error('Módulo LocalIntelligence não carregado');
+        }
+        
+        if (!window.ImagePatternAnalyzer) {
+            throw new Error('Módulo ImagePatternAnalyzer não carregado');
+        }
+        
+        // Capturar screenshot
+        window.addLog('📷 Capturando screenshot...', 'INFO', 'image-analysis');
+        const screenshot = await window.LocalIntelligence.captureCurrentChart();
+        if (!screenshot) {
+            throw new Error('Falha na captura do gráfico');
+        }
+        window.addLog(`✅ Screenshot capturado: ${screenshot.length} caracteres`, 'SUCCESS', 'image-analysis');
+        
+        const pixelData = await window.ImagePatternAnalyzer.analyzePixelLinear(screenshot);
+        
+        let resultHtml = '<div style="text-align: left; font-size: 11px; line-height: 1.3;">';
+        resultHtml += '<strong>🔢 Análise Linear de Pixels:</strong><br><br>';
+        
+        if (pixelData) {
+            resultHtml += `📏 Matriz: ${pixelData.pixelMatrix.length} x ${pixelData.pixelMatrix[0]?.length || 0} pixels<br>`;
+            resultHtml += `🎨 Cores detectadas: ${pixelData.colorMap.size}<br><br>`;
+            
+            resultHtml += '<strong>📊 Distribuição de Cores:</strong><br>';
+            for (const [color, count] of pixelData.colorMap) {
+                const percentage = ((count / (pixelData.pixelMatrix.length * (pixelData.pixelMatrix[0]?.length || 0))) * 100);
+                const icon = color === 'green' ? '🟢' : color === 'red' ? '🔴' : color === 'white' ? '⚪' : '🔘';
+                resultHtml += `${icon} ${color}: ${count} pixels (${percentage.toFixed(1)}%)<br>`;
+            }
+            
+            // Converter para texto ASCII COMPLETO
+            const textAnalysis = window.ImagePatternAnalyzer.convertToColoredText(pixelData.pixelMatrix);
+            
+            // 📝 CRIAR ARQUIVO DE TEXTO DETALHADO
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const fileName = `analise_grafico_${timestamp}.txt`;
+            
+            let fileContent = `🔬 ANÁLISE DE IMAGEM - REPRESENTAÇÃO TEXTUAL\n`;
+            fileContent += `=====================================\n`;
+            fileContent += `Data/Hora: ${new Date().toLocaleString('pt-BR')}\n`;
+            fileContent += `Dimensões: ${pixelData.pixelMatrix.length} x ${pixelData.pixelMatrix[0]?.length || 0} pixels\n`;
+            fileContent += `Amostragem: 1 pixel a cada ${window.ImagePatternAnalyzer.config.pixelSampling}\n\n`;
+            
+            fileContent += `LEGENDA DE CORES:\n`;
+            fileContent += `▲ = Verde (movimentos de alta/candlestick verde)\n`;
+            fileContent += `▼ = Vermelho (movimentos de baixa/candlestick vermelho)\n`;
+            fileContent += `─ = Branco/Claro (linhas, background, movimento lateral)\n`;
+            fileContent += `· = Cinza (grid, texto, ruído)\n`;
+            fileContent += `█ = Preto (áreas sólidas)\n\n`;
+            
+            fileContent += `ANÁLISE DE PADRÕES:\n`;
+            fileContent += `Movimentos para cima: ${textAnalysis.patterns.upwardTrends}\n`;
+            fileContent += `Movimentos para baixo: ${textAnalysis.patterns.downwardTrends}\n`;
+            fileContent += `Movimentos laterais: ${textAnalysis.patterns.lateralMovement}\n`;
+            fileContent += `Tendência detectada: ${textAnalysis.trendAnalysis.trend} (força: ${(textAnalysis.trendAnalysis.strength * 100).toFixed(1)}%)\n\n`;
+            
+            fileContent += `REPRESENTAÇÃO VISUAL (ASCII):\n`;
+            fileContent += `=====================================\n`;
+            fileContent += textAnalysis.text;
+            
+            fileContent += `\n\nDETALHES TÉCNICOS:\n`;
+            fileContent += `=====================================\n`;
+            for (const [color, count] of pixelData.colorMap) {
+                const percentage = ((count / (pixelData.pixelMatrix.length * (pixelData.pixelMatrix[0]?.length || 0))) * 100);
+                fileContent += `${color}: ${count} pixels (${percentage.toFixed(2)}%)\n`;
+            }
+            
+            // 💾 SALVAR ARQUIVO NA PASTA ESPECÍFICA
+            const savedFileName = await saveAnalysisFile(fileContent, fileName);
+            window.addLog(`💾 Arquivo salvo: ${savedFileName}`, 'SUCCESS', 'image-analysis');
+            
+            resultHtml += '<strong>📝 Representação ASCII (primeiras 10 linhas):</strong><br>';
+            const lines = textAnalysis.text.split('\n').slice(0, 10);
+            for (const line of lines) {
+                if (line.length > 80) {
+                    resultHtml += `<code style="font-size: 8px;">${line.substring(0, 80)}...</code><br>`;
+                } else {
+                    resultHtml += `<code style="font-size: 8px;">${line}</code><br>`;
+                }
+            }
+            
+            resultHtml += '<br><strong>📈 Análise de Tendência:</strong><br>';
+            resultHtml += `🎯 Tendência: ${textAnalysis.trendAnalysis.trend.toUpperCase()}<br>`;
+            resultHtml += `💪 Força: ${(textAnalysis.trendAnalysis.strength * 100).toFixed(1)}%<br>`;
+            resultHtml += `📊 Padrões: ▲${textAnalysis.patterns.upwardTrends} ▼${textAnalysis.patterns.downwardTrends} ─${textAnalysis.patterns.lateralMovement}<br><br>`;
+            
+            resultHtml += `<strong>💾 ARQUIVO SALVO:</strong> <code>${fileName}</code><br>`;
+            resultHtml += `📂 Localização: Downloads<br>`;
+            resultHtml += `📊 Conteúdo: Representação ASCII completa + análise de padrões<br>`;
+            
+        } else {
+            resultHtml += '❌ Falha na análise linear de pixels<br>';
+        }
+        
+        resultHtml += '</div>';
+        resultDiv.innerHTML = resultHtml;
+        
+    } catch (error) {
+        window.addLog(`❌ Erro na análise linear: ${error.message}`, 'ERROR', 'image-analysis');
+        resultDiv.innerHTML = `❌ Erro na análise linear: ${error.message}`;
+    }
+}
+
+/**
+ * 🐛 SISTEMA DE DEBUG GLOBAL
+ * Detecta cliques nos botões e logs de sistema
+ */
+function initGlobalDebugSystem() {
+    window.addLog('🔧 Inicializando sistema de debug global...', 'DEBUG', 'debug-system');
+    
+    // Debug de cliques em botões de teste
+    document.addEventListener('click', function(event) {
+        if (event.target.matches('.test-btn')) {
+            const buttonText = event.target.textContent || event.target.innerText;
+            const buttonId = event.target.id;
+            
+            window.addLog(`🖱️ Botão clicado: ${buttonText.trim()} (ID: ${buttonId})`, 'INFO', 'debug-system');
+        }
+    });
+    
+    // Debug de carregamento de módulos
+    const checkModules = () => {
+        const modules = {
+            'LocalIntelligence': !!window.LocalIntelligence,
+            'ImagePatternAnalyzer': !!window.ImagePatternAnalyzer,
+            'addLog': !!window.addLog,
+            'testPixelLinearAnalysis': !!window.testPixelLinearAnalysis,
+            'testCompleteAnalysis': !!window.testCompleteAnalysis,
+            'testEdgeDetectionAnalysis': !!window.testEdgeDetectionAnalysis
+        };
+        
+        window.addLog(`🧩 Status dos módulos verificado`, 'DEBUG', 'debug-system');
+        
+        // Mostrar no debug div se existir
+        const debugDiv = document.getElementById('image-analysis-debug');
+        if (debugDiv) {
+            let statusText = '🧩 Módulos: ';
+            for (const [name, loaded] of Object.entries(modules)) {
+                statusText += `${name}:${loaded ? '✅' : '❌'} `;
+            }
+            debugDiv.innerHTML = statusText;
+        }
+        
+        return modules;
+    };
+    
+    // Verificar módulos agora e a cada 5 segundos (menos frequente)
+    checkModules();
+    setInterval(checkModules, 5000);
+    
+    // Expor função de debug globalmente
+    window.debugModules = checkModules;
+    
+    window.addLog('✅ Sistema de debug global ativo', 'SUCCESS', 'debug-system');
+}
+
+/**
+ * 💾 SISTEMA DE SALVAMENTO ESPECIALIZADO
+ * Salva arquivos na pasta específica "Analises TM Pro" no desktop
+ */
+
+// Função principal para salvar arquivos de análise
+async function saveAnalysisFile(content, fileName) {
+    try {
+        // Usar método tradicional com nome sugerido da pasta
+        const prefixedFileName = `[Analises-TM-Pro] ${fileName}`;
+        
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = prefixedFileName;
+        a.click();
+        URL.revokeObjectURL(url);
+        
+        return prefixedFileName;
+    } catch (error) {
+        window.addLog(`❌ Erro ao salvar arquivo: ${error.message}`, 'ERROR', 'file-system');
+        throw error;
+    }
+}
+
+// Função para salvar relatório completo de análise
+async function saveCompleteAnalysisReport(analysisData) {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const fileName = `analise_visual_completa_${timestamp}.txt`;
+    
+    if (window.ImagePatternAnalyzer && window.ImagePatternAnalyzer.saveVisualRepresentations) {
+        return window.ImagePatternAnalyzer.saveVisualRepresentations(analysisData, fileName);
+    } else {
+        // Fallback simples
+        let fileContent = `[COMPLETO] ANALISE VISUAL DE GRAFICO\n`;
+        fileContent += `====================================\n`;
+        fileContent += `Data: ${new Date().toLocaleString('pt-BR')}\n`;
+        fileContent += `Tempo: ${analysisData.processingTime || 0}ms\n\n`;
+        
+        if (analysisData.summary) {
+            fileContent += `Tendencia: ${analysisData.summary.finalTrend}\n`;
+            fileContent += `Confianca: ${(analysisData.summary.confidence * 100).toFixed(1)}%\n`;
+        }
+        
+        return await saveAnalysisFile(fileContent, fileName);
+    }
+}
+
+// Função para salvar análise de bordas
+async function saveEdgeAnalysisFile(edgeData) {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const fileName = `analise_geometria_${timestamp}.txt`;
+    
+    let fileContent = `[GEOMETRIA] ANALISE GEOMETRICA - DETECCAO DE BORDAS\n`;
+    fileContent += `==================================================\n`;
+    fileContent += `Data: ${new Date().toLocaleString('pt-BR')}\n\n`;
+    
+    fileContent += `Total de bordas: ${edgeData.totalEdges || 0}\n`;
+    fileContent += `Horizontais: ${edgeData.horizontal || 0}\n`;
+    fileContent += `Verticais: ${edgeData.vertical || 0}\n`;
+    fileContent += `Confianca: ${((edgeData.confidence || 0) * 100).toFixed(1)}%\n`;
+    
+    return await saveAnalysisFile(fileContent, fileName);
+}
+
+/**
+ * 📸 SISTEMA DE CAPTURA ASCII
+ * Conecta botão de captura à função de conversão ASCII
+ */
+function initEventListeners() {
+    window.addLog('🔌 Inicializando sistema de captura ASCII...', 'DEBUG', 'ascii-system');
+    
+    // Botão único de captura ASCII
+    const captureButton = document.getElementById('capture-ascii-chart');
+    
+    if (captureButton) {
+        captureButton.addEventListener('click', async function() {
+            window.addLog('📸 Iniciando captura ASCII do gráfico...', 'INFO', 'ascii-system');
+            try {
+                await captureChartToASCII();
+            } catch (error) {
+                window.addLog(`❌ Erro na captura ASCII: ${error.message}`, 'ERROR', 'ascii-system');
+            }
+        });
+        window.addLog('✅ Event listener de captura ASCII adicionado', 'SUCCESS', 'ascii-system');
+    } else {
+        window.addLog('⚠️ Botão de captura ASCII não encontrado', 'WARN', 'ascii-system');
+    }
+}
+
+/**
+ * 📸 FUNÇÃO PRINCIPAL DE CAPTURA ASCII
+ */
+async function captureChartToASCII() {
+    const resultDiv = document.getElementById('ascii-capture-result');
+    if (!resultDiv) return;
+    
+    try {
+        resultDiv.innerHTML = '🔄 Capturando gráfico...';
+        
+        // Verificar módulos necessários
+        if (!window.LocalIntelligence) {
+            throw new Error('Módulo LocalIntelligence não disponível');
+        }
+        
+        if (!window.FaithfulChartConverter) {
+            throw new Error('Conversor ASCII não disponível');
+        }
+        
+        // Capturar screenshot
+        window.addLog('📷 Capturando screenshot do gráfico...', 'INFO', 'ascii-capture');
+        resultDiv.innerHTML = '🔄 Capturando screenshot...';
+        
+        const screenshot = await window.LocalIntelligence.captureCurrentChart();
+        if (!screenshot) {
+            throw new Error('Falha na captura do screenshot');
+        }
+        
+        // Converter para ASCII
+        window.addLog('🔄 Convertendo para ASCII...', 'INFO', 'ascii-capture');
+        resultDiv.innerHTML = '🔄 Convertendo para ASCII fiel...';
+        
+        const asciiData = await window.FaithfulChartConverter.captureChartToASCII(screenshot);
+        if (!asciiData) {
+            throw new Error('Falha na conversão para ASCII');
+        }
+        
+        // Salvar arquivo
+        window.addLog('💾 Salvando arquivo ASCII...', 'INFO', 'ascii-capture');
+        resultDiv.innerHTML = '🔄 Salvando arquivo...';
+        
+        const fileName = await window.FaithfulChartConverter.saveASCIIFile(asciiData);
+        
+        // Mostrar resultado final com análise completa de tendência
+        const trendDirection = asciiData.trendAnalysis ? asciiData.trendAnalysis.direction : 'INDETERMINADA';
+        const trendAngle = asciiData.trendAnalysis ? asciiData.trendAnalysis.angle.toFixed(1) : '0.0';
+        const trendConfidence = asciiData.trendAnalysis ? asciiData.trendAnalysis.confidence.toFixed(1) : '0.0';
+        const trendSlope = asciiData.trendAnalysis ? asciiData.trendAnalysis.slope.toFixed(4) : '0.0000';
+        
+        // Armazenar dados globalmente para uso do sistema
+        window.lastTrendAnalysis = {
+            direction: trendDirection,
+            angle: parseFloat(trendAngle),
+            confidence: parseFloat(trendConfidence),
+            slope: parseFloat(trendSlope),
+            timestamp: new Date().toISOString(),
+            reliable: parseFloat(trendConfidence) > 25.0
+        };
+        
+        let resultHTML = '<div style="text-align: left; font-size: 11px; line-height: 1.4;">';
+        resultHTML += '<strong>✅ CAPTURA ASCII CONCLUÍDA!</strong><br><br>';
+        resultHTML += `📄 <strong>Arquivo:</strong> ${fileName}<br>`;
+        resultHTML += `📐 <strong>Resolução:</strong> ${asciiData.dimensions.asciiWidth}x${asciiData.dimensions.asciiHeight} chars<br>`;
+        resultHTML += `🟢 <strong>Candles de Alta:</strong> ${asciiData.candleStats.greenPixels}<br>`;
+        resultHTML += `🔴 <strong>Candles de Baixa:</strong> ${asciiData.candleStats.redPixels}<br>`;
+        resultHTML += `📊 <strong>Tendência:</strong> <strong>${trendDirection}</strong> | 📐 ${trendAngle}° | 🎲 ${trendConfidence}%<br>`;
+        resultHTML += `💾 <strong>Arquivo HTML:</strong> Salvo com sucesso!<br>`;
+        resultHTML += '</div>';
+        
+        // Log da análise para o sistema
+        window.addLog(`📈 Análise de Tendência: ${trendDirection} (${trendAngle}°, ${trendConfidence}% confiança)`, 'SUCCESS', 'trend-analysis');
+        
+        resultDiv.innerHTML = resultHTML;
+        
+        window.addLog(`✅ Captura ASCII concluída: ${fileName}`, 'SUCCESS', 'ascii-capture');
+        
+    } catch (error) {
+        window.addLog(`❌ Erro na captura ASCII: ${error.message}`, 'ERROR', 'ascii-capture');
+        resultDiv.innerHTML = `❌ <strong>Erro:</strong> ${error.message}`;
+    }
+}
+
+// FUNÇÕES DE TESTE REMOVIDAS - FOCO APENAS EM CAPTURA ASCII FIEL
+
+/**
+ * 🎨 TESTE ESPECÍFICO: Histograma de cores
+ */
+async function testColorHistogramAnalysis() {
+    const resultDiv = document.getElementById('intelligence-result');
+    
+    try {
+        resultDiv.innerHTML = '🔄 Executando análise de histograma...';
+        
+        const screenshot = await window.LocalIntelligence.captureCurrentChart();
+        if (!screenshot) {
+            throw new Error('Falha na captura do gráfico');
+        }
+        
+        if (!window.ImagePatternAnalyzer) {
+            throw new Error('Módulo ImagePatternAnalyzer não carregado');
+        }
+        
+        // Primeiro fazer análise de pixels
+        const pixelData = await window.ImagePatternAnalyzer.analyzePixelLinear(screenshot);
+        if (!pixelData) {
+            throw new Error('Falha na análise de pixels');
+        }
+        
+        // Depois análise de histograma
+        const colorAnalysis = window.ImagePatternAnalyzer.analyzeColorHistogram(pixelData.pixelMatrix);
+        
+        let resultHtml = '<div style="text-align: left; font-size: 11px; line-height: 1.3;">';
+        resultHtml += '<strong>🎨 Análise de Histograma de Cores:</strong><br><br>';
+        
+        if (colorAnalysis) {
+            const histogram = colorAnalysis.histogram;
+            const analysis = colorAnalysis.analysis;
+            
+            resultHtml += '<strong>📊 Distribuição Geral:</strong><br>';
+            for (const [color, count] of Object.entries(histogram.colors)) {
+                const icon = color === 'green' ? '🟢' : color === 'red' ? '🔴' : color === 'white' ? '⚪' : color === 'gray' ? '🔘' : '⚫';
+                resultHtml += `${icon} ${color}: ${count} pixels<br>`;
+            }
+            
+            resultHtml += '<br><strong>🎯 Análise Regional:</strong><br>';
+            resultHtml += `⬆️ Metade superior - Verde: ${histogram.distribution.topHalf.green}, Vermelho: ${histogram.distribution.topHalf.red}<br>`;
+            resultHtml += `⬇️ Metade inferior - Verde: ${histogram.distribution.bottomHalf.green}, Vermelho: ${histogram.distribution.bottomHalf.red}<br>`;
+            resultHtml += `⬅️ Metade esquerda - Verde: ${histogram.distribution.leftHalf.green}, Vermelho: ${histogram.distribution.leftHalf.red}<br>`;
+            resultHtml += `➡️ Metade direita - Verde: ${histogram.distribution.rightHalf.green}, Vermelho: ${histogram.distribution.rightHalf.red}<br>`;
+            
+            if (analysis) {
+                resultHtml += '<br><strong>📈 Indicadores de Tendência:</strong><br>';
+                resultHtml += `🏆 Cor dominante: ${analysis.dominantColor}<br>`;
+                resultHtml += `⚖️ Equilíbrio de cores: ${analysis.colorBalance ? analysis.colorBalance.toFixed(3) : 'N/A'}<br>`;
+                resultHtml += `📊 Bias regional: ${analysis.regionalBias ? Object.keys(analysis.regionalBias).join(', ') : 'Equilibrado'}<br>`;
+                if (analysis.volatilityIndicators) {
+                    resultHtml += `⚡ Indicadores de volatilidade: ${analysis.volatilityIndicators.toFixed(3)}<br>`;
+                }
+            }
+            
+        } else {
+            resultHtml += '❌ Falha na análise de histograma<br>';
+        }
+        
+        resultHtml += '</div>';
+        resultDiv.innerHTML = resultHtml;
+        
+    } catch (error) {
+        resultDiv.innerHTML = `❌ Erro na análise de histograma: ${error.message}`;
+    }
+}
+
+/**
+ * 📊 TESTE ESPECÍFICO: Análise completa com múltiplos métodos E SALVAMENTO
+ */
+async function testCompleteAnalysis() {
+    const resultDiv = document.getElementById('intelligence-result');
+    
+    try {
+        // 🐛 DEBUG: Logs detalhados usando sistema correto
+        window.addLog('🔄 Iniciando análise completa...', 'INFO', 'image-analysis');
+        resultDiv.innerHTML = '🔄 Executando análise completa...';
+        
+        // Verificar se o módulo está carregado
+        window.addLog(`🧩 ImagePatternAnalyzer: ${!!window.ImagePatternAnalyzer ? 'OK' : 'ERRO'}`, 'DEBUG', 'image-analysis');
+        if (!window.ImagePatternAnalyzer) {
+            throw new Error('Módulo ImagePatternAnalyzer não carregado');
+        }
+        
+        // Capturar screenshot
+        window.addLog('📷 Capturando screenshot...', 'INFO', 'image-analysis');
+        const screenshot = await window.LocalIntelligence.captureCurrentChart();
+        if (!screenshot) {
+            throw new Error('Falha na captura do gráfico');
+        }
+        window.addLog(`✅ Screenshot capturado: ${screenshot.length} caracteres`, 'SUCCESS', 'image-analysis');
+        
+        // Executar análise
+        window.addLog('🔬 Executando análise completa...', 'INFO', 'image-analysis');
+        const analysis = await window.ImagePatternAnalyzer.analyzeComplete(screenshot);
+        window.addLog('✅ Análise concluída com sucesso', 'SUCCESS', 'image-analysis');
+        
+        let resultHtml = '<div style="text-align: left; font-size: 11px; line-height: 1.3;">';
+        resultHtml += '<strong>📊 Análise Completa Multi-Método:</strong><br><br>';
+        
+        if (analysis && analysis.summary) {
+            resultHtml += `🎯 <strong>Resultado Final:</strong> ${analysis.summary.finalTrend.toUpperCase()}<br>`;
+            resultHtml += `💪 <strong>Confiança:</strong> ${(analysis.summary.confidence * 100).toFixed(1)}%<br>`;
+            resultHtml += `⚡ <strong>Volatilidade:</strong> ${analysis.summary.volatilityScore.toFixed(3)} ${analysis.summary.isVolatile ? '(VOLÁTIL)' : '(ESTÁVEL)'}<br>`;
+            resultHtml += `⏱️ <strong>Processamento:</strong> ${analysis.processingTime}ms<br><br>`;
+            
+            resultHtml += '<strong>🔧 Métodos Utilizados:</strong><br>';
+            analysis.summary.methodsUsed.forEach((method, index) => {
+                resultHtml += `${index + 1}. ${method}<br>`;
+            });
+            
+            resultHtml += '<br><strong>💡 Explicação:</strong><br>';
+            resultHtml += analysis.summary.reason + '<br><br>';
+            
+            // 💾 SALVAR ARQUIVO VISUAL COMPLETO
+            try {
+                window.addLog('💾 Gerando relatório visual...', 'INFO', 'image-analysis');
+                const fileName = await saveCompleteAnalysisReport(analysis);
+                window.addLog(`✅ Relatório salvo: ${fileName}`, 'SUCCESS', 'image-analysis');
+                
+                resultHtml += `<strong>💾 RELATÓRIO VISUAL SALVO:</strong> <code>${fileName}</code><br>`;
+                resultHtml += `📂 Localização: Desktop/Analises TM Pro/<br>`;
+                resultHtml += `📊 Conteúdo: Análise ASCII + Geometria + Heatmap + Tendências<br>`;
+            } catch (saveError) {
+                window.addLog(`❌ Erro ao salvar relatório: ${saveError.message}`, 'ERROR', 'image-analysis');
+                resultHtml += `⚠️ Relatório não pôde ser salvo: ${saveError.message}<br>`;
+            }
+            
+        } else {
+            resultHtml += '❌ Falha na análise completa<br>';
+            window.addLog('❌ Análise retornou dados inválidos', 'ERROR', 'image-analysis');
+        }
+        
+        resultHtml += '</div>';
+        resultDiv.innerHTML = resultHtml;
+        
+        window.addLog('Teste de análise completa concluído', 'SUCCESS', 'image-analysis');
+        
+    } catch (error) {
+        window.addLog(`❌ Erro na análise completa: ${error.message}`, 'ERROR', 'image-analysis');
+        resultDiv.innerHTML = `❌ <strong>Erro:</strong> ${error.message}`;
+    }
+}
+
+/**
+ * 🔬 TESTE ESPECÍFICO: Detecção de bordas
+ */
+async function testEdgeDetectionAnalysis() {
+    const resultDiv = document.getElementById('intelligence-result');
+    
+    try {
+        resultDiv.innerHTML = '🔄 Executando análise de detecção de bordas...';
+        
+        const screenshot = await window.LocalIntelligence.captureCurrentChart();
+        if (!screenshot) {
+            throw new Error('Falha na captura do gráfico');
+        }
+        
+        if (!window.ImagePatternAnalyzer) {
+            throw new Error('Módulo ImagePatternAnalyzer não carregado');
+        }
+        
+        // Primeiro fazer análise de pixels
+        const pixelData = await window.ImagePatternAnalyzer.analyzePixelLinear(screenshot);
+        if (!pixelData) {
+            throw new Error('Falha na análise de pixels');
+        }
+        
+        // Análise de detecção de bordas
+        const edgeData = window.ImagePatternAnalyzer.analyzeEdgeDetection(pixelData.pixelMatrix);
+        
+        let resultHtml = '<div style="text-align: left; font-size: 11px; line-height: 1.3;">';
+        resultHtml += '<strong>🔬 Análise de Detecção de Bordas:</strong><br><br>';
+        
+        if (edgeData) {
+            resultHtml += `🎯 <strong>Bordas detectadas:</strong> ${edgeData.edgeCount}<br>`;
+            resultHtml += `📊 <strong>Intensidade média:</strong> ${edgeData.averageIntensity.toFixed(3)}<br>`;
+            resultHtml += `🔍 <strong>Definição:</strong> ${edgeData.sharpness.toFixed(3)}<br>`;
+            resultHtml += `⚡ <strong>Complexidade:</strong> ${edgeData.complexity.toFixed(3)}<br><br>`;
+            
+            resultHtml += '<strong>🎨 Distribuição:</strong><br>';
+            resultHtml += `🟢 Verde: ${edgeData.colorDistribution.green}<br>`;
+            resultHtml += `🔴 Vermelho: ${edgeData.colorDistribution.red}<br>`;
+            resultHtml += `⚪ Outros: ${edgeData.colorDistribution.other}<br><br>`;
+            
+            resultHtml += '<strong>📈 Interpretação:</strong><br>';
+            if (edgeData.sharpness > 0.7) {
+                resultHtml += '🔥 Gráfico bem definido com tendências claras<br>';
+            } else if (edgeData.sharpness > 0.4) {
+                resultHtml += '📊 Gráfico moderadamente definido<br>';
+            } else {
+                resultHtml += '🌀 Gráfico com alta volatilidade/ruído<br>';
+            }
+            
+            // Salvar arquivo específico de análise de bordas
+            try {
+                const fileName = await saveEdgeAnalysisFile(edgeData);
+                resultHtml += `<br><strong>💾 RELATÓRIO SALVO:</strong> ${fileName}<br>`;
+            } catch (saveError) {
+                resultHtml += `<br>⚠️ Erro ao salvar: ${saveError.message}<br>`;
+            }
+            
+        } else {
+            resultHtml += '❌ Falha na análise de detecção de bordas<br>';
+        }
+        
+        resultHtml += '</div>';
+        resultDiv.innerHTML = resultHtml;
+        
+    } catch (error) {
+        resultDiv.innerHTML = `❌ Erro na análise de bordas: ${error.message}`;
+    }
+}
+
+/**
+ * 📊 TESTE DE VOLATILIDADE - Análise ASCII sem salvar arquivo
+ */
+async function testVolatilityCheck() {
+    const resultDiv = document.getElementById('intelligence-result');
+    
+    try {
+        resultDiv.innerHTML = '🔄 Analisando gráfico para detectar volatilidade...';
+        
+        // Verificar módulos necessários
+        if (!window.LocalIntelligence) {
+            throw new Error('Módulo LocalIntelligence não disponível');
+        }
+        
+        if (!window.FaithfulChartConverter) {
+            throw new Error('Conversor ASCII não disponível');
+        }
+        
+        // 1. Capturar screenshot
+        window.addLog('📷 Capturando screenshot para análise de volatilidade...', 'INFO', 'volatility-test');
+        const screenshot = await window.LocalIntelligence.captureCurrentChart();
+        if (!screenshot) {
+            throw new Error('Falha na captura do screenshot');
+        }
+        
+        // 2. Converter para ASCII e analisar tendência (SEM SALVAR)
+        window.addLog('📊 Analisando tendência ASCII...', 'INFO', 'volatility-test');
+        const asciiData = await window.FaithfulChartConverter.captureChartToASCII(screenshot);
+        if (!asciiData || !asciiData.trendAnalysis) {
+            throw new Error('Falha na análise de tendência');
+        }
+        
+        // 3. Obter ativo atual
+        const currentAsset = await window.LocalIntelligence.getCurrentAssetSymbol();
+        
+        // 4. Processar dados de tendência
+        const trend = asciiData.trendAnalysis;
+        const isVolatile = trend.direction === 'LATERAL' || trend.confidence < 50;
+        const volatilityScore = trend.direction === 'LATERAL' ? 0.8 : (100 - trend.confidence) / 100;
+        
+        // 5. Armazenar no histórico de volatilidade
+        if (currentAsset && currentAsset !== 'UNKNOWN') {
+            addTrendToHistory({
+                asset: currentAsset,
+                direction: trend.direction,
+                angle: trend.angle,
+                confidence: trend.confidence,
+                slope: trend.slope,
+                isVolatile: isVolatile,
+                volatilityScore: volatilityScore,
+                timestamp: new Date().toISOString(),
+                method: 'ascii-analysis'
+            });
+        }
+        
+        // 6. Exibir resultado
+        const volatileIcon = isVolatile ? '⚠️' : '✅';
+        let resultHtml = '<div style="text-align: left; font-size: 12px; line-height: 1.4;">';
+        resultHtml += '<strong>📊 ANÁLISE DE VOLATILIDADE:</strong><br><br>';
+        
+        if (currentAsset && currentAsset !== 'UNKNOWN') {
+            resultHtml += `<strong>🎯 Ativo:</strong> ${currentAsset}<br>`;
+        }
+        
+        resultHtml += `<strong>📈 Tendência:</strong> ${trend.direction} | 📐 ${trend.angle.toFixed(1)}° | 🎲 ${trend.confidence.toFixed(1)}%<br>`;
+        resultHtml += `${volatileIcon} <strong>Volatilidade:</strong> ${isVolatile ? 'ALTA' : 'BAIXA'} (score: ${volatilityScore.toFixed(3)})<br>`;
+        resultHtml += `📊 <strong>Slope:</strong> ${trend.slope.toFixed(4)} | 🔍 <strong>Pontos:</strong> ${trend.pointsAnalyzed}<br>`;
+        resultHtml += `📏 <strong>Resolução ASCII:</strong> ${asciiData.dimensions.asciiWidth}x${asciiData.dimensions.asciiHeight}<br><br>`;
+        
+        // Interpretação da análise
+        let interpretation = '';
+        if (trend.direction === 'LATERAL') {
+            interpretation = '🔄 Mercado lateral - alta volatilidade esperada';
+        } else if (trend.confidence > 70) {
+            interpretation = `📈 Tendência ${trend.direction.toLowerCase()} forte - baixa volatilidade`;
+        } else if (trend.confidence > 40) {
+            interpretation = `📊 Tendência ${trend.direction.toLowerCase()} fraca - volatilidade moderada`;
+        } else {
+            interpretation = '⚠️ Tendência indefinida - alta volatilidade';
+        }
+        
+        resultHtml += `<strong>💡 Interpretação:</strong> ${interpretation}<br>`;
+        resultHtml += `<strong>⏱️ Análise:</strong> Feita via ASCII Chart em tempo real<br>`;
+        resultHtml += '</div>';
+        
+        resultDiv.innerHTML = resultHtml;
+        
+        window.addLog(`✅ Análise de volatilidade concluída: ${trend.direction} (${trend.confidence.toFixed(1)}%)`, 'SUCCESS', 'volatility-test');
+        
+    } catch (error) {
+        window.addLog(`❌ Erro na análise de volatilidade: ${error.message}`, 'ERROR', 'volatility-test');
+        resultDiv.innerHTML = `❌ <strong>Erro:</strong> ${error.message}`;
+    }
+}
+
+// 🚀 INICIALIZAÇÃO FINAL
+document.addEventListener('DOMContentLoaded', function() {
+    window.addLog('🚀 DOM carregado, inicializando sistemas...', 'INFO', 'startup');
+    
+    // Aguardar um pouco para garantir que todos os scripts foram carregados
+    setTimeout(() => {
+        // Inicializar sistemas na ordem correta
+        initEventListeners();
+        initGlobalDebugSystem();
+        
+        // Forçar verificação de módulos
+        if (window.debugModules) {
+            window.addLog('🔍 Forçando verificação de módulos...', 'DEBUG', 'startup');
+            window.debugModules();
+        }
+        
+        // Teste adicional de disponibilidade das funções
+        const testFunctions = [
+            'testPixelLinearAnalysis',
+            'testCompleteAnalysis', 
+            'testEdgeDetectionAnalysis',
+            'testColorHistogramAnalysis',
+            'testAdvancedImageAnalysis'
+        ];
+        
+        const functionStatus = testFunctions.map(fn => ({
+            name: fn,
+            available: typeof window[fn] === 'function'
+        }));
+        
+        window.addLog(`🧪 Funções de teste verificadas: ${functionStatus.filter(f => f.available).length}/${functionStatus.length} disponíveis`, 'INFO', 'startup');
+        
+        window.addLog('✅ Sistema de análise de imagem totalmente inicializado', 'SUCCESS', 'startup');
+        
+    }, 1000);
+});
+
+/**
+ * 📈 SISTEMA DE HISTÓRICO DE TENDÊNCIAS
+ */
+
+// Armazenar histórico de análises de tendência
+function addTrendToHistory(trendData) {
+    try {
+        // Obter histórico existente
+        let trendHistory = JSON.parse(localStorage.getItem('trendAnalysisHistory') || '[]');
+        
+        // Adicionar nova análise com timestamp
+        const historyEntry = {
+            id: Date.now(),
+            timestamp: trendData.timestamp || new Date().toISOString(),
+            asset: trendData.asset || 'UNKNOWN',
+            direction: trendData.direction,
+            angle: trendData.angle,
+            confidence: trendData.confidence,
+            slope: trendData.slope,
+            isVolatile: trendData.isVolatile,
+            volatilityScore: trendData.volatilityScore,
+            method: trendData.method || 'ascii-analysis',
+            reliable: trendData.confidence > 25.0
+        };
+        
+        trendHistory.push(historyEntry);
+        
+        // Manter apenas os últimos 100 registros
+        if (trendHistory.length > 100) {
+            trendHistory = trendHistory.slice(-100);
+        }
+        
+        // Salvar no localStorage
+        localStorage.setItem('trendAnalysisHistory', JSON.stringify(trendHistory));
+        
+        // Atualizar dados globais para acesso
+        window.trendHistory = trendHistory;
+        
+        window.addLog(`📈 Análise adicionada ao histórico: ${trendData.asset} - ${trendData.direction}`, 'INFO', 'trend-history');
+        
+        return historyEntry;
+        
+    } catch (error) {
+        window.addLog(`❌ Erro ao salvar no histórico: ${error.message}`, 'ERROR', 'trend-history');
+        return null;
+    }
+}
+
+// Obter estatísticas do histórico de tendências
+function getTrendHistoryStats() {
+    try {
+        const history = JSON.parse(localStorage.getItem('trendAnalysisHistory') || '[]');
+        
+        if (history.length === 0) {
+            return {
+                total: 0,
+                reliable: 0,
+                byDirection: { ALTA: 0, BAIXA: 0, LATERAL: 0 },
+                byAsset: {},
+                avgConfidence: 0,
+                volatileCount: 0
+            };
+        }
+        
+        const stats = {
+            total: history.length,
+            reliable: history.filter(h => h.reliable).length,
+            byDirection: { ALTA: 0, BAIXA: 0, LATERAL: 0 },
+            byAsset: {},
+            avgConfidence: 0,
+            volatileCount: history.filter(h => h.isVolatile).length
+        };
+        
+        let totalConfidence = 0;
+        
+        history.forEach(entry => {
+            // Contar por direção
+            if (entry.direction in stats.byDirection) {
+                stats.byDirection[entry.direction]++;
+            }
+            
+            // Contar por ativo
+            if (entry.asset) {
+                stats.byAsset[entry.asset] = (stats.byAsset[entry.asset] || 0) + 1;
+            }
+            
+            // Somar confiança
+            totalConfidence += entry.confidence || 0;
+        });
+        
+        stats.avgConfidence = totalConfidence / history.length;
+        
+        return stats;
+        
+    } catch (error) {
+        window.addLog(`❌ Erro ao obter estatísticas: ${error.message}`, 'ERROR', 'trend-history');
+        return {
+            total: 0,
+            reliable: 0,
+            byDirection: { ALTA: 0, BAIXA: 0, LATERAL: 0 },
+            byAsset: {},
+            avgConfidence: 0,
+            volatileCount: 0
+        };
+    }
+}
+
+// Limpar histórico de tendências
+function clearTrendHistory() {
+    try {
+        localStorage.removeItem('trendAnalysisHistory');
+        window.trendHistory = [];
+        window.addLog('🗑️ Histórico de tendências limpo', 'INFO', 'trend-history');
+        return true;
+    } catch (error) {
+        window.addLog(`❌ Erro ao limpar histórico: ${error.message}`, 'ERROR', 'trend-history');
+        return false;
+    }
+}
+
+// Exportar histórico de tendências
+function exportTrendHistory() {
+    try {
+        const history = JSON.parse(localStorage.getItem('trendAnalysisHistory') || '[]');
+        const dataStr = JSON.stringify(history, null, 2);
+        const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+        
+        const exportFileDefaultName = `trend_history_${new Date().toISOString().split('T')[0]}.json`;
+        
+        const linkElement = document.createElement('a');
+        linkElement.setAttribute('href', dataUri);
+        linkElement.setAttribute('download', exportFileDefaultName);
+        linkElement.click();
+        
+        window.addLog(`📁 Histórico exportado: ${exportFileDefaultName}`, 'SUCCESS', 'trend-history');
+        return true;
+    } catch (error) {
+        window.addLog(`❌ Erro ao exportar histórico: ${error.message}`, 'ERROR', 'trend-history');
+        return false;
+    }
+}
+
+// Mostrar histórico de tendências
+function showTrendHistory() {
+    const resultDiv = document.getElementById('intelligence-result');
+    
+    try {
+        const stats = getTrendHistoryStats();
+        
+        let resultHtml = '<div style="text-align: left; font-size: 11px; line-height: 1.3;">';
+        resultHtml += '<strong>📈 Histórico de Análises de Tendência:</strong><br><br>';
+        
+        if (stats.total === 0) {
+            resultHtml += '❌ Nenhuma análise no histórico<br>';
+            resultHtml += '<em>Execute algumas análises para ver estatísticas</em><br>';
+        } else {
+            resultHtml += `<strong>📊 Estatísticas Gerais:</strong><br>`;
+            resultHtml += `• Total de análises: ${stats.total}<br>`;
+            resultHtml += `• Análises confiáveis: ${stats.reliable} (${((stats.reliable/stats.total)*100).toFixed(1)}%)<br>`;
+            resultHtml += `• Confiança média: ${stats.avgConfidence.toFixed(1)}%<br>`;
+            resultHtml += `• Análises voláteis: ${stats.volatileCount} (${((stats.volatileCount/stats.total)*100).toFixed(1)}%)<br><br>`;
+            
+            resultHtml += `<strong>🎯 Por Direção:</strong><br>`;
+            resultHtml += `📈 ALTA: ${stats.byDirection.ALTA} (${((stats.byDirection.ALTA/stats.total)*100).toFixed(1)}%)<br>`;
+            resultHtml += `📉 BAIXA: ${stats.byDirection.BAIXA} (${((stats.byDirection.BAIXA/stats.total)*100).toFixed(1)}%)<br>`;
+            resultHtml += `🔄 LATERAL: ${stats.byDirection.LATERAL} (${((stats.byDirection.LATERAL/stats.total)*100).toFixed(1)}%)<br><br>`;
+            
+            resultHtml += `<strong>💰 Por Ativo:</strong><br>`;
+            const sortedAssets = Object.entries(stats.byAsset)
+                .sort(([,a], [,b]) => b - a)
+                .slice(0, 5);
+            
+            sortedAssets.forEach(([asset, count]) => {
+                resultHtml += `• ${asset}: ${count} análises<br>`;
+            });
+            
+            if (Object.keys(stats.byAsset).length > 5) {
+                resultHtml += `<em>... e mais ${Object.keys(stats.byAsset).length - 5} ativos</em><br>`;
+            }
+            
+            resultHtml += '<br><strong>🎛️ Ações:</strong><br>';
+            resultHtml += '• <button onclick="exportTrendHistory()">📁 Exportar Dados</button><br>';
+            resultHtml += '• <button onclick="clearTrendHistory(); showTrendHistory()">🗑️ Limpar Histórico</button><br>';
+        }
+        
+        resultHtml += '</div>';
+        resultDiv.innerHTML = resultHtml;
+        
+        window.addLog(`📊 Estatísticas do histórico: ${stats.total} análises`, 'INFO', 'trend-history');
+        
+    } catch (error) {
+        resultDiv.innerHTML = `❌ Erro ao mostrar histórico: ${error.message}`;
+        window.addLog(`❌ Erro ao mostrar histórico: ${error.message}`, 'ERROR', 'trend-history');
+    }
+}

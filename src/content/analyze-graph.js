@@ -54,8 +54,120 @@ function toUpdateStatus(message, type = 'info', duration = 3000) {
 }
 
 // =============================================
-// Funções de Análise
+// 🧠 SISTEMA DE INTELIGÊNCIA LOCAL 
 // =============================================
+
+/**
+ * Verifica se deve usar inteligência local ou chamar IA
+ */
+const checkLocalIntelligence = async (settings) => {
+    try {
+        // Verificar se o módulo de inteligência local está disponível
+        if (!window.LocalIntelligence) {
+            logFromAnalyzer('Módulo LocalIntelligence não disponível - procedendo com IA', 'WARN');
+            return { useLocal: false, reason: 'Módulo não carregado' };
+        }
+        
+        // Obter informações atuais
+        const currentPayout = await getCurrentPayout();
+        const currentAsset = await getCurrentAsset();
+        
+        logFromAnalyzer(`Verificando inteligência local - Payout: ${currentPayout}%, Ativo: ${currentAsset}`, 'INFO');
+        
+        // Fazer decisão inteligente
+        const decision = await window.LocalIntelligence.makeIntelligentDecision(currentPayout, currentAsset);
+        
+        if (!decision.shouldCall) {
+            logFromAnalyzer(`💡 ECONOMIA DE TOKENS: ${decision.reason}`, 'SUCCESS');
+            toUpdateStatus(`💡 Decisão local: ${decision.localDecision.action}`, 'info', 3000);
+            return {
+                useLocal: true,
+                localResult: decision.localDecision,
+                reason: decision.reason
+            };
+        }
+        
+        return {
+            useLocal: false,
+            preAnalysis: decision.preAnalysis,
+            reason: decision.reason
+        };
+        
+    } catch (error) {
+        logFromAnalyzer(`Erro na verificação de inteligência local: ${error.message}`, 'ERROR');
+        return { useLocal: false, reason: 'Erro na verificação' };
+    }
+};
+
+/**
+ * Obter payout atual
+ */
+const getCurrentPayout = async () => {
+    try {
+        if (window.PayoutController) {
+            const result = await window.PayoutController.getCurrentPayout();
+            return result.payout;
+        } else if (typeof window.capturePayoutFromDOM === 'function') {
+            const result = await window.capturePayoutFromDOM();
+            return result.payout;
+        }
+        return 85; // Valor padrão
+    } catch (error) {
+        logFromAnalyzer(`Erro ao obter payout: ${error.message}`, 'WARN');
+        return 85;
+    }
+};
+
+/**
+ * Obter ativo atual
+ */
+const getCurrentAsset = async () => {
+    try {
+        // Tentar obter via DOM ou outras fontes
+        const assetElement = document.querySelector('[data-asset-name]') || 
+                           document.querySelector('.asset-name') ||
+                           document.querySelector('.current-asset');
+        
+        if (assetElement) {
+            return assetElement.textContent || assetElement.dataset.assetName || 'UNKNOWN';
+        }
+        
+        return 'UNKNOWN';
+    } catch (error) {
+        logFromAnalyzer(`Erro ao obter ativo atual: ${error.message}`, 'WARN');
+        return 'UNKNOWN';
+    }
+};
+
+// =============================================
+// Funções de Análise (MODIFICADAS)
+// =============================================
+
+/**
+ * Gera prompt ENRIQUECIDO com inteligência local
+ */
+const generateIntelligentPrompt = (availablePeriods, userTradeTime, preAnalysis) => {
+    const basePrompt = generateDetailedPrompt(availablePeriods, userTradeTime);
+    
+    if (!preAnalysis) {
+        return basePrompt;
+    }
+    
+    // Enriquecer prompt com inteligência local
+    const enrichedContext = `
+📊 CONTEXTO INTELIGENTE (baseado em histórico local):
+- Análise prévia: ${preAnalysis.reasons.join(', ')}
+- Recomendação de ativo: ${preAnalysis.assetRecommendation}
+- Recomendação de payout: ${preAnalysis.payoutRecommendation}
+- Confiança prévia: ${(preAnalysis.confidence * 100).toFixed(1)}%
+
+IMPORTANTE: Use este contexto para uma análise mais precisa e focada.
+${preAnalysis.assetRecommendation === 'SWITCH' ? 'CONSIDERE FORTEMENTE recomendar troca de ativo.' : ''}
+${preAnalysis.confidence > 0.5 ? 'Os dados históricos sugerem cautela nesta situação.' : ''}
+`;
+    
+    return enrichedContext + basePrompt;
+};
 
 /**
  * Gera prompt detalhado para análise normal
@@ -119,13 +231,13 @@ Responda STRICT JSON:
 };
 
 /**
- * Seleciona o prompt adequado com base nas configurações
+ * Seleciona o prompt adequado com base nas configurações E inteligência local
  */
-const generateAnalysisPrompt = (availablePeriods, userTradeTime, isTestMode) => {
+const generateAnalysisPrompt = (availablePeriods, userTradeTime, isTestMode, preAnalysis = null) => {
     if (isTestMode) {
         return generateSimplePrompt(availablePeriods, userTradeTime);
     } else {
-        return generateDetailedPrompt(availablePeriods, userTradeTime);
+        return generateIntelligentPrompt(availablePeriods, userTradeTime, preAnalysis);
     }
 };
 
@@ -164,11 +276,44 @@ const validateAndProcessResponse = (rawText) => {
 };
 
 /**
- * Processa a análise do gráfico
+ * Processa a análise do gráfico (MODIFICADO COM INTELIGÊNCIA LOCAL)
  */
 const processAnalysis = async (imageData, settings) => {
     try {
-        graphAddLog('Iniciando análise...', 'INFO');
+        graphAddLog('🧠 Iniciando análise inteligente...', 'INFO');
+        
+        // *** NOVO: VERIFICAÇÃO DE INTELIGÊNCIA LOCAL ***
+        const intelligenceCheck = await checkLocalIntelligence(settings);
+        
+        if (intelligenceCheck.useLocal) {
+            // ✅ DECISÃO LOCAL - ECONOMIZAR TOKENS
+            graphAddLog(`💡 Decisão tomada localmente: ${intelligenceCheck.localResult.action}`, 'SUCCESS');
+            
+            // Formatar como resposta da IA para compatibilidade
+            const localResult = {
+                action: intelligenceCheck.localResult.action,
+                trust: Math.round(intelligenceCheck.localResult.confidence * 100),
+                reason: intelligenceCheck.localResult.reasons.join('; '),
+                expiration: 5,
+                source: 'local-intelligence',
+                tokensaved: true
+            };
+            
+            // *** ATUALIZAR INTELIGÊNCIA LOCAL COM RESULTADO ***
+            if (window.LocalIntelligence) {
+                setTimeout(() => {
+                    window.LocalIntelligence.recordTokenSaving('local_decision');
+                }, 100);
+            }
+            
+            return {
+                success: true,
+                result: localResult
+            };
+        }
+        
+        // *** CONTINUAR COM IA (com contexto enriquecido) ***
+        graphAddLog('🤖 Prosseguindo com análise da IA (contexto enriquecido)', 'INFO');
         
         // Verificar se o imageData é válido
         if (!imageData || typeof imageData !== 'string' || !imageData.startsWith('data:image')) {
@@ -198,59 +343,33 @@ const processAnalysis = async (imageData, settings) => {
                     return {
                         action: 'WAIT',
                         reason: `Análise local: ${reason}. ${suggestions.length > 0 ? suggestions.join('. ') : ''}`,
-                        trust: Math.max(localAnalysis.confidence - 20, 30), // Reduzir confiança
-                        expiration: 3,
-                        localAnalysis: localAnalysis,
-                        source: 'local-detector'
+                        trust: localAnalysis.confidence,
+                        expiration: 1,
+                        source: 'local-pattern-detector'
                     };
                 }
-                
-                // Log detalhes da análise local para contexto
-                graphAddLog(`Elementos detectados: Candlesticks=${localAnalysis.candlesticks.detected}, Indicadores=${localAnalysis.indicators.detected}`, 'DEBUG');
-                
-                // Adicionar contexto da análise local para a IA
-                settings.localContext = {
-                    confidence: localAnalysis.confidence,
-                    candlesticksCount: localAnalysis.candlesticks.totalCount,
-                    indicatorsCount: localAnalysis.indicators.lineCount,
-                    quality: localAnalysis.quality.score
-                };
-                
             } catch (localError) {
-                graphAddLog(`Erro na análise local: ${localError.message}`, 'ERROR');
-                // Continuar com análise da IA mesmo se análise local falhar
+                graphAddLog(`Erro na análise local: ${localError.message}`, 'WARN');
             }
-        } else {
-            graphAddLog('Local Pattern Detector não disponível, prosseguindo direto para IA', 'WARN');
         }
         
-        // *** NOVO: Verificar cache antes de chamar IA ***
-        if (window.cacheAnalyzer) {
-            const imageHash = btoa(imageData.substring(0, 100)).substring(0, 16);
-            const context = {
-                automation: settings.automation || false,
-                galeActive: settings.galeActive || false,
-                localContext: settings.localContext || null
-            };
-            
-            const cachedResult = window.cacheAnalyzer.getAIAnalysis(imageHash, context);
-            if (cachedResult) {
-                graphAddLog(`Resultado obtido do cache - economizando tokens da IA`, 'SUCCESS');
-                return {
-                    ...cachedResult,
-                    fromCache: true,
-                    cacheStats: window.cacheAnalyzer.getStats()
-                };
-            } else {
-                graphAddLog('Análise não encontrada no cache, enviando para IA...', 'INFO');
-            }
-        }
-
-        // Montar payload para análise
+        // Obter configurações
+        const userTradeTime = settings.period || 0;
+        const isTestMode = settings.testMode || false;
+        
+        // *** NOVO: Usar prompt inteligente com pré-análise ***
+        const prompt = generateAnalysisPrompt(
+            ["1", "2", "5", "10", "15"],
+            userTradeTime,
+            isTestMode,
+            intelligenceCheck.preAnalysis
+        );
+        
+        // Preparar payload para API
         const payload = {
             contents: [{
                 parts: [
-                    { text: "Analise o gráfico e responda com JSON: { \"action\": \"BUY/SELL/WAIT\", \"reason\": \"Explicação técnica\", \"trust\": 75, \"expiration\": 5 }" },
+                    { text: prompt },
                     { 
                         inline_data: {
                             mime_type: "image/png",
@@ -260,43 +379,24 @@ const processAnalysis = async (imageData, settings) => {
                 ]
             }]
         };
-
-        // Log direto para o console e para o sistema de logs
-        console.log("%c[ANÁLISE] Iniciando processamento de análise de gráfico", "background: #e74c3c; color: white; padding: 5px; font-weight: bold;");
         
-        // Obter URL da API de forma segura
-        let apiUrl;
-        try {
-            // Tentar obter a URL diretamente do contexto atual
-            if (window.API_URL) {
-                apiUrl = window.API_URL;
-            } else {
-                // Usar URL fixa como fallback
-                apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=AIzaSyDJC5a7hDIrV0P1o6P9qBXKxO3j0nTRmxc';
-            }
-        } catch (error) {
-            // Usar URL fixa como fallback se algo der errado
-            apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=AIzaSyDJC5a7hDIrV0P1o6P9qBXKxO3j0nTRmxc';
-        }
+        // URL da API
+        const apiUrl = window.API_URL || "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyDeYcYUxAN52DNrgZeFNcEfceVMoWJDjWk";
         
-        // Enviar para API
+        // Fazer requisição
+        graphAddLog('📡 Enviando para API Gemini com contexto enriquecido...', 'INFO');
         const response = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
-
+        
         if (!response.ok) {
-            throw new Error(`Erro HTTP: ${response.status}`);
+            throw new Error(`Erro na API: ${response.status}`);
         }
-
+        
         const data = await response.json();
-        
-        if (!data || !data.candidates || !data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts) {
-            throw new Error('Resposta da API incompleta ou mal formatada');
-        }
-        
-        const text = data.candidates[0].content.parts[0].text;
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
         
         if (!text) {
             throw new Error('Texto de resposta vazio ou ausente');
@@ -342,7 +442,7 @@ const processAnalysis = async (imageData, settings) => {
                 const context = {
                     automation: settings.automation || false,
                     galeActive: settings.galeActive || false,
-                    localContext: settings.localContext || null
+                    localContext: intelligenceCheck.preAnalysis || null
                 };
                 
                 // Estimar tokens utilizados (aproximação)
@@ -402,18 +502,36 @@ async function getSystemConfig() {
 // =============================================
 
 /**
- * Processa a análise de uma imagem diretamente
+ * Processa a análise de uma imagem diretamente (MODIFICADO)
  * @param {string} imageData - A imagem em formato dataUrl
  * @param {Object} settings - Configurações do usuário
  * @returns {Promise<Object>} - Resultado da análise
  */
 async function analyzeImage(imageData, settings = {}) {
     try {
-        logFromAnalyzer('Iniciando análise direta de imagem', 'INFO');
+        logFromAnalyzer('🧠 Iniciando análise direta de imagem com inteligência local', 'INFO');
         
         // Verificar se a imagem é válida
         if (!imageData || typeof imageData !== 'string' || !imageData.startsWith('data:image')) {
             throw new Error('Dados de imagem inválidos');
+        }
+        
+        // *** VERIFICAÇÃO DE INTELIGÊNCIA LOCAL ***
+        const intelligenceCheck = await checkLocalIntelligence(settings);
+        
+        if (intelligenceCheck.useLocal) {
+            logFromAnalyzer(`💡 ECONOMIA DE TOKENS: ${intelligenceCheck.reason}`, 'SUCCESS');
+            
+            const localResult = {
+                action: intelligenceCheck.localResult.action,
+                trust: Math.round(intelligenceCheck.localResult.confidence * 100),
+                reason: `LOCAL: ${intelligenceCheck.localResult.reasons.join('; ')}`,
+                expiration: 5,
+                timestamp: new Date().toISOString(),
+                source: 'local-intelligence'
+            };
+            
+            return localResult;
         }
         
         // Obter configurações do sistema
@@ -421,11 +539,12 @@ async function analyzeImage(imageData, settings = {}) {
         const userTradeTime = settings.period || 0;
         const isTestMode = settings.testMode || false;
         
-        // Gerar prompt adequado ao contexto
+        // Gerar prompt adequado ao contexto (com pré-análise)
         const prompt = generateAnalysisPrompt(
             systemConfig.availablePeriods || ["1", "2", "5", "10", "15"],
             userTradeTime,
-            isTestMode
+            isTestMode,
+            intelligenceCheck.preAnalysis
         );
         
         // Montar payload para a API
@@ -447,7 +566,7 @@ async function analyzeImage(imageData, settings = {}) {
         const apiUrl = window.API_URL || "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyDeYcYUxAN52DNrgZeFNcEfceVMoWJDjWk";
         
         // Enviar para a API
-        logFromAnalyzer('Enviando solicitação para a API Gemini...', 'INFO');
+        logFromAnalyzer('📡 Enviando solicitação para a API Gemini com contexto inteligente...', 'INFO');
         const response = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -540,4 +659,4 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return false;
 });
 
-logFromAnalyzer('AnalyzeGraph: Carregamento concluído', 'INFO');
+logFromAnalyzer('AnalyzeGraph: Carregamento concluído com sistema de inteligência local', 'INFO');

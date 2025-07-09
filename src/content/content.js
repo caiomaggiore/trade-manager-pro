@@ -832,61 +832,7 @@ function capturePayoutFromDOM() {
       }
     }
 
-    // Handler para mudar categoria de ativo
-    if (message.action === 'TEST_SWITCH_ASSET_CATEGORY') {
-      try {
-        safeLog(`Recebida solicitação para mudar categoria: ${message.category}`, 'INFO');
-        
-        // Primeiro abrir o modal
-        AssetManager.openAssetModal()
-          .then(modalOpened => {
-            if (!modalOpened) {
-              throw new Error('Falha ao abrir modal de ativos');
-            }
-            
-            // Aguardar modal carregar e mudar categoria
-            setTimeout(() => {
-              AssetManager.switchToAssetCategory(message.category)
-                .then(categoryChanged => {
-                  // Aguardar lista atualizar e obter ativos
-                  setTimeout(() => {
-                    try {
-                      const assets = AssetManager.getAvailableAssets();
-                      
-                      // Fechar modal
-                      AssetManager.closeAssetModal();
-                      
-                      sendResponse({
-                        success: categoryChanged,
-                        category: message.category,
-                        assets: assets,
-                        message: categoryChanged 
-                          ? `Categoria alterada para ${message.category}. Encontrados ${assets.length} ativos.`
-                          : `Falha ao alterar categoria para ${message.category}`
-                      });
-                    } catch (error) {
-                      AssetManager.closeAssetModal();
-                      sendResponse({ success: false, error: error.message });
-                    }
-                  }, 500);
-                })
-                .catch(error => {
-                  AssetManager.closeAssetModal();
-                  sendResponse({ success: false, error: error.message });
-                });
-            }, 800);
-          })
-          .catch(error => {
-            sendResponse({ success: false, error: error.message });
-          });
-        
-        return true; // Manter canal aberto para resposta assíncrona
-  } catch (error) {
-        safeLog(`Erro ao mudar categoria: ${error.message}`, 'ERROR');
-        sendResponse({ success: false, error: error.message });
-        return true;
-      }
-    }
+    // ✅ HANDLER REMOVIDO: Era duplicado - o handler correto está nas linhas finais do arquivo
 
     // ❌ HANDLER REMOVIDO: Era duplicado e chamava função errada
     // O handler correto está na linha 2537 usando switchToBestAssetForAutomation
@@ -906,6 +852,8 @@ function capturePayoutFromDOM() {
       }
       return true;
     }
+
+    // *** REMOVIDO: Handler ANALYZE_CHART_VOLATILITY (agora usa análise real do gráfico) ***
 
     // Handler para fechar modal de ativos
     if (message.action === 'CLOSE_ASSET_MODAL') {
@@ -2448,7 +2396,162 @@ const AssetManager = {
     // ✅ PARA PAINEL: Usar função simples que busca apenas na categoria atual
     safeLog(`🔍 [PAINEL] Buscando melhor ativo na categoria atual (payout >= ${minPayout}%)`, 'INFO');
     return await AssetManager.switchToBestAssetInCurrentCategory(minPayout);
-  }
+  },
+
+  // ✅ NOVO: Função para trocar categoria e selecionar primeiro ativo com melhor payout (LÓGICA CORRIGIDA)
+  switchToCategoryAndSelectBestAsset: async (category, minPayout = 0) => {
+    let modalOpened = false;
+    
+    try {
+      safeLog(`🔄 [INÍCIO] Iniciando troca para categoria "${category}" (minPayout: ${minPayout})`, 'INFO');
+      
+      // ETAPA 1: Abrir modal de ativos
+      safeLog(`🔓 [MODAL] Abrindo modal de ativos...`, 'INFO');
+      modalOpened = await AssetManager.openAssetModal();
+      if (!modalOpened) {
+        throw new Error('MODAL_OPEN_FAILED: Falha ao abrir modal de ativos');
+      }
+      safeLog(`✅ [MODAL] Modal aberto com sucesso`, 'SUCCESS');
+      
+      // ETAPA 2: Aguardar modal carregar completamente
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      // ETAPA 3: Selecionar categoria
+      safeLog(`🔄 [CATEGORIA] Selecionando categoria "${category}"...`, 'INFO');
+      const categoryChanged = await AssetManager.switchToAssetCategory(category);
+      if (!categoryChanged) {
+        throw new Error(`CATEGORY_SWITCH_FAILED: Falha ao trocar para categoria ${category}`);
+      }
+      safeLog(`✅ [CATEGORIA] Categoria "${category}" selecionada com sucesso`, 'SUCCESS');
+      
+      // ETAPA 4: Aguardar lista de ativos da categoria carregar
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // ETAPA 5: Capturar dados da categoria (total de ativos e ativos válidos)
+      safeLog(`📊 [CAPTURA] Capturando dados da categoria "${category}"...`, 'INFO');
+      
+      const assets = await new Promise((resolve) => {
+        let attempts = 0;
+        const maxAttempts = 5;
+        
+        const tryGetAssets = () => {
+          attempts++;
+          const foundAssets = AssetManager.getAvailableAssets();
+          
+          if (foundAssets.length > 0) {
+            safeLog(`✅ [CAPTURA] ${foundAssets.length} ativos encontrados na tentativa ${attempts}`, 'SUCCESS');
+            resolve(foundAssets);
+          } else if (attempts < maxAttempts) {
+            safeLog(`⏳ [CAPTURA] Tentativa ${attempts}/${maxAttempts}: Lista vazia, tentando novamente...`, 'DEBUG');
+            setTimeout(tryGetAssets, 300);
+          } else {
+            safeLog(`❌ [CAPTURA] Falha após ${maxAttempts} tentativas`, 'ERROR');
+            resolve([]);
+          }
+        };
+        
+        tryGetAssets();
+      });
+      
+      if (assets.length === 0) {
+        throw new Error(`CATEGORY_EMPTY: Categoria "${category}" não tem ativos disponíveis`);
+      }
+      
+      // Ordenar por payout (maior primeiro)
+      assets.sort((a, b) => b.payout - a.payout);
+      
+      // Filtrar por payout mínimo
+      const validAssets = minPayout > 0 ? assets.filter(asset => asset.payout >= minPayout) : assets;
+      
+      safeLog(`📋 [DADOS] Categoria: "${category}", Total: ${assets.length}, Válidos: ${validAssets.length}`, 'INFO');
+      
+      if (validAssets.length === 0) {
+        const bestAvailable = assets[0];
+        throw new Error(`PAYOUT_INSUFFICIENT: Melhor ativo disponível: ${bestAvailable.name} (${bestAvailable.payout}%)`);
+      }
+      
+      // ETAPA 6: Capturar o ativo que vai selecionar (ANTES de selecionar)
+      const bestAsset = validAssets[0];
+      safeLog(`🎯 [ALVO] Ativo alvo identificado: ${bestAsset.name} (${bestAsset.payout}%)`, 'INFO');
+      
+      // ETAPA 7: Selecionar o ativo
+      safeLog(`🖱️ [SELEÇÃO] Clicando no ativo: ${bestAsset.name}...`, 'INFO');
+      const assetSelected = AssetManager.selectAsset(bestAsset);
+      if (!assetSelected) {
+        throw new Error('ASSET_SELECTION_FAILED: Falha ao clicar no ativo');
+      }
+      
+      // Aguardar seleção processar
+      await new Promise(resolve => setTimeout(resolve, 800));
+      safeLog(`✅ [SELEÇÃO] Ativo selecionado com sucesso`, 'SUCCESS');
+      
+      // ETAPA 8: Fechar modal
+      safeLog(`🔒 [MODAL] Fechando modal...`, 'INFO');
+      const modalClosed = await AssetManager.closeAssetModal();
+      if (!modalClosed) {
+        safeLog(`⚠️ [MODAL] Aviso: Modal pode não ter fechado corretamente`, 'WARN');
+      }
+      
+      // Aguardar interface atualizar
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // ETAPA 9: Verificar ativo atual final
+      const currentAsset = AssetManager.getCurrentSelectedAsset();
+      const verified = currentAsset && (
+        currentAsset.includes(bestAsset.name) || 
+        bestAsset.name.includes(currentAsset) ||
+        currentAsset.includes(bestAsset.name.split(' ')[0])
+      );
+      
+      if (verified) {
+        safeLog(`✅ [VERIFICAÇÃO] Ativo final confirmado: ${currentAsset}`, 'SUCCESS');
+      } else {
+        safeLog(`⚠️ [VERIFICAÇÃO] Ativo final não confirmado. Esperado: ${bestAsset.name}, Atual: ${currentAsset}`, 'WARN');
+      }
+      
+      // ETAPA 10: Retornar resultado com todos os dados coletados
+      const result = {
+        success: true,
+        category: category,
+        selectedAsset: bestAsset.name,
+        selectedPayout: bestAsset.payout,
+        totalAssets: assets.length,
+        validAssets: validAssets.length,
+        currentAsset: currentAsset || bestAsset.name,
+        verified: verified,
+        message: `Categoria "${category}" ativada. Ativo "${bestAsset.name}" (${bestAsset.payout}%) selecionado.`
+      };
+      
+      safeLog(`🎉 [SUCESSO] Processo concluído: ${result.message}`, 'SUCCESS');
+      return result;
+      
+    } catch (error) {
+      safeLog(`❌ [ERRO] Falha no processo: ${error.message}`, 'ERROR');
+      
+      // Cleanup: Fechar modal se estava aberto
+      if (modalOpened) {
+        try {
+          await AssetManager.closeAssetModal();
+          safeLog(`🔒 [CLEANUP] Modal fechado após erro`, 'DEBUG');
+        } catch (closeError) {
+          safeLog(`⚠️ [CLEANUP] Erro ao fechar modal: ${closeError.message}`, 'WARN');
+        }
+      }
+      
+      return {
+        success: false,
+        error: error.message,
+        category: category,
+        selectedAsset: 'Não informado',
+        selectedPayout: 0,
+        totalAssets: 0,
+        validAssets: 0,
+        currentAsset: 'Erro',
+        verified: false,
+        message: `Erro ao processar categoria "${category}": ${error.message}`
+      };
+    }
+  },
 };
 
 // ======================================================================
@@ -2502,7 +2605,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     const category = message.category || 'crypto';
     
-    AssetManager.switchToBestAsset(85, category)
+    AssetManager.switchToCategoryAndSelectBestAsset(category, 85)
       .then(result => {
         sendResponse(result);
       })

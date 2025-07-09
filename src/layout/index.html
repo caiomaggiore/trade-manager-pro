@@ -326,6 +326,75 @@
             Debug: Nenhum teste executado
           </div>
         </div>
+
+        <!-- Seção 5: Inteligência Local -->
+        <div class="sub-panel">
+          <h4 class="sub-panel-header"><i class="fas fa-brain"></i> Inteligência Local v2.0</h4>
+          <div class="panel-grid">
+            <button id="intelligence-stats" class="dev-button">
+              <i class="fas fa-chart-bar"></i>
+              <div class="button-content">
+                <span>Estatísticas</span>
+                <small>Mostra estatísticas da IA local</small>
+              </div>
+            </button>
+            <button id="intelligence-reset" class="dev-button dev-warning">
+              <i class="fas fa-undo"></i>
+              <div class="button-content">
+                <span>Reset Preliminar</span>
+                <small>Volta ao modo preliminar</small>
+              </div>
+            </button>
+            <button id="intelligence-exit-preliminary" class="dev-button dev-success">
+              <i class="fas fa-graduation-cap"></i>
+              <div class="button-content">
+                <span>Sair Preliminar</span>
+                <small>Força saída do modo preliminar</small>
+              </div>
+            </button>
+            <button id="test-volatility-check" class="dev-button">
+              <i class="fas fa-wave-square"></i>
+              <div class="button-content">
+                <span>Teste Volatilidade</span>
+                <small>Testa análise de volatilidade</small>
+              </div>
+            </button>
+            <button id="debug-historical-data" class="dev-button">
+              <i class="fas fa-bug"></i>
+              <div class="button-content">
+                <span>Debug Dados</span>
+                <small>Diagnóstico dos dados históricos</small>
+              </div>
+            </button>
+            <button id="scan-available-assets" class="dev-button">
+              <i class="fas fa-search"></i>
+              <div class="button-content">
+                <span>Buscar Ativos</span>
+                <small>Busca ativos disponíveis na plataforma</small>
+              </div>
+            </button>
+            <button id="test-image-analysis" class="dev-button">
+              <i class="fas fa-camera"></i>
+              <div class="button-content">
+                <span>Teste Captura & Análise</span>
+                <small>Captura, gera HTML e mostra status</small>
+              </div>
+            </button>
+
+            <button id="show-trend-history" class="dev-button">
+              <i class="fas fa-history"></i>
+              <div class="button-content">
+                <span>Histórico de Tendências</span>
+                <small>Mostra estatísticas do histórico</small>
+              </div>
+            </button>
+          </div>
+          <div id="intelligence-result" class="dev-result" style="min-height: 200px;">
+            Status: Sistema de Inteligência Local v2.0 carregado
+          </div>
+        </div>
+
+
      </div>
  
      <div id="historyList" class="history-list"></div>
@@ -404,6 +473,8 @@
    </div>
  
    <script src="../content/log-sys.js"></script>
+   <script src="../content/analyzers/local-intelligence.js"></script>
+   <script src="../content/analyzers/image-pattern-analyzer.js"></script>
    <script src="../content/analyze-graph.js"></script>
    <script src="../content/navigation.js"></script>
    <script src="../content/state-manager.js" defer></script>

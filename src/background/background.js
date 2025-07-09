@@ -739,6 +739,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
+    // *** REMOVIDO: Handler ANALYZE_VOLATILITY (agora usa análise real do gráfico) ***
+
     // *** NOVO: Handler para eventos do Intelligent Gale ***
     if (message.action === 'INTELLIGENT_GALE_EVENT') {
         const { event, data } = message;

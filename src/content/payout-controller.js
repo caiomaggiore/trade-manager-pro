@@ -392,10 +392,10 @@ class PayoutController {
         });
     }
     
-    // Teste de troca para categoria específica
+    // Teste de troca para categoria específica - CORRIGIDO: Usar lógica do botão "Melhor Ativo"
     async testSwitchAssetCategory(category) {
         return new Promise((resolve, reject) => {
-            this.log(`Iniciando teste de troca para categoria: ${category}`, 'INFO');
+            this.log(`🔄 Iniciando troca para categoria: ${category} (sequência correta: modal→categoria→dados→seleção→fechar)`, 'INFO');
             
             chrome.runtime.sendMessage({
                 action: 'TEST_SWITCH_ASSET_CATEGORY',
@@ -409,20 +409,41 @@ class PayoutController {
                 }
                 
                 if (response && response.success) {
-                    let resultText = `✅ ${response.message}<br><br>`;
-                    resultText += `<strong>Ativos de ${response.category}:</strong><br>`;
-                    resultText += this.formatAssetsList(response.assets);
+                    // ✅ NOVA FORMATAÇÃO: Usar dados detalhados da nova função com verificações
+                    const category = response.category || 'Não informado';
+                    const selectedAsset = response.selectedAsset || 'Não informado';
+                    const selectedPayout = response.selectedPayout || 0;
+                    const currentAsset = response.currentAsset || 'Verificando...';
+                    const totalAssets = response.totalAssets || 0;
+                    const validAssets = response.validAssets || 0;
+                    const verified = response.verified || false;
+                    const attempts = response.verificationAttempts || 0;
                     
-                    this.log(`Teste de troca de categoria concluído: ${response.message}`, 'SUCCESS');
+                    let resultText = `✅ ${response.message}<br><br>`;
+                    resultText += `<strong>📊 Categoria:</strong> ${category}<br>`;
+                    resultText += `<strong>🎯 Ativo Selecionado:</strong> ${selectedAsset} (${selectedPayout}%)<br>`;
+                    resultText += `<strong>📈 Ativo Atual:</strong> ${currentAsset}<br>`;
+                    resultText += `<strong>📁 Total de Ativos:</strong> ${totalAssets}<br>`;
+                    resultText += `<strong>✅ Ativos Válidos:</strong> ${validAssets}<br>`;
+                    resultText += `<strong>🔍 Verificação:</strong> ${verified ? '✅ Confirmada' : '⚠️ Não confirmada'} (${attempts} tentativas)<br>`;
+                    
+                    this.log(`✅ Teste de troca de categoria concluído: ${response.message}`, 'SUCCESS');
+                    this.log(`📊 DEBUG - Categoria: "${category}", Ativo: "${selectedAsset}", Payout: ${selectedPayout}`, 'DEBUG');
+                    
                     resolve({
                         success: true,
                         message: resultText,
-                        category: response.category,
-                        assets: response.assets
+                        category: category,
+                        selectedAsset: selectedAsset,
+                        selectedPayout: selectedPayout,
+                        totalAssets: totalAssets,
+                        validAssets: validAssets,
+                        currentAsset: currentAsset,
+                        verified: verified
                     });
                 } else {
                     const error = `❌ ${response?.error || 'Falha ao mudar categoria'}`;
-                    this.log(`Erro no teste de troca de categoria: ${response?.error}`, 'ERROR');
+                    this.log(`❌ Erro no teste de troca de categoria: ${response?.error}`, 'ERROR');
                     reject({
                         success: false,
                         message: error
