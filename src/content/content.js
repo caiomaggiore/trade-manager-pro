@@ -355,12 +355,14 @@ function capturePayoutFromDOM() {
     safeLog("Monitoramento de operações iniciado com sucesso", "SUCCESS");
   };
   
-  // Inicialização
+  // Inicialização do fechamento do modal de tutorial
   const modalTutorial = document.querySelector('.tutorial-v1__close-icon');
-  setTimeout( () => {
-    modalTutorial.click()
-    , 1000
-  });
+  if (modalTutorial) {
+    setTimeout(() => {
+        safeLog('Fechando modal de tutorial...', 'INFO');
+        modalTutorial.click();
+    }, 1000);
+  }
   
   
   // Inicialização segura
@@ -852,17 +854,27 @@ function capturePayoutFromDOM() {
                   setTimeout(() => {
                     try {
                       const assets = AssetManager.getAvailableAssets();
+                      let assetSelected = false;
+                      let firstAsset = null;
+
+                      if (assets.length > 0) {
+                        firstAsset = assets[0];
+                        safeLog(`Tentando selecionar o primeiro ativo da lista: ${firstAsset.name}`, 'INFO');
+                        assetSelected = AssetManager.selectAsset(firstAsset);
+                      } else {
+                        safeLog(`Nenhum ativo encontrado na categoria ${message.category}`, 'WARN');
+                      }
                       
                       // Fechar modal
                       AssetManager.closeAssetModal();
                       
                       sendResponse({
-                        success: categoryChanged,
+                        success: categoryChanged && assetSelected,
                         category: message.category,
                         assets: assets,
-                        message: categoryChanged 
-                          ? `Categoria alterada para ${message.category}. Encontrados ${assets.length} ativos.`
-                          : `Falha ao alterar categoria para ${message.category}`
+                        message: assetSelected 
+                          ? `Ativo ${firstAsset.name} selecionado com sucesso na categoria ${message.category}.`
+                          : `Falha ao selecionar um ativo na categoria ${message.category}.`
                       });
                     } catch (error) {
                       AssetManager.closeAssetModal();
@@ -881,7 +893,7 @@ function capturePayoutFromDOM() {
           });
         
         return true; // Manter canal aberto para resposta assíncrona
-  } catch (error) {
+      } catch (error) {
         safeLog(`Erro ao mudar categoria: ${error.message}`, 'ERROR');
         sendResponse({ success: false, error: error.message });
         return true;
@@ -2148,15 +2160,19 @@ const AssetManager = {
         return true;
       }
       
-      // Clicar no ativo para selecioná-lo
+      // Tentar clicar no link interno primeiro
       const linkElement = asset.element.querySelector('.alist__link');
       if (linkElement) {
+        safeLog(`Clique executado no link interno (.alist__link) do ativo ${asset.name}`, 'INFO');
         linkElement.click();
-        safeLog(`Clique executado no ativo ${asset.name}`, 'INFO');
         return true;
-      } else {
-        throw new Error('Link do ativo não encontrado');
       }
+      
+      // Se não houver link interno, tentar clicar no elemento principal do ativo
+      safeLog(`'.alist__link' não encontrado, tentando clicar no elemento principal (.alist__item) do ativo ${asset.name}`, 'INFO');
+      asset.element.click();
+      return true;
+
     } catch (error) {
       safeLog(`Erro ao selecionar ativo: ${error.message}`, 'ERROR');
       return false;
