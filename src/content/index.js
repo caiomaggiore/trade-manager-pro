@@ -2708,18 +2708,47 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             if (canvasBtn) {
                 canvasBtn.addEventListener('click', () => {
                     const statusEl = document.getElementById('analysis-debug-result');
-                    if (statusEl) statusEl.textContent = 'Capturando informações do canvas...';
+                    if (statusEl) statusEl.textContent = 'Capturando dimensões do gráfico...';
 
                     chrome.runtime.sendMessage({ action: 'GET_CANVAS_INFO' }, (response) => {
                         if (response && response.success && response.data) {
                             const { width, height, x, y, selector } = response.data;
-                            const message = `✅ Canvas encontrado: ${selector} | ${width}x${height} @ ${x},${y}`;
+                            const message = `✅ Dimensões do gráfico: ${selector} | ${width}x${height} @ ${x},${y}`;
                             if (statusEl) statusEl.textContent = message;
                             addLog(`Canvas capturado: ${width}x${height} @ ${x},${y}`, 'SUCCESS');
                         } else {
                             const error = response ? response.error : 'Sem resposta do content script.';
                             if (statusEl) statusEl.textContent = `❌ Erro: ${error}`;
                             addLog(`Erro ao capturar canvas: ${error}`, 'ERROR');
+                        }
+                    });
+                });
+            }
+
+            // Botão para capturar apenas o gráfico
+            const chartOnlyBtn = document.getElementById('captureChartOnlyBtn');
+            if (chartOnlyBtn) {
+                chartOnlyBtn.addEventListener('click', () => {
+                    const statusEl = document.getElementById('analysis-debug-result');
+                    if (statusEl) statusEl.textContent = 'Capturando apenas o gráfico...';
+
+                    chrome.runtime.sendMessage({ action: 'CAPTURE_CHART_ONLY' }, (response) => {
+                        if (response && response.success && response.dataUrl) {
+                            const message = `✅ Gráfico capturado com sucesso!`;
+                            if (statusEl) statusEl.textContent = message;
+                            
+                            // Mostrar a imagem em popup
+                            chrome.runtime.sendMessage({
+                                action: 'showImagePopup',
+                                dataUrl: response.dataUrl
+                            }, (popupResponse) => {
+                                if (chrome.runtime.lastError) {
+                                    console.warn('Aviso ao mostrar popup:', chrome.runtime.lastError.message);
+                                }
+                            });
+                        } else {
+                            const error = response ? response.error : 'Sem resposta do content script.';
+                            if (statusEl) statusEl.textContent = `❌ Erro: ${error}`;
                         }
                     });
                 });

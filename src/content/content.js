@@ -397,19 +397,59 @@ function capturePayoutFromDOM() {
                     return;
                 }
                 
-                // Calculando dimensões com base no iframe
-                let width = img.width;
-                if (message.iframeWidth && message.iframeWidth > 0) {
-                    width = img.width - message.iframeWidth;
+                // Verificar se há informações de crop do canvas
+                if (message.canvasCrop) {
+                    safeLog('📸 Aplicando crop do canvas do gráfico', 'INFO');
+                    
+                    const crop = message.canvasCrop;
+                    let cropX = crop.x;
+                    let cropY = crop.y;
+                    let cropWidth = crop.width;
+                    let cropHeight = crop.height;
+                    
+                    // Ajustar coordenadas considerando o iframe removido
+                    let adjustedCropX = cropX;
+                    if (message.iframeWidth && message.iframeWidth > 0) {
+                        // Se a imagem já foi cortada para remover o iframe, ajustar as coordenadas
+                        adjustedCropX = cropX;
+                    }
+                    
+                    // Verificar se as coordenadas do crop estão dentro dos limites da imagem
+                    if (adjustedCropX < 0) adjustedCropX = 0;
+                    if (cropY < 0) cropY = 0;
+                    if (adjustedCropX + cropWidth > img.width) {
+                        cropWidth = img.width - adjustedCropX;
+                    }
+                    if (cropY + cropHeight > img.height) {
+                        cropHeight = img.height - cropY;
+                    }
+                    
+                    // Configurar canvas para o tamanho do crop
+                    canvas.width = cropWidth;
+                    canvas.height = cropHeight;
+                    
+                    // Desenhar apenas a área do canvas
+                    ctx.drawImage(img, adjustedCropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+                    
+                    safeLog(`✅ Crop aplicado: ${cropWidth}x${cropHeight} @ ${adjustedCropX},${cropY}`, 'SUCCESS');
                 } else {
-                    safeLog(`Usando largura total da imagem: ${width}px`, 'INFO');
+                    // Processamento normal (remover apenas o iframe)
+                    safeLog('📸 Aplicando processamento normal (remoção do iframe)', 'INFO');
+                    
+                    // Calculando dimensões com base no iframe
+                    let width = img.width;
+                    if (message.iframeWidth && message.iframeWidth > 0) {
+                        width = img.width - message.iframeWidth;
+                    } else {
+                        safeLog(`Usando largura total da imagem: ${width}px`, 'INFO');
+                    }
+                    
+                    canvas.width = width;
+                    canvas.height = img.height;
+                    
+                    // Desenhar apenas a parte da imagem sem o iframe
+                    ctx.drawImage(img, 0, 0, width, img.height, 0, 0, width, img.height);
                 }
-                
-                canvas.width = width;
-                canvas.height = img.height;
-                
-                // Desenhar apenas a parte da imagem sem o iframe
-                ctx.drawImage(img, 0, 0, width, img.height, 0, 0, width, img.height);
                 
                 // Garantir que a imagem seja PNG
                 const dataUrl = canvas.toDataURL('image/png');
@@ -2609,6 +2649,159 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         success: false,
         error: error.message
       });
+      return true;
+    }
+  }
+
+  // Handler para captura apenas do gráfico (crop do canvas)
+  if (message.action === 'CAPTURE_CHART_ONLY') {
+    safeLog('📸 Recebida solicitação para capturar apenas o gráfico', 'INFO');
+    
+    try {
+      // Primeiro, obter informações do canvas
+      const captureCanvasInfo = () => {
+        return new Promise((resolve, reject) => {
+          try {
+            safeLog('🔍 Obtendo informações do canvas para crop...', 'INFO');
+            
+            // Seletores para encontrar o canvas do gráfico
+            const canvasSelectors = [
+              '#chart-1 > canvas',
+              '#chart-1 canvas',
+              'canvas.layer.plot',
+              'canvas[class*="plot"]',
+              'canvas[class*="chart"]',
+              'canvas[width][height]'
+            ];
+            
+            let canvasElement = null;
+            let foundSelector = '';
+            
+            // Tentar encontrar o canvas usando os seletores
+            for (const selector of canvasSelectors) {
+              const elements = document.querySelectorAll(selector);
+              safeLog(`🔎 Testando seletor "${selector}" - encontrados ${elements.length} elementos`, 'DEBUG');
+              
+              if (elements.length > 0) {
+                // Verificar se é realmente um canvas de gráfico
+                for (let i = 0; i < elements.length; i++) {
+                  const element = elements[i];
+                  const width = element.width || element.offsetWidth;
+                  const height = element.height || element.offsetHeight;
+                  
+                  // Canvas de gráfico geralmente tem dimensões significativas
+                  if (width > 100 && height > 100) {
+                    canvasElement = element;
+                    foundSelector = selector;
+                    safeLog(`✅ Canvas encontrado com seletor: ${selector} (${i+1}º elemento)`, 'SUCCESS');
+                    break;
+                  }
+                }
+                
+                if (canvasElement) break;
+              }
+            }
+            
+            // Se não encontrou com seletores específicos, fazer busca ampla
+            if (!canvasElement) {
+              safeLog('🔍 Seletores específicos não funcionaram, fazendo busca ampla...', 'DEBUG');
+              
+              // Busca ampla por todos os canvas
+              const allCanvas = document.querySelectorAll('canvas');
+              safeLog(`🔍 Encontrados ${allCanvas.length} canvas na página`, 'DEBUG');
+              
+              for (const canvas of allCanvas) {
+                const width = canvas.width || canvas.offsetWidth;
+                const height = canvas.height || canvas.offsetHeight;
+                const style = getComputedStyle(canvas);
+                
+                // Verificar se é um canvas de gráfico (dimensões significativas e posicionamento absoluto)
+                if (width > 100 && height > 100 && 
+                    (style.position === 'absolute' || canvas.classList.contains('plot') || canvas.classList.contains('chart'))) {
+                  canvasElement = canvas;
+                  foundSelector = 'busca-ampla';
+                  safeLog(`🎯 Canvas encontrado em busca ampla: ${width}x${height}`, 'INFO');
+                  break;
+                }
+              }
+            }
+            
+            if (canvasElement) {
+              const rect = canvasElement.getBoundingClientRect();
+              const width = canvasElement.width || canvasElement.offsetWidth;
+              const height = canvasElement.height || canvasElement.offsetHeight;
+              
+              const result = {
+                success: true,
+                data: {
+                  width: width,
+                  height: height,
+                  x: Math.round(rect.left),
+                  y: Math.round(rect.top),
+                  selector: foundSelector,
+                  className: canvasElement.className,
+                  id: canvasElement.id
+                }
+              };
+              
+              safeLog(`✅ Informações do canvas obtidas: ${width}x${height} @ ${result.data.x},${result.data.y}`, 'SUCCESS');
+              resolve(result);
+            } else {
+              reject(new Error('Canvas do gráfico não encontrado na página'));
+            }
+            
+          } catch (error) {
+            reject(error);
+          }
+        });
+      };
+
+      // Executar captura do canvas e depois da tela
+      captureCanvasInfo()
+        .then(canvasInfo => {
+          safeLog('📸 Canvas encontrado, iniciando captura da tela...', 'INFO');
+          
+          // Agora capturar a tela e fazer o crop
+          chrome.runtime.sendMessage({
+            action: 'initiateCapture',
+            actionType: 'capture',
+            requireProcessing: true,
+            iframeWidth: 480,
+            canvasCrop: canvasInfo.data // Informações do canvas para crop
+          }, (response) => {
+            if (chrome.runtime.lastError) {
+              const errorMsg = chrome.runtime.lastError.message;
+              safeLog(`❌ Erro na captura: ${errorMsg}`, 'ERROR');
+              sendResponse({ success: false, error: errorMsg });
+              return;
+            }
+            
+            if (response.error) {
+              safeLog(`❌ Erro retornado na captura: ${response.error}`, 'ERROR');
+              sendResponse({ success: false, error: response.error });
+              return;
+            }
+            
+            if (!response.dataUrl) {
+              safeLog('❌ Resposta sem dados de imagem', 'ERROR');
+              sendResponse({ success: false, error: 'Sem dados de imagem' });
+              return;
+            }
+            
+            safeLog('✅ Captura do gráfico concluída com sucesso', 'SUCCESS');
+            sendResponse({ success: true, dataUrl: response.dataUrl, canvasInfo: canvasInfo.data });
+          });
+        })
+        .catch(error => {
+          safeLog(`❌ Erro ao obter informações do canvas: ${error.message}`, 'ERROR');
+          sendResponse({ success: false, error: error.message });
+        });
+      
+      return true; // Manter canal aberto para resposta assíncrona
+      
+    } catch (error) {
+      safeLog(`❌ Erro ao processar captura do gráfico: ${error.message}`, 'ERROR');
+      sendResponse({ success: false, error: error.message });
       return true;
     }
   }

@@ -1,6 +1,47 @@
 # Changelog - Trade Manager Pro
 
-## Versão 1.0.8 (Estável) - 2024-01-XX
+## Versão 1.0.9 (Estável) - 2024-01-XX
+
+### 🎯 **Nova Funcionalidade: Captura Inteligente do Gráfico**
+- **Funcionalidade:** Implementado sistema de captura com crop inteligente do gráfico
+- **Benefício:** Captura apenas a área relevante do gráfico, removendo elementos desnecessários
+- **Arquitetura:** Reutiliza infraestrutura existente com processamento de crop avançado
+
+### 🔧 **Melhorias Implementadas**
+1. **Novo Botão "Capturar Gráfico":**
+   - Localização: Painel de Desenvolvimento → Seção "Captura e Análise"
+   - Funcionalidade: Crop apenas do canvas do gráfico
+   - Ícone: `fas fa-chart-area`
+
+2. **Sistema de Crop Inteligente:**
+   - Detecção automática do canvas com múltiplos seletores
+   - Ajuste automático de coordenadas considerando o iframe da extensão
+   - Validação de limites para evitar overflow
+   - Fallback robusto com busca ampla
+
+3. **Seletores Implementados:**
+   - `#chart-1 > canvas` - Seletor específico da Pocket Option
+   - `#chart-1 canvas` - Versão mais flexível
+   - `canvas.layer.plot` - Baseado nas classes
+   - `canvas[class*="plot"]` - Busca por classe parcial
+   - `canvas[class*="chart"]` - Busca por classe parcial
+   - `canvas[width][height]` - Canvas com dimensões definidas
+
+4. **Renomeação de Botões para Melhor UX:**
+   - "Capturar Gráfico" → "Capturar Tela" (captura completa)
+   - "Capturar Apenas Gráfico" → "Capturar Gráfico" (crop do gráfico)
+   - "Info do Canvas" → "Dimensão do Gráfico" (informações do canvas)
+
+### 📊 **Arquivos Modificados**
+- `src/layout/index.html` - Novo botão e renomeação
+- `src/content/content.js` - Handler `CAPTURE_CHART_ONLY` e lógica de crop
+- `src/content/index.js` - Event listener e comunicação
+- `src/background/background.js` - Suporte a informações de crop
+
+### 🏗️ **Arquitetura da Captura**
+```
+Botão Clicado → CAPTURE_CHART_ONLY → Obter Info Canvas → Capturar Tela → Aplicar Crop → Mostrar Popup
+```
 
 ### 🎯 **Correção Crítica: Botão "Info do Canvas"**
 - **Problema:** O botão "Info do Canvas" no painel de desenvolvimento não funcionava

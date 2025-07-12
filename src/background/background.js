@@ -151,7 +151,8 @@ async function handleCaptureRequest(request) {
             chrome.tabs.sendMessage(tab.id, {
                 action: 'processCapture',
                 dataUrl: dataUrl,
-                iframeWidth: request.iframeWidth || 0
+                iframeWidth: request.iframeWidth || 0,
+                canvasCrop: request.canvasCrop || null // Informações do canvas para crop
             }, (result) => {
                 if (chrome.runtime.lastError) {
                     console.error('Background: Erro ao comunicar com content script', chrome.runtime.lastError);
