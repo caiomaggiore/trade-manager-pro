@@ -200,6 +200,16 @@
                 <small>Executa análise com dados mock</small>
               </div>
             </button>
+            <button id="captureCanvasInfoBtn" class="dev-button">
+              <i class="fas fa-ruler-combined"></i>
+              <div class="button-content">
+                <span>Info do Canvas</span>
+                <small>Captura pos/dim do gráfico</small>
+              </div>
+            </button>
+          </div>
+          <div id="analysis-debug-result" class="dev-result">
+            Status: Nenhum teste executado
           </div>
         </div>
 
@@ -272,60 +282,67 @@
           </div>
         </div>
 
-        <!-- Seção 4: Troca de Ativos e Debug Modal -->
+        <!-- Seção 4: Troca de Ativos -->
         <div class="sub-panel">
-          <h4 class="sub-panel-header"><i class="fas fa-exchange-alt"></i> Troca de Ativos e Debug Modal</h4>
-          <div class="panel-grid">
-            <button id="test-switch-to-currency" class="dev-button">
-              <i class="fas fa-dollar-sign"></i>
-              <div class="button-content">
-                <span>Trocar para Moedas</span>
-                <small>Troca para pares de moedas</small>
-              </div>
-            </button>
-            <button id="test-switch-to-crypto" class="dev-button">
-              <i class="fab fa-bitcoin"></i>
-              <div class="button-content">
-                <span>Trocar para Crypto</span>
-                <small>Troca para criptomoedas</small>
-              </div>
-            </button>
-            <button id="debug-open-modal" class="dev-button">
-              <i class="fas fa-folder-open"></i>
-              <div class="button-content">
-                <span>Abrir Modal</span>
-                <small>Força abertura do modal</small>
-              </div>
-            </button>
-            <button id="debug-close-modal" class="dev-button">
-              <i class="fas fa-times"></i>
-              <div class="button-content">
-                <span>Fechar Modal</span>
-                <small>Força fechamento do modal</small>
-              </div>
-            </button>
-            <button id="debug-check-status" class="dev-button">
-              <i class="fas fa-search"></i>
-              <div class="button-content">
-                <span>Status Modal</span>
-                <small>Verifica estado do modal</small>
-              </div>
-            </button>
-            <button id="debug-toggle-modal" class="dev-button dev-warning">
-              <i class="fas fa-exchange-alt"></i>
-              <div class="button-content">
-                <span>Toggle Modal</span>
-                <small>Alterna estado do modal</small>
-              </div>
-            </button>
-          </div>
+            <h4 class="sub-panel-header"><i class="fas fa-exchange-alt"></i> Troca de Ativos</h4>
+            <div class="panel-grid">
+                <button id="test-switch-to-currency" class="dev-button">
+                    <i class="fas fa-dollar-sign"></i>
+                    <div class="button-content">
+                        <span>Trocar para Moedas</span>
+                        <small>Troca para pares de moedas</small>
+                    </div>
+                </button>
+                <button id="test-switch-to-crypto" class="dev-button">
+                  <i class="fab fa-bitcoin"></i>
+                    <div class="button-content">
+                        <span>Trocar para Crypto</span>
+                        <small>Troca para criptomoedas</small>
+                    </div>
+                </button>
+            </div>
           <div id="asset-test-result" class="dev-result">
             Resultado: Nenhum teste executado
           </div>
-          <div id="modal-debug-result" class="dev-result">
-            Debug: Nenhum teste executado
-          </div>
         </div>
+
+         <!-- Seção 5: Debug do Modal -->
+         <div class="sub-panel">
+            <h4 class="sub-panel-header"><i class="fas fa-window-restore"></i> Debug do Modal</h4>
+            <div class="panel-grid">
+                <button id="debug-open-modal" class="dev-button">
+                    <i class="fas fa-folder-open"></i>
+                    <div class="button-content">
+                        <span>Abrir Modal</span>
+                        <small>Força abertura do modal</small>
+                    </div>
+                </button>
+                <button id="debug-close-modal" class="dev-button">
+                    <i class="fas fa-times"></i>
+                    <div class="button-content">
+                        <span>Fechar Modal</span>
+                        <small>Força fechamento do modal</small>
+                    </div>
+                </button>
+                <button id="debug-check-status" class="dev-button">
+                    <i class="fas fa-search"></i>
+                    <div class="button-content">
+                        <span>Status Modal</span>
+                        <small>Verifica estado do modal</small>
+                    </div>
+                </button>
+                <button id="debug-toggle-modal" class="dev-button dev-warning">
+                  <i class="fas fa-exchange-alt"></i>
+                    <div class="button-content">
+                        <span>Toggle Modal</span>
+                        <small>Alterna estado do modal</small>
+                    </div>
+                </button>
+            </div>
+            <div id="modal-debug-result" class="dev-result">
+              Debug: Nenhum teste executado
+            </div>
+         </div>
      </div>
  
      <div id="historyList" class="history-list"></div>

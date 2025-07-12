@@ -513,45 +513,35 @@ const LogSystem = {
         toUpdateStatus('Logs salvos como arquivo', 'success');
     },
     
-    // Copiar logs para a área de transferência
-    copyLogs() {
-        const content = this.getFormattedLogs();
-        
-        // Usar apenas o método seguro - via background script
+    // Função para copiar logs para a área de transferência
+    async copyLogs() {
+        // Enviar status inicial para a UI principal
+        toUpdateStatus('Copiando logs...', 'info', 2000);
+
+        const logs = this.getFormattedLogs();
+
         try {
-            if (isExtensionContextValid()) {
-                toUpdateStatus('Copiando logs...', 'info');
-                
-                // Enviar para o background script, que injetará na página principal
-                chrome.runtime.sendMessage({
-                    action: 'copyTextToClipboard',
-                    text: content
-                }, (response) => {
-                    if (chrome.runtime.lastError) {
-                        toUpdateStatus('Erro ao copiar logs', 'error');
-                        this.offerDownloadAlternative();
-                        return;
-                    }
-                    
-                    if (response && response.success) {
-                        toUpdateStatus('Logs copiados para a área de transferência', 'success');
-                    } else {
-                        const errorMsg = response ? response.error : 'Erro desconhecido';
-                        toUpdateStatus('Não foi possível copiar: ' + errorMsg, 'error');
-                        this.offerDownloadAlternative();
-                    }
-                });
+            const response = await chrome.runtime.sendMessage({
+                action: 'copyTextToClipboard',
+                text: logs
+            });
+
+            if (response && response.success) {
+                // Enviar status de sucesso para a UI principal
+                toUpdateStatus('Logs copiados para a área de transferência!', 'success', 3000);
             } else {
-                toUpdateStatus('Conexão com a extensão perdida', 'error');
-                this.offerDownloadAlternative();
+                throw new Error(response.error || 'Falha ao copiar. Resposta negativa.');
             }
-        } catch (err) {
-            toUpdateStatus('Erro ao copiar logs', 'error');
+        } catch (error) {
+            console.error('Erro ao copiar logs:', error);
+            // Enviar status de erro para a UI principal
+            toUpdateStatus(`Erro ao copiar: ${error.message}`, 'error', 5000);
+            // Oferecer download como alternativa
             this.offerDownloadAlternative();
         }
     },
     
-    // Sugerir alternativa de download
+    // Oferecer download como alternativa em caso de falha na cópia
     offerDownloadAlternative() {
         setTimeout(() => {
             toUpdateStatus('Tente usar o botão "Salvar como arquivo"', 'info');
