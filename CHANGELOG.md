@@ -1,5 +1,57 @@
 # Changelog - Trade Manager Pro
 
+## Versão 1.0.8 (Estável) - 2024-01-XX
+
+### 🎯 **Correção Crítica: Botão "Info do Canvas"**
+- **Problema:** O botão "Info do Canvas" no painel de desenvolvimento não funcionava
+- **Causa Raiz:** Quebra na cadeia de comunicação entre componentes da extensão
+- **Solução:** Implementado handler completo para `GET_CANVAS_INFO` no content.js
+
+### 🔧 **Correções Implementadas**
+1. **Correção no `index.js`:**
+   - Mudei de `getCanvasInfo` para `GET_CANVAS_INFO` (padrão correto)
+   - Adicionado logging e melhor tratamento de erros
+   - Corrigido elemento de status para `analysis-debug-result`
+
+2. **Implementação do Handler no `content.js`:**
+   - Adicionado handler completo para `GET_CANVAS_INFO`
+   - Baseado na função `capturePayoutFromDOM` que funciona perfeitamente
+   - Implementada estratégia de múltiplos seletores + busca ampla
+
+3. **Seletores Robostos Implementados:**
+   - `#chart-1 > canvas` - Seletor específico mencionado
+   - `#chart-1 canvas` - Versão mais flexível
+   - `canvas.layer.plot` - Baseado nas classes
+   - `canvas[class*="plot"]` - Busca por classe parcial
+   - `canvas[class*="chart"]` - Busca por classe parcial
+   - `canvas[width][height]` - Canvas com dimensões definidas
+
+### 📊 **Informações Capturadas**
+O sistema agora captura informações completas do canvas:
+- Dimensões (width x height)
+- Posição na tela (x, y)
+- Seletor que funcionou
+- Classes e ID do elemento
+- Propriedades de estilo (position, display, visibility)
+
+### 🧪 **Ferramentas de Teste**
+- Criado arquivo `test-canvas-capture.js` para debug
+- Funções de teste disponíveis no console:
+  - `testCanvasCapture()` - Testa captura básica
+  - `testExtensionCommunication()` - Testa comunicação
+  - `listAllCanvas()` - Lista todos os canvas
+  - `testSpecificSelectors()` - Testa seletores específicos
+
+### 🏗️ **Arquitetura Corrigida**
+- Fluxo de comunicação seguindo padrão Manifest V3:
+  ```
+  UI → chrome.runtime.sendMessage → Background → chrome.tabs.sendMessage → Content
+  ```
+- Logging detalhado para debug
+- Tratamento robusto de erros
+
+---
+
 ## Versão 1.0.7 (Estável) - XX/07/2024
 
 Esta versão foca na estabilização do sistema, correção de bugs críticos de comunicação e na melhoria da robustez das interações com a plataforma. Todas as implementações experimentais que causaram instabilidade foram revertidas, e a base de código foi restaurada para a v1.0.6 antes da aplicação destas correções.

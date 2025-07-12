@@ -2473,6 +2473,146 @@ const AssetManager = {
 
 // Listener para mensagens do sistema de extensão
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Handler para captura de informações do canvas
+  if (message.action === 'GET_CANVAS_INFO') {
+    safeLog('🔍 Recebida solicitação para capturar informações do canvas', 'INFO');
+    
+    try {
+      // Função para capturar informações do canvas
+      const captureCanvasInfo = () => {
+        return new Promise((resolve, reject) => {
+          try {
+            safeLog('🔍 Iniciando captura de informações do canvas da plataforma', 'INFO');
+            
+            // Seletores para encontrar o canvas do gráfico
+            const canvasSelectors = [
+              '#chart-1 > canvas',
+              '#chart-1 canvas',
+              'canvas.layer.plot',
+              'canvas[class*="plot"]',
+              'canvas[class*="chart"]',
+              'canvas[width][height]'
+            ];
+            
+            let canvasElement = null;
+            let foundSelector = '';
+            
+            // Tentar encontrar o canvas usando os seletores
+            for (const selector of canvasSelectors) {
+              const elements = document.querySelectorAll(selector);
+              safeLog(`🔎 Testando seletor "${selector}" - encontrados ${elements.length} elementos`, 'DEBUG');
+              
+              if (elements.length > 0) {
+                // Verificar se é realmente um canvas de gráfico
+                for (let i = 0; i < elements.length; i++) {
+                  const element = elements[i];
+                  const width = element.width || element.offsetWidth;
+                  const height = element.height || element.offsetHeight;
+                  
+                  // Canvas de gráfico geralmente tem dimensões significativas
+                  if (width > 100 && height > 100) {
+                    canvasElement = element;
+                    foundSelector = selector;
+                    safeLog(`✅ Canvas encontrado com seletor: ${selector} (${i+1}º elemento)`, 'SUCCESS');
+                    break;
+                  }
+                }
+                
+                if (canvasElement) break;
+              }
+            }
+            
+            // Se não encontrou com seletores específicos, fazer busca ampla
+            if (!canvasElement) {
+              safeLog('🔍 Seletores específicos não funcionaram, fazendo busca ampla...', 'DEBUG');
+              
+              // Busca ampla por todos os canvas
+              const allCanvas = document.querySelectorAll('canvas');
+              safeLog(`🔍 Encontrados ${allCanvas.length} canvas na página`, 'DEBUG');
+              
+              for (const canvas of allCanvas) {
+                const width = canvas.width || canvas.offsetWidth;
+                const height = canvas.height || canvas.offsetHeight;
+                const style = getComputedStyle(canvas);
+                
+                // Verificar se é um canvas de gráfico (dimensões significativas e posicionamento absoluto)
+                if (width > 100 && height > 100 && 
+                    (style.position === 'absolute' || canvas.classList.contains('plot') || canvas.classList.contains('chart'))) {
+                  canvasElement = canvas;
+                  foundSelector = 'busca-ampla';
+                  safeLog(`🎯 Canvas encontrado em busca ampla: ${width}x${height}`, 'INFO');
+                  break;
+                }
+              }
+            }
+            
+            // Preparar resultado
+            if (canvasElement) {
+              const rect = canvasElement.getBoundingClientRect();
+              const width = canvasElement.width || canvasElement.offsetWidth;
+              const height = canvasElement.height || canvasElement.offsetHeight;
+              
+              const result = {
+                success: true,
+                data: {
+                  width: width,
+                  height: height,
+                  x: Math.round(rect.left),
+                  y: Math.round(rect.top),
+                  selector: foundSelector,
+                  className: canvasElement.className,
+                  id: canvasElement.id,
+                  style: {
+                    position: getComputedStyle(canvasElement).position,
+                    display: getComputedStyle(canvasElement).display,
+                    visibility: getComputedStyle(canvasElement).visibility
+                  }
+                },
+                timestamp: new Date().toISOString()
+              };
+              
+              safeLog(`✅ Informações do canvas capturadas com sucesso: ${width}x${height} @ ${result.data.x},${result.data.y}`, 'SUCCESS');
+              resolve(result);
+            } else {
+              // Canvas não encontrado
+              const errorMsg = 'Canvas do gráfico não encontrado na página';
+              safeLog(`❌ ${errorMsg}`, 'ERROR');
+              reject(new Error(errorMsg));
+            }
+            
+          } catch (error) {
+            safeLog(`❌ Erro ao capturar informações do canvas: ${error.message}`, 'ERROR');
+            reject(error);
+          }
+        });
+      };
+      
+      // Executar captura
+      captureCanvasInfo()
+        .then(result => {
+          safeLog(`✅ Informações do canvas capturadas: ${result.data.width}x${result.data.height}`, 'SUCCESS');
+          sendResponse(result);
+        })
+        .catch(error => {
+          safeLog(`❌ Erro na captura do canvas: ${error.message}`, 'ERROR');
+          sendResponse({
+            success: false,
+            error: error.message
+          });
+        });
+      
+      return true; // Manter canal aberto para resposta assíncrona
+      
+    } catch (error) {
+      safeLog(`❌ Erro ao processar solicitação de canvas: ${error.message}`, 'ERROR');
+      sendResponse({
+        success: false,
+        error: error.message
+      });
+      return true;
+    }
+  }
+
   // Handler para teste de captura de payout
   if (message.action === 'TEST_CAPTURE_PAYOUT') {
     safeLog('Solicitação de teste de captura de payout recebida', 'INFO');

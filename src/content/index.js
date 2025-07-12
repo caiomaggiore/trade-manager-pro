@@ -2623,11 +2623,10 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
 
             // Função para atualizar resultado do debug
             const updateModalDebugResult = (message, isError = false) => {
-                if (modalDebugResult) {
-                    const timestamp = new Date().toLocaleTimeString();
-                    modalDebugResult.innerHTML = `[${timestamp}] ${message}`;
-                    modalDebugResult.style.backgroundColor = isError ? '#ffdddd' : '#ddffdd';
-                    modalDebugResult.style.color = isError ? '#cc0000' : '#006600';
+                const resultEl = document.getElementById('modal-debug-result');
+                if (resultEl) {
+                    resultEl.textContent = message;
+                    resultEl.style.color = isError ? '#ff6b6b' : '#a9a9a9';
                 }
             };
 
@@ -2704,6 +2703,35 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 }
                 return true;
             });
+
+            const canvasBtn = document.getElementById('captureCanvasInfoBtn');
+            if (canvasBtn) {
+                canvasBtn.addEventListener('click', () => {
+                    const statusEl = document.getElementById('analysis-debug-result');
+                    if (statusEl) statusEl.textContent = 'Capturando informações do canvas...';
+
+                    chrome.runtime.sendMessage({ action: 'GET_CANVAS_INFO' }, (response) => {
+                        if (response && response.success && response.data) {
+                            const { width, height, x, y, selector } = response.data;
+                            const message = `✅ Canvas encontrado: ${selector} | ${width}x${height} @ ${x},${y}`;
+                            if (statusEl) statusEl.textContent = message;
+                            addLog(`Canvas capturado: ${width}x${height} @ ${x},${y}`, 'SUCCESS');
+                        } else {
+                            const error = response ? response.error : 'Sem resposta do content script.';
+                            if (statusEl) statusEl.textContent = `❌ Erro: ${error}`;
+                            addLog(`Erro ao capturar canvas: ${error}`, 'ERROR');
+                        }
+                    });
+                });
+            }
+
+            // Listener para o botão de abrir o modal de análise
+            const openModalBtn = document.getElementById('open-analysis-modal');
+            if (openModalBtn) {
+                openModalBtn.addEventListener('click', () => {
+                    // ... (resto do arquivo)
+                });
+            }
         } catch (error) {
             console.error('Erro ao configurar botões de teste do gale:', error);
             addLog(`Erro ao configurar botões de teste do gale: ${error.message}`, 'ERROR');
