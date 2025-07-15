@@ -106,3 +106,51 @@ graph TD
     
     E -- Acesso ao Storage --> F;
 ``` 
+
+## 3. Versionamento e Publicação de Novas Versões
+
+Para manter a consistência e o rastreamento do projeto, é fundamental seguir um processo de versionamento rigoroso sempre que uma nova versão estável for concluída.
+
+O fluxo de trabalho correto é o seguinte:
+
+### Passo 1: Verificar a Versão Atual
+Antes de iniciar o processo, verifique qual é a última versão do projeto. Você pode fazer isso de duas formas:
+- **No repositório remoto:** Olhe a seção "Releases" ou "Tags" no GitHub.
+- **Localmente:** Use o comando `git tag` para listar todas as tags existentes.
+
+### Passo 2: Atualizar o `manifest.json`
+Esta é a etapa mais crítica. O arquivo `manifest.json` contém a chave `"version"` que define a versão da extensão para o Chrome. **Este número deve ser atualizado** para a nova versão.
+
+Recomenda-se seguir o padrão de **Versionamento Semântico (MAJOR.MINOR.PATCH)**:
+- **PATCH** (`1.0.10` -> `1.0.11`): Para correções de bugs retrocompatíveis.
+- **MINOR** (`1.0.10` -> `1.1.0`): Para novas funcionalidades retrocompatíveis.
+- **MAJOR** (`1.0.10` -> `2.0.0`): Para mudanças que quebram a compatibilidade.
+
+### Passo 3: Adicionar e Commitar as Alterações
+Adicione todos os seus arquivos modificados, incluindo o `manifest.json` atualizado, e crie um commit com uma mensagem descritiva.
+
+```bash
+# Adicionar todos os arquivos
+git add .
+
+# Criar o commit (exemplo para uma nova funcionalidade)
+git commit -m "feat: Descrição da nova funcionalidade ou correção"
+```
+
+### Passo 4: Criar a Tag de Versão
+A tag é o que marca um commit específico como uma "release" oficial. Ela deve corresponder à versão definida no `manifest.json`.
+
+```bash
+# Criar uma tag anotada (recomendado)
+git tag -a v1.0.10 -m "Version 1.0.10"
+```
+
+### Passo 5: Enviar para o Repositório Remoto
+Finalmente, envie o commit e a nova tag para o repositório remoto (ex: `origin`).
+
+```bash
+# O argumento --tags envia todas as suas tags locais que não estão no remoto
+git push origin master --tags
+```
+
+Seguindo este processo, garantimos que a versão no `manifest.json` esteja sempre sincronizada com as tags do Git, criando um histórico de lançamentos limpo e confiável. 
