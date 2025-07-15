@@ -223,15 +223,19 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     window.API_KEY = 'AIzaSyDeYcYUxAN52DNrgZeFNcEfceVMoWJDjWk';
     window.API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${window.API_KEY}`;
     
-    // ================== INICIALIZAÇÃO DO MONITORAMENTO ==================
-    // REMOVIDO: Monitoramento de trade que estava duplicado com trade-history.js
-    // document.addEventListener('DOMContentLoaded', async () => { // Linha original ~153
-    // ... (Todo o bloco async () => { ... } até a linha ~387 original foi removido)
+    // ================== ORQUESTRADOR DE ANÁLISE ==================
+    const analysisOrchestrator = new AnalysisOrchestrator({
+        log: addLog,
+        updateStatus: updateStatus,
+        updateSystemStatus: updateSystemOperationalStatus,
+        stateManager: window.StateManager,
+        showAnalysisModal: window.showAnalysisModal,
+        safeExecute: safeExecute
+    });
 
-    // ================== FUNÇÕES DE ANÁLISE ==================
     /**
-     * Executa a análise do gráfico atual
-     * @returns {Promise<Object>} Resultado da análise
+     * Analisa o screenshot de uma guia específica.
+     * @param {number} tabId
      */
     const runAnalysis = async () => {
         return safeExecute(async () => {
@@ -961,30 +965,20 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         };
 
         if (elements.startOperation) {
-            elements.startOperation.addEventListener('click', () => {
-                addLog('Botão "Iniciar Automático" clicado', 'INFO');
+            elements.startOperation.addEventListener('click', async () => {
+                const currentState = window.StateManager.getAutomationState();
+                if (currentState && currentState.isRunning) {
+                    addLog('Automação já está em execução, botão não deveria estar visível.', 'WARN');
+                    return;
+                }
                 
-                // *** CORREÇÃO: Usar chrome.runtime ao invés de window.StateManager ***
-                chrome.runtime.sendMessage({
-                    action: 'START_OPERATION_REQUEST',
-                    timestamp: Date.now()
-                }, (response) => {
-                    if (response && response.success) {
-                        addLog(`Operação iniciada: ${response.message}`, 'SUCCESS');
-                        
-                        // Atualizar status local imediatamente
-                        updateSystemOperationalStatus('Operando...');
-                        updateStatus('Operação automática em andamento', 'success');
-                        
-                        // Atualizar visibilidade dos botões para mostrar "Cancelar Operação"
-                        updateUserControlsVisibility(response.automationActive, true);
-                        
-                    } else {
-                        const errorMsg = response ? response.error : 'Sem resposta';
-                        addLog(`Erro ao iniciar operação: ${errorMsg}`, 'ERROR');
-                        updateStatus(`Falha ao iniciar: ${errorMsg}`, 'error');
-                    }
-                });
+                addLog('Botão Iniciar Automático clicado', 'INFO');
+                // Inicia a automação através do StateManager
+                if (window.AutomationSystem) {
+                    window.AutomationSystem.start();
+                } else {
+                    addLog('Sistema de Automação não encontrado', 'ERROR');
+                }
             });
         }
         
@@ -1069,7 +1063,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         }
         
         if (elements.analyzeBtn) {
-            elements.analyzeBtn.addEventListener('click', runAnalysis);
+            elements.analyzeBtn.addEventListener('click', analysisOrchestrator.execute.bind(analysisOrchestrator));
         }
         
         if (elements.logsBtn) {
@@ -1533,256 +1527,12 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     }
 
     // ================== ANALISADOR DE DADOS ==================
-    class DataAnalyzer {
-        constructor() {
-            this.cache = {};
-            this.processingQueue = [];
-            this.isProcessing = false;
-            
-            // Inicializar
-            addLog('Inicializando analisador de dados', 'DEBUG');
-            
-            // Expor métodos para a API global
-            window.TRADE_ANALYZER_API = {
-                analyze: this.analyze.bind(this),
-                getAnalysisResult: this.getAnalysisResult.bind(this),
-                clearCache: this.clearCache.bind(this)
-            };
-            
-            addLog('API do analisador de dados exposta', 'DEBUG');
-        }
-        
-        // Método privado para logging da classe
-        _log(message, level = 'DEBUG') {
-            // Usar a função global de log se disponível, adicionando prefix da classe
-            if (typeof addLog === 'function') {
-                addLog(`[DataAnalyzer] ${message}`, level);
-            } else if (typeof window.logToSystem === 'function') {
-                window.logToSystem(`[DataAnalyzer] ${message}`, level, 'analysis.js');
-            } else {
-                console.log(`[${level}][DataAnalyzer] ${message}`);
-            }
-        }
-        
-        // Analisar dados de trading
-        async analyze(data, options = {}) {
-            try {
-                // Validar dados
-                if (!data || !Array.isArray(data.candles) || data.candles.length === 0) {
-                    throw new Error('Dados inválidos para análise');
-                }
-                
-                // Identificar o ativo
-                const symbol = data.symbol || 'unknown';
-                
-                // Criar uma assinatura única para este conjunto de dados
-                const dataSignature = `${symbol}_${data.candles.length}_${data.candles[0].time}_${data.candles[data.candles.length-1].time}`;
-                
-                // Verificar cache
-                if (this.cache[dataSignature] && !options.forceReanalysis) {
-                    this._log(`Usando resultado em cache para ${symbol}`, 'DEBUG');
-                    return this.cache[dataSignature];
-                }
-                
-                // Adicionar à fila de processamento
-                return new Promise((resolve, reject) => {
-                    this.processingQueue.push({
-                        data,
-                        options,
-                        dataSignature,
-                        resolve,
-                        reject
-                    });
-                    
-                    // Iniciar processamento se não estiver em andamento
-                    if (!this.isProcessing) {
-                        this.processQueue();
-                    }
-                });
-            } catch (error) {
-                this._log(`Erro ao analisar dados: ${error.message}`, 'ERROR');
-                throw error;
-            }
-        }
-        
-        // Processar fila de análises
-        async processQueue() {
-            if (this.processingQueue.length === 0) {
-                this.isProcessing = false;
-                return;
-            }
-            
-            this.isProcessing = true;
-            const job = this.processingQueue.shift();
-            
-            try {
-                this._log(`Processando análise para ${job.data.symbol || 'desconhecido'}`, 'DEBUG');
-                
-                // Realizar análise
-                const result = await this.performAnalysis(job.data, job.options);
-                
-                // Armazenar no cache
-                this.cache[job.dataSignature] = result;
-                
-                // Limitar tamanho do cache
-                this.manageCacheSize();
-                
-                // Resolver promessa
-                job.resolve(result);
-            } catch (error) {
-                this._log(`Erro na análise: ${error.message}`, 'ERROR');
-                job.reject(error);
-            } finally {
-                // Continuar processamento
-                setTimeout(() => this.processQueue(), 10);
-            }
-        }
-        
-        // Realizar análise dos dados
-        async performAnalysis(data, options) {
-            // Implementação real da análise
-            const { candles, symbol } = data;
-            
-            // Resultados da análise
-            const result = {
-                symbol,
-                timestamp: Date.now(),
-                indicators: {},
-                signals: [],
-                patterns: []
-            };
-            
-            try {
-                // Extrair dados para cálculos
-                const closePrices = candles.map(c => c.close);
-                const highPrices = candles.map(c => c.high);
-                const lowPrices = candles.map(c => c.low);
-                const volumes = candles.map(c => c.volume);
-                
-                // Calcular médias móveis (exemplo)
-                result.indicators.sma20 = this.calculateSMA(closePrices, 20);
-                result.indicators.sma50 = this.calculateSMA(closePrices, 50);
-                result.indicators.sma200 = this.calculateSMA(closePrices, 200);
-                
-                // Detectar sinais com base nos indicadores
-                this.detectSignals(result);
-                
-                return result;
-            } catch (error) {
-                this._log(`Erro durante a análise de ${symbol}: ${error.message}`, 'ERROR');
-                throw error;
-            }
-        }
-        
-        // Cálculo de Média Móvel Simples
-        calculateSMA(prices, period) {
-            if (prices.length < period) {
-                return null;
-            }
-            
-            const result = [];
-            
-            for (let i = 0; i < prices.length; i++) {
-                if (i < period - 1) {
-                    result.push(null);
-                    continue;
-                }
-                
-                let sum = 0;
-                for (let j = 0; j < period; j++) {
-                    sum += prices[i - j];
-                }
-                
-                result.push(sum / period);
-            }
-            
-            return result;
-        }
-        
-        // Detectar sinais de trading
-        detectSignals(result) {
-            try {
-                const { sma20, sma50, sma200 } = result.indicators;
-                
-                if (!sma20 || !sma50 || !sma200) {
-                    return;
-                }
-                
-                // Pegar os valores mais recentes
-                const lastIndex = sma20.length - 1;
-                const prevIndex = lastIndex - 1;
-                
-                if (lastIndex < 1 || prevIndex < 0) {
-                    return;
-                }
-                
-                // Verificar cruzamento SMA 20 e SMA 50
-                if (sma20[prevIndex] < sma50[prevIndex] && sma20[lastIndex] > sma50[lastIndex]) {
-                    result.signals.push({
-                        type: 'CROSS_ABOVE',
-                        indicator1: 'SMA20',
-                        indicator2: 'SMA50',
-                        position: lastIndex,
-                        significance: 'MEDIUM'
-                    });
-                } else if (sma20[prevIndex] > sma50[prevIndex] && sma20[lastIndex] < sma50[lastIndex]) {
-                    result.signals.push({
-                        type: 'CROSS_BELOW',
-                        indicator1: 'SMA20',
-                        indicator2: 'SMA50',
-                        position: lastIndex,
-                        significance: 'MEDIUM'
-                    });
-                }
-            } catch (error) {
-                this._log(`Erro ao detectar sinais: ${error.message}`, 'ERROR');
-            }
-        }
-        
-        // Obter resultado de análise do cache
-        getAnalysisResult(symbol, timestamp) {
-            // Procurar no cache
-            for (const key in this.cache) {
-                const result = this.cache[key];
-                if (result.symbol === symbol && (!timestamp || result.timestamp === timestamp)) {
-                    return result;
-                }
-            }
-            
-            return null;
-        }
-        
-        // Limpar cache de análises
-        clearCache() {
-            this.cache = {};
-            this._log('Cache de análises limpo', 'INFO');
-            return true;
-        }
-        
-        // Gerenciar tamanho do cache
-        manageCacheSize() {
-            const MAX_CACHE_ITEMS = 50;
-            const cacheKeys = Object.keys(this.cache);
-            
-            if (cacheKeys.length > MAX_CACHE_ITEMS) {
-                // Remover entradas mais antigas
-                const keysToRemove = cacheKeys
-                    .map(key => ({ key, timestamp: this.cache[key].timestamp }))
-                    .sort((a, b) => a.timestamp - b.timestamp)
-                    .slice(0, cacheKeys.length - MAX_CACHE_ITEMS)
-                    .map(item => item.key);
-                
-                keysToRemove.forEach(key => {
-                    delete this.cache[key];
-                });
-                
-                this._log(`Cache de análises otimizado: ${keysToRemove.length} itens removidos`, 'DEBUG');
-            }
-        }
-    }
+    // A classe DataAnalyzer foi movida para o seu próprio arquivo em src/content/analyzers/data-analyzer.js
+    const analyzer = new DataAnalyzer(addLog);
 
-    // Inicializar analisador de dados em todas as páginas
-    const analyzer = new DataAnalyzer();
+    /**
+     * @typedef {object} GeminiAnalysisResult
+     */
 
     // ================== LISTENERS ==================
     document.addEventListener('DOMContentLoaded', () => {
@@ -2855,7 +2605,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     // Adicionar um listener para mensagens do chrome.runtime
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message.action === 'RUN_ANALYSIS') {
-            runAnalysis()
+            analysisOrchestrator.execute()
                 .then(result => sendResponse({ success: true, result }))
                 .catch(error => sendResponse({ success: false, error: error.message }));
             return true; // resposta assíncrona
@@ -2916,7 +2666,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     };
 
     // Função para atualizar o status operacional do sistema na UI
-    const updateSystemOperationalStatus = (status) => {
+    function updateSystemOperationalStatus(status) {
         const systemStatusElement = document.querySelector('#system-status');
         const systemLed = document.querySelector('#system-led');
         
@@ -2944,10 +2694,10 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     systemLed.classList.add('ready');
             }
         }
-    };
+    }
 
     // Função para reportar erro ao StateManager e atualizar UI
-    const reportSystemError = (errorMessage, errorDetails = null) => {
+    function reportSystemError(errorMessage, errorDetails = null) {
         addLog(`ERRO DO SISTEMA: ${errorMessage}`, 'ERROR');
         
         if (window.StateManager) {
@@ -2961,10 +2711,10 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             updateStatus(`Sistema parou por erro: ${errorMessage}`, 'error');
             return null;
         }
-    };
+    }
 
     // Função wrapper para try-catch automático nas funções críticas
-    const safeExecute = async (fn, functionName, ...args) => {
+    async function safeExecute(fn, functionName, ...args) {
         try {
             return await fn(...args);
         } catch (error) {
@@ -2975,7 +2725,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             });
             throw error;
         }
-    };
+    }
 
     // *** NOVO: Listener para eventos críticos que resetam status ***
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
