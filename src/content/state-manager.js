@@ -14,7 +14,7 @@ const DEFAULT_CONFIG = {
     payoutTimeout: 5,  // Corrigido para 5 segundos como padrão
     // Modos de desenvolvimento e teste
     testMode: false,
-    devMode: false,
+    devMode: false, // Voltando para false (padrão)
     // Configurações para troca de ativos
     assetSwitching: {
         enabled: false,                   // Desabilitado por padrão

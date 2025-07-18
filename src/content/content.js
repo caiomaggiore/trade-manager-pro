@@ -2653,9 +2653,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
   }
 
-  // Handler para captura apenas do gráfico (crop do canvas)
+  // Handler para captura apenas do gráfico (retorna apenas canvas info)
   if (message.action === 'CAPTURE_CHART_ONLY') {
-    safeLog('📸 Recebida solicitação para capturar apenas o gráfico', 'INFO');
+    safeLog('📸 Recebida solicitação para obter informações do canvas', 'INFO');
     
     try {
       // Primeiro, obter informações do canvas
@@ -2732,19 +2732,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               const height = canvasElement.height || canvasElement.offsetHeight;
               
               const result = {
-                success: true,
-                data: {
-                  width: width,
-                  height: height,
-                  x: Math.round(rect.left),
-                  y: Math.round(rect.top),
-                  selector: foundSelector,
-                  className: canvasElement.className,
-                  id: canvasElement.id
-                }
+                width: width,
+                height: height,
+                x: Math.round(rect.left),
+                y: Math.round(rect.top),
+                selector: foundSelector,
+                className: canvasElement.className,
+                id: canvasElement.id
               };
               
-              safeLog(`✅ Informações do canvas obtidas: ${width}x${height} @ ${result.data.x},${result.data.y}`, 'SUCCESS');
+              safeLog(`✅ Informações do canvas obtidas: ${width}x${height} @ ${result.x},${result.y}`, 'SUCCESS');
               resolve(result);
             } else {
               reject(new Error('Canvas do gráfico não encontrado na página'));
@@ -2756,40 +2753,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
       };
 
-      // Executar captura do canvas e depois da tela
+      // Executar apenas a obtenção de informações do canvas
       captureCanvasInfo()
         .then(canvasInfo => {
-          safeLog('📸 Canvas encontrado, iniciando captura da tela...', 'INFO');
-          
-          // Agora capturar a tela e fazer o crop
-          chrome.runtime.sendMessage({
-            action: 'initiateCapture',
-            actionType: 'capture',
-            requireProcessing: true,
-            iframeWidth: 480,
-            canvasCrop: canvasInfo.data // Informações do canvas para crop
-          }, (response) => {
-            if (chrome.runtime.lastError) {
-              const errorMsg = chrome.runtime.lastError.message;
-              safeLog(`❌ Erro na captura: ${errorMsg}`, 'ERROR');
-              sendResponse({ success: false, error: errorMsg });
-              return;
-            }
-            
-            if (response.error) {
-              safeLog(`❌ Erro retornado na captura: ${response.error}`, 'ERROR');
-              sendResponse({ success: false, error: response.error });
-              return;
-            }
-            
-            if (!response.dataUrl) {
-              safeLog('❌ Resposta sem dados de imagem', 'ERROR');
-              sendResponse({ success: false, error: 'Sem dados de imagem' });
-              return;
-            }
-            
-            safeLog('✅ Captura do gráfico concluída com sucesso', 'SUCCESS');
-            sendResponse({ success: true, dataUrl: response.dataUrl, canvasInfo: canvasInfo.data });
+          safeLog('✅ Informações do canvas obtidas com sucesso', 'SUCCESS');
+          sendResponse({ 
+            success: true, 
+            canvasInfo: canvasInfo 
           });
         })
         .catch(error => {
@@ -2800,10 +2770,52 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true; // Manter canal aberto para resposta assíncrona
       
     } catch (error) {
-      safeLog(`❌ Erro ao processar captura do gráfico: ${error.message}`, 'ERROR');
+      safeLog(`❌ Erro ao processar solicitação de canvas info: ${error.message}`, 'ERROR');
       sendResponse({ success: false, error: error.message });
       return true;
     }
+  }
+
+  // Handler para captura de tela
+  if (message.action === 'CAPTURE_SCREENSHOT') {
+    safeLog('Solicitação de captura de tela recebida', 'INFO');
+    
+    try {
+      // Usar o mesmo método do popup - enviar mensagem para o background
+      chrome.runtime.sendMessage({
+        action: 'initiateCapture',
+        actionType: 'capture',
+        requireProcessing: true,
+        iframeWidth: message.iframeWidth || 480, // Passar iframeWidth para remover o painel
+        source: 'content'
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          const errorMsg = chrome.runtime.lastError.message;
+          safeLog(`❌ Erro na captura: ${errorMsg}`, 'ERROR');
+          sendResponse({ success: false, error: errorMsg });
+          return;
+        }
+        
+        if (response && response.error) {
+          safeLog(`❌ Erro na captura: ${response.error}`, 'ERROR');
+          sendResponse({ success: false, error: response.error });
+          return;
+        }
+        
+        if (response && response.dataUrl) {
+          safeLog('✅ Captura de tela realizada com sucesso', 'SUCCESS');
+          sendResponse({ success: true, dataUrl: response.dataUrl });
+        } else {
+          safeLog('❌ Captura de tela falhou - resposta sem dataUrl', 'ERROR');
+          sendResponse({ success: false, error: 'Captura falhou - sem dados' });
+        }
+      });
+    } catch (error) {
+      safeLog(`❌ Erro ao processar captura: ${error.message}`, 'ERROR');
+      sendResponse({ success: false, error: error.message });
+    }
+    
+    return true; // Resposta assíncrona
   }
 
   // Handler para teste de captura de payout
@@ -2894,6 +2906,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     return true; // Resposta assíncrona
   }
+  
+
   
   // Outros handlers existentes...
   return false; // Não processou a mensagem

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Trade Manager Pro",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "Gerenciador de operações para Pocket Option com automação e análise de IA.",
   "permissions": [
     "storage",
@@ -41,6 +41,7 @@
         "src/content/analyzers/limits-checker.js",
         "src/content/analyzers/intelligent-gale.js",
         "src/content/analyzers/system-dashboard.js",
+        "src/content/analyzers/data-analyzer.js",
         "src/content/state-manager.js",
         "src/content/navigation.js",
         "src/content/capture-screen.js",
@@ -51,6 +52,8 @@
         "src/content/settings.js",
         "src/content/automation.js",
         "src/content/modal-analyze.js",
+        "src/content/analysis-orchestrator.js",
+        "src/content/dev-tools.js",
         "src/content/index.js"
       ],
       "css": [

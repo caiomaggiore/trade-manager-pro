@@ -258,11 +258,11 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             addLog('📸 [RUNANALYSIS] Iniciando captura de tela para análise...', 'INFO');
             let dataUrl;
             
-            // Verificar se o módulo de captura está disponível
+            // Verificar se o sistema de captura está disponível
             if (!window.CaptureScreen || typeof window.CaptureScreen.captureForAnalysis !== 'function') {
-                addLog('Módulo de captura não disponível, tentando carregar dinamicamente', 'WARN');
+                addLog('Sistema de captura não disponível, tentando carregar dinamicamente', 'WARN');
                 
-                // Tentar carregar o módulo dinamicamente
+                // Tentar carregar o módulo de captura dinamicamente
                 try {
                     const script = document.createElement('script');
                     script.src = '../content/capture-screen.js';
@@ -912,38 +912,28 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     // Expor função globalmente para uso em outros módulos
     window.cancelCurrentOperation = cancelCurrentOperation;
 
-    // Função para capturar e analisar - delegada para CaptureScreen
+    // Função para capturar e analisar - delegada para módulo de captura
     async function captureAndAnalyze() {
         try {
             addLog('Iniciando processo integrado de captura e análise...', 'INFO');
             
-            // Usar o módulo de captura centralizado
-            if (window.CaptureScreen && typeof window.CaptureScreen.captureAndAnalyze === 'function') {
-                const success = await window.CaptureScreen.captureAndAnalyze();
-                if (success) {
-                    addLog('Processo integrado de captura e análise concluído com sucesso', 'SUCCESS');
-                    updateStatus('Captura e análise realizadas com sucesso', 'success');
-                } else {
-                    addLog('Falha no processo integrado de captura e análise', 'ERROR');
-                    updateStatus('Falha na captura e análise', 'error');
-                }
+            // Usar o módulo de captura existente
+            if (window.CaptureScreen && typeof window.CaptureScreen.captureForAnalysis === 'function') {
+                await window.CaptureScreen.captureForAnalysis();
+                addLog('Captura realizada com sucesso pelo módulo de captura', 'SUCCESS');
+                await runAnalysis();
+                addLog('Processo integrado de captura e análise concluído com sucesso', 'SUCCESS');
+                updateStatus('Captura e análise realizadas com sucesso', 'success');
             } else {
-                // Fallback para método separado
-                addLog('Módulo CaptureScreen.captureAndAnalyze não disponível, usando método separado', 'WARN');
-                if (window.CaptureScreen && typeof window.CaptureScreen.captureForAnalysis === 'function') {
-                    await window.CaptureScreen.captureForAnalysis();
-                    addLog('Captura realizada com sucesso pelo módulo centralizado', 'SUCCESS');
+                // Fallback para método alternativo
+                addLog('Módulo de captura não disponível, usando método alternativo', 'WARN');
+                const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                const response = await chrome.tabs.sendMessage(tab.id, { action: 'CAPTURE_SCREENSHOT' });
+                if (response && response.success) {
+                    updateStatus('Captura realizada com sucesso', 'success');
                     await runAnalysis();
                 } else {
-                    addLog('Módulo CaptureScreen não disponível, tentando método alternativo', 'WARN');
-                    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-                    const response = await chrome.tabs.sendMessage(tab.id, { action: 'CAPTURE_SCREENSHOT' });
-                    if (response && response.success) {
-                        updateStatus('Captura realizada com sucesso', 'success');
-                        await runAnalysis();
-                    } else {
-                        updateStatus('Erro ao capturar a tela', 'error');
-                    }
+                    updateStatus('Erro ao capturar a tela', 'error');
                 }
             }
         } catch (error) {
@@ -1042,25 +1032,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             });
         }
         
-        if (elements.captureScreen) {
-            elements.captureScreen.addEventListener('click', async () => {
-                addLog('Botão de captura clicado - delegando para CaptureScreen', 'INFO');
-                
-                try {
-                    // Usar o sistema centralizado de captura
-                    if (window.CaptureScreen && typeof window.CaptureScreen.captureAndShow === 'function') {
-                        await window.CaptureScreen.captureAndShow();
-                        updateStatus('Captura de tela realizada com sucesso', 'success');
-                    } else {
-                        addLog('Módulo CaptureScreen não disponível', 'ERROR');
-                        updateStatus('Módulo de captura não disponível', 'error');
-                    }
-                } catch (error) {
-                    addLog(`Erro na captura: ${error.message}`, 'ERROR');
-                    updateStatus('Erro na captura de tela', 'error');
-                }
-            });
-        }
+        // Botão de captura de tela movido para dev-tools.js
         
         if (elements.analyzeBtn) {
             elements.analyzeBtn.addEventListener('click', analysisOrchestrator.execute.bind(analysisOrchestrator));
@@ -1132,6 +1104,40 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         
         // Configurar botão de teste de análise no modo desenvolvedor
         setupDevAnalysisButton();
+        
+        // Inicializar DevTools se devMode ativo
+        if (window.StateManager) {
+            const config = window.StateManager.getConfig();
+            addLog(`Configuração carregada - devMode: ${config?.devMode}`, 'DEBUG');
+            
+            if (config && config.devMode) {
+                addLog('Modo desenvolvedor ativo, verificando DevTools...', 'INFO');
+                
+                // Inicializar DevTools via chrome.runtime (seguindo arquitetura)
+                try {
+                    chrome.runtime.sendMessage({
+                        action: 'INIT_DEV_TOOLS'
+                    }, (response) => {
+                        if (chrome.runtime.lastError) {
+                            addLog(`Erro ao inicializar DevTools: ${chrome.runtime.lastError.message}`, 'WARN');
+                        } else if (response && response.success) {
+                            addLog('DevTools inicializado via chrome.runtime', 'SUCCESS');
+                        }
+                    });
+                } catch (error) {
+                    addLog(`Erro ao enviar mensagem de inicialização para DevTools: ${error.message}`, 'WARN');
+                }
+                
+                // Atualizar visibilidade do painel de desenvolvimento na inicialização
+                updateDevPanelVisibility(config.devMode);
+            } else {
+                addLog('Modo desenvolvedor não ativo', 'DEBUG');
+                // Garantir que o painel esteja oculto na inicialização
+                updateDevPanelVisibility(false);
+            }
+        }
+        
+
         
         // Inicializar o listener do StateManager para atualizações de configurações
         initStateManagerListener();
@@ -1301,9 +1307,6 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                             updateProfitLossDisplay();
                             updateGaleLevelDisplay();
                             
-                            // Atualizar visibilidade do painel de teste do Gale
-                            updateGaleTestPanelVisibility(config.devMode);
-                            
                             // Atualizar visibilidade dos botões principais
                             updateUserControlsVisibility(config.automation, false);
                             
@@ -1446,8 +1449,11 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         // *** CORREÇÃO: Atualizar payout mínimo no dashboard ***
                         updateMinPayoutDisplay(config);
                         
-                        // Atualizar visibilidade do painel de teste do Gale baseado no modo desenvolvedor
-                        updateGaleTestPanelVisibility(config.devMode);
+                        // Atualizar visibilidade do painel de desenvolvimento baseado no modo desenvolvedor
+                        updateDevPanelVisibility(config.devMode);
+                        
+                        // Log específico para debug do painel de desenvolvimento
+                        addLog(`Painel de desenvolvimento - devMode: ${config.devMode}, chamando updateDevPanelVisibility`, 'DEBUG');
                         
                         // Aplicar configurações de modo de teste
                         if (config.testMode) {
@@ -2454,55 +2460,8 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 return true;
             });
 
-            const canvasBtn = document.getElementById('captureCanvasInfoBtn');
-            if (canvasBtn) {
-                canvasBtn.addEventListener('click', () => {
-                    const statusEl = document.getElementById('analysis-debug-result');
-                    if (statusEl) statusEl.textContent = 'Capturando dimensões do gráfico...';
-
-                    chrome.runtime.sendMessage({ action: 'GET_CANVAS_INFO' }, (response) => {
-                        if (response && response.success && response.data) {
-                            const { width, height, x, y, selector } = response.data;
-                            const message = `✅ Dimensões do gráfico: ${selector} | ${width}x${height} @ ${x},${y}`;
-                            if (statusEl) statusEl.textContent = message;
-                            addLog(`Canvas capturado: ${width}x${height} @ ${x},${y}`, 'SUCCESS');
-                        } else {
-                            const error = response ? response.error : 'Sem resposta do content script.';
-                            if (statusEl) statusEl.textContent = `❌ Erro: ${error}`;
-                            addLog(`Erro ao capturar canvas: ${error}`, 'ERROR');
-                        }
-                    });
-                });
-            }
-
-            // Botão para capturar apenas o gráfico
-            const chartOnlyBtn = document.getElementById('captureChartOnlyBtn');
-            if (chartOnlyBtn) {
-                chartOnlyBtn.addEventListener('click', () => {
-                    const statusEl = document.getElementById('analysis-debug-result');
-                    if (statusEl) statusEl.textContent = 'Capturando apenas o gráfico...';
-
-                    chrome.runtime.sendMessage({ action: 'CAPTURE_CHART_ONLY' }, (response) => {
-                        if (response && response.success && response.dataUrl) {
-                            const message = `✅ Gráfico capturado com sucesso!`;
-                            if (statusEl) statusEl.textContent = message;
-                            
-                            // Mostrar a imagem em popup
-                            chrome.runtime.sendMessage({
-                                action: 'showImagePopup',
-                                dataUrl: response.dataUrl
-                            }, (popupResponse) => {
-                                if (chrome.runtime.lastError) {
-                                    console.warn('Aviso ao mostrar popup:', chrome.runtime.lastError.message);
-                                }
-                            });
-                        } else {
-                            const error = response ? response.error : 'Sem resposta do content script.';
-                            if (statusEl) statusEl.textContent = `❌ Erro: ${error}`;
-                        }
-                    });
-                });
-            }
+            // Botões de captura movidos para dev-tools.js
+            // DevTools é responsável por configurar todos os botões do painel de desenvolvimento
 
             // Listener para o botão de abrir o modal de análise
             const openModalBtn = document.getElementById('open-analysis-modal');
@@ -2517,17 +2476,47 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         }
     }
 
-    // Função para atualizar a visibilidade do painel de teste do Gale baseado no modo desenvolvedor
-    const updateGaleTestPanelVisibility = (devModeEnabled) => {
-        const galeTestPanel = document.getElementById('gale-test-panel');
-        if (!galeTestPanel) return;
+    // Função para atualizar a visibilidade do painel de desenvolvimento baseado no modo desenvolvedor
+    const updateDevPanelVisibility = (devModeEnabled) => {
+        addLog(`Tentando atualizar visibilidade do painel de desenvolvimento: ${devModeEnabled}`, 'DEBUG');
+        
+        // Teste direto primeiro
+        const devPanel = document.getElementById('gale-test-panel');
+        if (!devPanel) {
+            addLog('Painel de desenvolvimento não encontrado no DOM', 'ERROR');
+            return;
+        }
+        
+        addLog(`Estado atual do painel: ${devPanel.classList.contains('hidden') ? 'oculto' : 'visível'}`, 'DEBUG');
         
         if (devModeEnabled) {
-            galeTestPanel.classList.remove('hidden');
-            addLog('Painel de teste do Gale exibido (Modo Desenvolvedor ativo)', 'INFO');
-            } else {
-            galeTestPanel.classList.add('hidden');
-            addLog('Painel de teste do Gale ocultado', 'DEBUG');
+            devPanel.classList.remove('hidden');
+            addLog('Painel de desenvolvimento EXIBIDO', 'INFO');
+        } else {
+            devPanel.classList.add('hidden');
+            addLog('Painel de desenvolvimento OCULTO', 'INFO');
+        }
+        
+        // Verificar se funcionou
+        setTimeout(() => {
+            const isVisible = !devPanel.classList.contains('hidden');
+            addLog(`Verificação pós-alteração: painel de desenvolvimento ${isVisible ? 'visível' : 'ainda oculto'}`, 'DEBUG');
+        }, 100);
+        
+        // Notificar DevTools via chrome.runtime (seguindo arquitetura)
+        try {
+            chrome.runtime.sendMessage({
+                action: 'UPDATE_DEV_PANEL_VISIBILITY',
+                devModeEnabled: devModeEnabled
+            }, (response) => {
+                if (chrome.runtime.lastError) {
+                    addLog(`Erro ao notificar DevTools: ${chrome.runtime.lastError.message}`, 'WARN');
+                } else if (response && response.success) {
+                    addLog('DevTools notificado sobre mudança de visibilidade', 'DEBUG');
+                }
+            });
+        } catch (error) {
+            addLog(`Erro ao enviar mensagem para DevTools: ${error.message}`, 'WARN');
         }
     };
 

@@ -107,7 +107,84 @@ graph TD
     E -- Acesso ao Storage --> F;
 ``` 
 
-## 3. Versionamento e Publicação de Novas Versões
+## 3. Padrão UI - Controle Centralizado de Elementos
+
+Para manter a consistência e facilitar a manutenção da interface do usuário, foi estabelecido um padrão arquitetural para o controle de elementos DOM.
+
+### O Padrão UI
+
+O padrão UI consiste em criar um objeto centralizado que gerencia todos os elementos da interface, seguindo a convenção:
+
+```javascript
+// Objeto UI para controle centralizado dos elementos (padrão arquitetural)
+const UI = {
+    // Propriedades para elementos de controle
+    captureScreen: null,
+    canvasInfo: null,
+    chartOnly: null,
+    
+    // Propriedades para elementos de status e resultado
+    statusElement: null,
+    resultElement: null,
+    
+    // Método de inicialização
+    init() {
+        this.captureScreen = document.getElementById('captureBtn');
+        this.canvasInfo = document.getElementById('captureCanvasInfoBtn');
+        this.chartOnly = document.getElementById('captureChartOnlyBtn');
+        this.statusElement = document.getElementById('dev-status');
+        this.resultElement = document.getElementById('analysis-debug-result');
+        
+        // Log dos elementos encontrados para debug
+        this.logElements();
+        
+        return this;
+    },
+    
+    // Método para log de debug
+    logElements() {
+        console.log('Elementos UI encontrados:');
+        console.log(`- captureScreen: ${this.captureScreen ? 'OK' : 'NÃO ENCONTRADO'}`);
+        console.log(`- canvasInfo: ${this.canvasInfo ? 'OK' : 'NÃO ENCONTRADO'}`);
+        // ... outros elementos
+    }
+};
+```
+
+### Vantagens do Padrão UI
+
+1. **Centralização:** Todos os elementos DOM são referenciados em um único local
+2. **Debugging:** Facilita a identificação de elementos não encontrados
+3. **Manutenibilidade:** Mudanças de IDs ou seletores são feitas em um só lugar
+4. **Consistência:** Padroniza o acesso aos elementos em todo o projeto
+5. **Documentação:** Serve como documentação viva dos elementos da interface
+
+### Uso do Padrão
+
+```javascript
+// Inicializar UI
+UI.init();
+
+// Usar elementos
+UI.captureScreen.addEventListener('click', () => {
+    // Lógica do botão
+});
+
+// Verificar se elemento existe antes de usar
+if (UI.statusElement) {
+    UI.statusElement.textContent = 'Status atualizado';
+}
+```
+
+### Implementação em Módulos
+
+Cada módulo que precisa interagir com elementos DOM deve:
+1. Declarar seu próprio objeto UI
+2. Implementar o método `init()` para buscar os elementos
+3. Usar logs de debug para verificar se os elementos foram encontrados
+4. Verificar a existência dos elementos antes de usá-los
+
+## 4. Versionamento e Publicação de Novas Versões
 
 Para manter a consistência e o rastreamento do projeto, é fundamental seguir um processo de versionamento rigoroso sempre que uma nova versão estável for concluída.
 

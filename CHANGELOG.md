@@ -1,5 +1,53 @@
 # Changelog - Trade Manager Pro
 
+## Versão 1.0.11 (Estável) - 2024-01-18
+
+### 🎯 **Refatoração do Painel de Desenvolvimento**
+- **Funcionalidade:** Implementado padrão UI centralizado e removido botão desnecessário
+- **Benefício:** Código mais limpo, manutenível e seguindo arquitetura estabelecida
+- **Arquitetura:** Padrão UI documentado para uso futuro em todo o projeto
+
+### 🔧 **Melhorias Implementadas**
+1. **Padrão UI Centralizado:**
+   - Objeto `UI` para controle centralizado dos elementos DOM
+   - Declaração direta dos elementos sem método `init()`
+   - Logs de debug para identificar elementos não encontrados
+   - Documentação do padrão na arquitetura
+
+2. **Remoção do Botão "Info do Canvas":**
+   - Botão removido do HTML e JavaScript
+   - Funcionalidade integrada ao botão "Capturar Gráfico"
+   - Interface mais limpa e focada
+
+3. **Sistema de Captura Otimizado:**
+   - Captura de tela com remoção automática do painel lateral
+   - Fluxo: `dev-tools.js` → `content.js` → `background.js` → `content.js` (processCapture)
+   - Parâmetro `iframeWidth: 480` para crop correto
+
+4. **Documentação Arquitetural:**
+   - Padrão UI documentado no `ARQUITETURA.md`
+   - Vantagens e implementação do padrão
+   - Exemplos de uso para futuras implementações
+
+### 📊 **Arquivos Modificados**
+- `src/layout/index.html` - Removido botão "Info do Canvas"
+- `src/content/dev-tools.js` - Implementado padrão UI e removido código desnecessário
+- `src/content/content.js` - Corrigido handler CAPTURE_SCREENSHOT para passar iframeWidth
+- `ARQUITETURA.md` - Documentação do padrão UI
+- `manifest.json` - Versão atualizada para 1.0.11
+
+### 🏗️ **Arquitetura da Captura**
+```
+Botão Clicado → dev-tools.js → content.js → background.js → content.js (processCapture) → Imagem sem painel
+```
+
+### 🎯 **Correção do Sistema de Captura**
+- **Problema:** Content scripts não têm acesso a `chrome.tabs.captureVisibleTab`
+- **Solução:** Uso do mesmo método do popup via `initiateCapture`
+- **Resultado:** Captura funcionando corretamente com remoção do painel
+
+---
+
 ## Versão 1.0.9 (Estável) - 2024-01-XX
 
 ### 🎯 **Nova Funcionalidade: Captura Inteligente do Gráfico**
