@@ -168,6 +168,7 @@ const devUpdateStatus = (message, type = 'info') => {
     // Objeto UI para controle centralizado dos elementos (padrão arquitetural)
     const UI = {
         captureScreen: document.getElementById('captureBtn'),
+        canvasInfo: document.getElementById('captureCanvasInfoBtn'),
         chartOnly: document.getElementById('captureChartOnlyBtn'),
         statusElement: document.getElementById('dev-status'),
         resultElement: document.getElementById('analysis-debug-result')
@@ -200,6 +201,35 @@ const devUpdateStatus = (message, type = 'info') => {
             }
         });
         devLog('Botão de captura de tela configurado com sucesso', 'DEBUG');
+
+        // Botão de informações do canvas (dimensões do gráfico)
+        UI.canvasInfo.addEventListener('click', async () => {
+            devLog('=== CLIQUE DETECTADO: Botão de dimensão do gráfico ===', 'INFO');
+            devUpdateStatus('Obtendo informações do canvas...', 'info');
+            
+            try {
+                devLog('Tentando obter informações do canvas...', 'DEBUG');
+                const canvasInfo = await getCanvasInfo();
+                const message = `Canvas: ${canvasInfo.width}x${canvasInfo.height} @ ${canvasInfo.x},${canvasInfo.y}`;
+                devLog(`Informações do canvas: ${message}`, 'SUCCESS');
+                devUpdateStatus(message, 'success');
+                
+                // Atualizar elemento de resultado
+                if (UI.resultElement) {
+                    UI.resultElement.innerHTML = `
+                        <div><strong>Canvas encontrado:</strong></div>
+                        <div>Dimensões: ${canvasInfo.width}x${canvasInfo.height}</div>
+                        <div>Posição: ${canvasInfo.x}, ${canvasInfo.y}</div>
+                        <div>Seletor: ${canvasInfo.selector}</div>
+                        <div>Classe: ${canvasInfo.className}</div>
+                    `;
+                }
+            } catch (error) {
+                devLog(`Erro ao obter informações do canvas: ${error.message}`, 'ERROR');
+                devUpdateStatus(`Erro: ${error.message}`, 'error');
+            }
+        });
+        devLog('Botão de dimensão do gráfico configurado com sucesso', 'DEBUG');
 
         // Botão de captura apenas do gráfico (combina as duas funções)
         UI.chartOnly.addEventListener('click', async () => {
