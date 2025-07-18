@@ -119,70 +119,153 @@ O padrão UI consiste em criar um objeto centralizado que gerencia todos os elem
 // Objeto UI para controle centralizado dos elementos (padrão arquitetural)
 const UI = {
     // Propriedades para elementos de controle
-    captureScreen: null,
-    canvasInfo: null,
-    chartOnly: null,
+    captureScreen: document.getElementById('captureBtn'),
+    canvasInfo: document.getElementById('captureCanvasInfoBtn'),
+    chartOnly: document.getElementById('captureChartOnlyBtn'),
     
     // Propriedades para elementos de status e resultado
-    statusElement: null,
-    resultElement: null,
-    
-    // Método de inicialização
-    init() {
-        this.captureScreen = document.getElementById('captureBtn');
-        this.canvasInfo = document.getElementById('captureCanvasInfoBtn');
-        this.chartOnly = document.getElementById('captureChartOnlyBtn');
-        this.statusElement = document.getElementById('dev-status');
-        this.resultElement = document.getElementById('analysis-debug-result');
-        
-        // Log dos elementos encontrados para debug
-        this.logElements();
-        
-        return this;
-    },
-    
-    // Método para log de debug
-    logElements() {
-        console.log('Elementos UI encontrados:');
-        console.log(`- captureScreen: ${this.captureScreen ? 'OK' : 'NÃO ENCONTRADO'}`);
-        console.log(`- canvasInfo: ${this.canvasInfo ? 'OK' : 'NÃO ENCONTRADO'}`);
-        // ... outros elementos
-    }
+    statusElement: document.getElementById('dev-status'),
+    resultElement: document.getElementById('analysis-debug-result')
 };
 ```
 
 ### Vantagens do Padrão UI
 
 1. **Centralização:** Todos os elementos DOM são referenciados em um único local
-2. **Debugging:** Facilita a identificação de elementos não encontrados
-3. **Manutenibilidade:** Mudanças de IDs ou seletores são feitas em um só lugar
-4. **Consistência:** Padroniza o acesso aos elementos em todo o projeto
-5. **Documentação:** Serve como documentação viva dos elementos da interface
+2. **Simplicidade:** Busca direta dos elementos sem necessidade de método `init()`
+3. **Debugging:** Facilita a identificação de elementos não encontrados
+4. **Manutenibilidade:** Mudanças de IDs ou seletores são feitas em um só lugar
+5. **Consistência:** Padroniza o acesso aos elementos em todo o projeto
+6. **Documentação:** Serve como documentação viva dos elementos da interface
+7. **Performance:** Evita chamadas desnecessárias de inicialização
+8. **Clareza:** Estrutura visual clara da relação entre elementos e suas funções
 
 ### Uso do Padrão
 
 ```javascript
-// Inicializar UI
-UI.init();
-
-// Usar elementos
-UI.captureScreen.addEventListener('click', () => {
-    // Lógica do botão
+// Usar elementos diretamente
+UI.captureScreen.addEventListener('click', async () => {
+    // Lógica do botão com tratamento de erro
+    try {
+        const result = await someFunction();
+        if (UI.statusElement) {
+            UI.statusElement.textContent = 'Sucesso';
+        }
+    } catch (error) {
+        if (UI.statusElement) {
+            UI.statusElement.textContent = 'Erro: ' + error.message;
+        }
+    }
 });
 
 // Verificar se elemento existe antes de usar
-if (UI.statusElement) {
-    UI.statusElement.textContent = 'Status atualizado';
+if (UI.resultElement) {
+    UI.resultElement.innerHTML = `
+        <div><strong>Resultado:</strong></div>
+        <div>Dados: ${data}</div>
+    `;
 }
 ```
 
 ### Implementação em Módulos
 
 Cada módulo que precisa interagir com elementos DOM deve:
-1. Declarar seu próprio objeto UI
-2. Implementar o método `init()` para buscar os elementos
-3. Usar logs de debug para verificar se os elementos foram encontrados
-4. Verificar a existência dos elementos antes de usá-los
+
+1. **Declarar seu próprio objeto UI** no topo do arquivo
+2. **Buscar elementos diretamente** na declaração do objeto (sem método `init()`)
+3. **Usar logs de debug** para verificar se os elementos foram encontrados
+4. **Verificar a existência dos elementos** antes de usá-los
+5. **Seguir o padrão de nomenclatura** consistente
+
+### Exemplo de Implementação Completa
+
+```javascript
+// ================== PADRÃO UI - CONTROLE DE ELEMENTOS ==================
+
+// Objeto UI para controle centralizado dos elementos (padrão arquitetural)
+const UI = {
+    // Elementos de controle
+    captureScreen: document.getElementById('captureBtn'),
+    canvasInfo: document.getElementById('captureCanvasInfoBtn'),
+    chartOnly: document.getElementById('captureChartOnlyBtn'),
+    
+    // Elementos de status e resultado
+    statusElement: document.getElementById('dev-status'),
+    resultElement: document.getElementById('analysis-debug-result')
+};
+
+// ================== CONFIGURAÇÃO DOS BOTÕES ==================
+
+function setupButtons() {
+    // Verificar se elementos existem antes de configurar
+    if (!UI.captureScreen) {
+        console.error('Elemento captureScreen não encontrado');
+        return;
+    }
+    
+    UI.captureScreen.addEventListener('click', async () => {
+        // Lógica do botão
+    });
+}
+```
+
+### Boas Práticas e Considerações
+
+#### 1. **Verificação de Existência**
+Sempre verifique se os elementos existem antes de usá-los:
+```javascript
+if (UI.captureScreen) {
+    UI.captureScreen.addEventListener('click', handler);
+} else {
+    console.error('Elemento captureScreen não encontrado');
+}
+```
+
+#### 2. **Nomenclatura Consistente**
+Use nomes descritivos que indiquem a função do elemento:
+- `captureScreen` para botão de captura
+- `statusElement` para elemento de status
+- `resultElement` para elemento de resultado
+
+#### 3. **Organização por Categorias**
+Agrupe elementos por função no objeto UI:
+```javascript
+const UI = {
+    // Elementos de controle
+    captureScreen: document.getElementById('captureBtn'),
+    chartOnly: document.getElementById('captureChartOnlyBtn'),
+    
+    // Elementos de feedback
+    statusElement: document.getElementById('dev-status'),
+    resultElement: document.getElementById('analysis-debug-result')
+};
+```
+
+#### 4. **Integração com Sistema de Logs**
+Use o sistema de logs do projeto para debug:
+```javascript
+if (!UI.captureScreen) {
+    devLog('Elemento captureScreen não encontrado', 'ERROR');
+    return;
+}
+```
+
+#### 5. **Compatibilidade com Chrome Runtime**
+O padrão UI funciona perfeitamente com a arquitetura de mensagens:
+```javascript
+UI.captureScreen.addEventListener('click', async () => {
+    try {
+        const response = await chrome.runtime.sendMessage({
+            action: 'CAPTURE_SCREENSHOT'
+        });
+        // Processar resposta
+    } catch (error) {
+        if (UI.statusElement) {
+            UI.statusElement.textContent = 'Erro: ' + error.message;
+        }
+    }
+});
+```
 
 ## 4. Versionamento e Publicação de Novas Versões
 
