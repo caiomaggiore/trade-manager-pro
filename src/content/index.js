@@ -785,28 +785,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
 
     // Função simplificada removida - usar chrome.tabs.query diretamente
 
-    // Função simplificada para teste de conectividade
-    const testGeminiConnection = async () => {
-        try {
-            addLog('Verificando conectividade do sistema...', 'INFO');
-            updateStatus('Sistema verificando conectividade...', 'info');
-            
-            // Verificação básica sem fazer requisição real
-            if (window.API_KEY && window.API_URL) {
-                addLog('Configurações de API encontradas', 'SUCCESS');
-                updateStatus('Sistema pronto para análises', 'success');
-                return true;
-            } else {
-                addLog('Configurações de API não encontradas', 'WARN');
-                updateStatus('Sistema em modo limitado', 'warn');
-                return false;
-            }
-        } catch (error) {
-            addLog(`Erro na verificação: ${error.message}`, 'ERROR');
-            updateStatus('Erro na verificação do sistema', 'error');
-            return false;
-        }
-    };
+    // Função testGeminiConnection() migrada para dev-tools.js
 
     // Função para atualizar o contador
     const updateTradeCountdown = () => {
@@ -918,22 +897,22 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             addLog('Iniciando processo integrado de captura e análise...', 'INFO');
             
             // Usar o módulo de captura existente
-            if (window.CaptureScreen && typeof window.CaptureScreen.captureForAnalysis === 'function') {
-                await window.CaptureScreen.captureForAnalysis();
+                if (window.CaptureScreen && typeof window.CaptureScreen.captureForAnalysis === 'function') {
+                    await window.CaptureScreen.captureForAnalysis();
                 addLog('Captura realizada com sucesso pelo módulo de captura', 'SUCCESS');
-                await runAnalysis();
+                    await runAnalysis();
                 addLog('Processo integrado de captura e análise concluído com sucesso', 'SUCCESS');
                 updateStatus('Captura e análise realizadas com sucesso', 'success');
-            } else {
+                } else {
                 // Fallback para método alternativo
                 addLog('Módulo de captura não disponível, usando método alternativo', 'WARN');
-                const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-                const response = await chrome.tabs.sendMessage(tab.id, { action: 'CAPTURE_SCREENSHOT' });
-                if (response && response.success) {
-                    updateStatus('Captura realizada com sucesso', 'success');
-                    await runAnalysis();
-                } else {
-                    updateStatus('Erro ao capturar a tela', 'error');
+                    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                    const response = await chrome.tabs.sendMessage(tab.id, { action: 'CAPTURE_SCREENSHOT' });
+                    if (response && response.success) {
+                        updateStatus('Captura realizada com sucesso', 'success');
+                        await runAnalysis();
+                    } else {
+                        updateStatus('Erro ao capturar a tela', 'error');
                 }
             }
         } catch (error) {
@@ -1084,7 +1063,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         }
         
         // Testar conexão com a API Gemini
-        testGeminiConnection();
+        // testGeminiConnection(); // Migrado para dev-tools.js
         
         // Carregar configurações
         loadConfig();
@@ -1100,10 +1079,10 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         addLog('Event listeners configurados com sucesso', 'DEBUG');
         
         // Configurar os botões de teste do sistema de Gale
-        setupGaleTestButtons();
+        // setupGaleTestButtons(); // Migrado para dev-tools.js
         
         // Configurar botão de teste de análise no modo desenvolvedor
-        setupDevAnalysisButton();
+        // setupDevAnalysisButton(); // Migrado para dev-tools.js
         
         // Inicializar DevTools se devMode ativo
         if (window.StateManager) {
@@ -1206,17 +1185,17 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         checkExtensionConnection();
         
         // Tentar testar a conexão com a API Gemini
-        testGeminiConnection()
-            .then(connected => {
-                if (connected) {
-                    addLog('API Gemini conectada com sucesso', 'SUCCESS');
-                } else {
-                    addLog('Não foi possível conectar à API Gemini', 'WARN');
-                }
-            })
-            .catch(err => {
-                addLog(`Erro ao testar conexão com API: ${err.message}`, 'ERROR');
-            });
+        // testGeminiConnection() // Migrado para dev-tools.js
+        //     .then(connected => {
+        //         if (connected) {
+        //             addLog('API Gemini conectada com sucesso', 'SUCCESS');
+        //         } else {
+        //             addLog('Não foi possível conectar à API Gemini', 'WARN');
+        //         }
+        //     })
+        //     .catch(err => {
+        //         addLog(`Erro ao testar conexão com API: ${err.message}`, 'ERROR');
+        //     });
     }
 
     // Chamar a inicialização tardia quando o documento estiver pronto
@@ -1463,7 +1442,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         // Aplicar configurações de modo desenvolvedor
                         if (config.devMode) {
                             addLog('Modo desenvolvedor ativado - painel de testes disponível', 'INFO');
-                            setupDevAnalysisButton();
+                            // setupDevAnalysisButton(); // Migrado para dev-tools.js
                         }
                         
                         // Atualizar visibilidade dos botões principais baseado no estado da automação
@@ -1597,113 +1576,10 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         }
     });
 
-    // Função para gerar dados simulados
-    function generateMockData(symbol, timeframe) {
-        const candles = [];
-        const now = Date.now();
-        let lastPrice = Math.random() * 1000 + 100; // Preço inicial entre 100 e 1100
-        
-        // Gerar candles
-        for (let i = 0; i < 200; i++) {
-            const time = now - (200 - i) * getTimeframeMinutes(timeframe) * 60 * 1000;
-            const range = lastPrice * 0.02; // Variação de 2%
-            
-            const open = lastPrice;
-            const close = lastPrice + (Math.random() * range * 2 - range);
-            const high = Math.max(open, close) + Math.random() * range * 0.5;
-            const low = Math.min(open, close) - Math.random() * range * 0.5;
-            const volume = Math.floor(Math.random() * 1000) + 100;
-            
-            candles.push({ time, open, high, low, close, volume });
-            lastPrice = close;
-        }
-        
-        addLog(`Gerados ${candles.length} candles simulados para ${symbol}`, 'DEBUG');
-        
-        return {
-            symbol,
-            timeframe,
-            candles
-        };
-    }
-
-    // Converter timeframe para minutos
-    function getTimeframeMinutes(timeframe) {
-        switch (timeframe) {
-            case '1m': return 1;
-            case '5m': return 5;
-            case '15m': return 15;
-            case '30m': return 30;
-            case '1h': return 60;
-            case '4h': return 240;
-            case '1d': return 1440;
-            default: return 60;
-        }
-    }
-
-    // Renderizar resultados da análise
-    function renderAnalysisResults(result) {
-        try {
-            const resultsContainer = document.getElementById('analysis-results');
-            if (!resultsContainer) {
-                throw new Error('Container de resultados não encontrado');
-            }
-            
-            // Limpar container
-            resultsContainer.innerHTML = '';
-            
-            // Criar cabeçalho
-            const header = document.createElement('div');
-            header.className = 'analysis-header';
-            header.innerHTML = `<h3>Análise de ${result.symbol}</h3>
-                              <p>Atualizada em: ${new Date(result.timestamp).toLocaleString()}</p>`;
-            resultsContainer.appendChild(header);
-            
-            // Criar seção de indicadores
-            const indicatorsSection = document.createElement('div');
-            indicatorsSection.className = 'indicators-section';
-            indicatorsSection.innerHTML = `<h4>Indicadores</h4>`;
-            
-            // Adicionar valores de indicadores
-            const indList = document.createElement('ul');
-            for (const [key, value] of Object.entries(result.indicators)) {
-                if (value && value.length > 0) {
-                    const lastValue = value[value.length - 1];
-                    if (lastValue !== null) {
-                        const item = document.createElement('li');
-                        item.textContent = `${key.toUpperCase()}: ${lastValue.toFixed(2)}`;
-                        indList.appendChild(item);
-                    }
-                }
-            }
-            indicatorsSection.appendChild(indList);
-            resultsContainer.appendChild(indicatorsSection);
-            
-            // Criar seção de sinais
-            const signalsSection = document.createElement('div');
-            signalsSection.className = 'signals-section';
-            signalsSection.innerHTML = `<h4>Sinais (${result.signals.length})</h4>`;
-            
-            if (result.signals.length > 0) {
-                const signalsList = document.createElement('ul');
-                result.signals.forEach(signal => {
-                    const item = document.createElement('li');
-                    item.className = `signal-item ${signal.significance.toLowerCase()}`;
-                    item.innerHTML = `<strong>${signal.type}</strong>: ${signal.indicator1} × ${signal.indicator2}`;
-                    signalsList.appendChild(item);
-                });
-                signalsSection.appendChild(signalsList);
-            } else {
-                signalsSection.innerHTML += '<p>Nenhum sinal detectado</p>';
-            }
-            
-            resultsContainer.appendChild(signalsSection);
-            
-            addLog('Resultados da análise renderizados', 'SUCCESS');
-        } catch (error) {
-            addLog(`Erro ao renderizar resultados: ${error.message}`, 'ERROR');
-        }
-    }
+    // Funções de análise migradas para dev-tools.js:
+    // - generateMockData()
+    // - getTimeframeMinutes()
+    // - renderAnalysisResults()
 
     // Função unificada para logs e status
     const logAndUpdateStatus = (message, level = 'INFO', source = 'index.js', showStatus = true, duration = 3000) => {
@@ -2492,7 +2368,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         if (devModeEnabled) {
             devPanel.classList.remove('hidden');
             addLog('Painel de desenvolvimento EXIBIDO', 'INFO');
-        } else {
+            } else {
             devPanel.classList.add('hidden');
             addLog('Painel de desenvolvimento OCULTO', 'INFO');
         }
@@ -2559,37 +2435,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         }
     };
 
-    // Função para adicionar botão de teste de análise no modo desenvolvedor
-    const setupDevAnalysisButton = () => {
-        const testAnalysisBtn = document.getElementById('test-analysis');
-        if (testAnalysisBtn) {
-            testAnalysisBtn.addEventListener('click', async () => {
-                addLog('Executando teste de análise (modo desenvolvedor)', 'INFO');
-                try {
-                    // Simular análise com dados mock
-                    const mockResult = {
-                        action: Math.random() > 0.5 ? 'BUY' : 'SELL',
-                        confidence: Math.floor(Math.random() * 40) + 60, // 60-100%
-                        period: '1m',
-                        value: 'R$ 10,00',
-                        reason: 'Análise de teste executada com dados simulados para desenvolvimento.',
-                        isTestMode: true
-                    };
-                    
-                    // Mostrar modal com resultado
-                    if (typeof showAnalysisModal === 'function') {
-                        showAnalysisModal(mockResult);
-                        addLog('Modal de análise de teste exibido com sucesso', 'SUCCESS');
-                    } else {
-                        addLog('Função showAnalysisModal não encontrada', 'ERROR');
-                    }
-                } catch (error) {
-                    addLog(`Erro no teste de análise: ${error.message}`, 'ERROR');
-                }
-            });
-            addLog('Botão de teste de análise configurado', 'DEBUG');
-        }
-    };
+    // Função setupDevAnalysisButton() migrada para dev-tools.js
 
     // Adicionar um listener para mensagens do chrome.runtime
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -2644,6 +2490,15 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     updateStatus(`Sistema parou por erro: ${error.message}`, 'error');
                 }
                 
+                sendResponse({ success: true });
+                return true;
+            }
+            
+            // Tratar reset de erro do sistema via DevTools
+            if (message.action === 'SYSTEM_ERROR_RESET') {
+                addLog('Reset de erro do sistema confirmado via DevTools', 'INFO');
+                updateSystemOperationalStatus('Pronto');
+                updateStatus('Status de erro resetado com sucesso', 'success');
                 sendResponse({ success: true });
                 return true;
             }

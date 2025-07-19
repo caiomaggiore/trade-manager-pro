@@ -732,6 +732,6 @@ async function copyTextToClipboard(text) {
         }
         throw error; // Re-lança o erro para ser pego pelo listener original.
     }
-}
+} 
 
  

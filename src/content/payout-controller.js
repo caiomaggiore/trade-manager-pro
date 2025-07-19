@@ -339,11 +339,17 @@ class PayoutController {
     
     // Função auxiliar para formatar lista de ativos
     formatAssetsList(assets) {
-        if (!assets || assets.length === 0) return 'Nenhum ativo encontrado';
+        if (!assets || assets.length === 0) {
+            return 'Nenhum ativo encontrado';
+        }
         
-        return assets.map((asset, index) => 
-            `${index + 1}. ${asset.name} - ${asset.payout}%${asset.isSelected ? ' (SELECIONADO)' : ''}`
-        ).join('<br>');
+        // Formatar lista de ativos com informações detalhadas
+        const formattedList = assets.map((asset, index) => {
+            const selectionStatus = asset.isSelected ? ' [SELECIONADO]' : '';
+            return `${index + 1}. ${asset.name} (${asset.payout}%)${selectionStatus}`;
+        }).join('<br>');
+        
+        return formattedList;
     }
     
     // Teste de busca do melhor ativo
@@ -409,16 +415,38 @@ class PayoutController {
                 }
                 
                 if (response && response.success) {
-                    let resultText = `✅ ${response.message}<br><br>`;
+                    let resultText = `${response.message}<br><br>`;
                     resultText += `<strong>Ativos de ${response.category}:</strong><br>`;
-                    resultText += this.formatAssetsList(response.assets);
+                    
+                    // Verificar se temos ativos capturados
+                    if (response.assets && response.assets.length > 0) {
+                        resultText += `📊 Total de ativos encontrados: ${response.totalAssetsFound || response.assets.length}<br><br>`;
+                        
+                        // Usar a lista formatada se disponível, senão formatar manualmente
+                        if (response.assetsList) {
+                            resultText += response.assetsList;
+                        } else {
+                            resultText += this.formatAssetsList(response.assets);
+                        }
+                        
+                        // Mostrar ativo selecionado se disponível
+                        if (response.selectedAsset) {
+                            resultText += `<br><br>🎯 <strong>Ativo Selecionado:</strong> ${response.selectedAsset.name} (${response.selectedAsset.payout}%)`;
+                        }
+                    } else {
+                        resultText += `❌ Nenhum ativo encontrado na categoria ${response.category}`;
+                    }
                     
                     this.log(`Teste de troca de categoria concluído: ${response.message}`, 'SUCCESS');
+                    this.log(`Total de ativos capturados: ${response.totalAssetsFound || 0}`, 'INFO');
+                    
                     resolve({
                         success: true,
                         message: resultText,
                         category: response.category,
-                        assets: response.assets
+                        assets: response.assets,
+                        selectedAsset: response.selectedAsset,
+                        totalAssetsFound: response.totalAssetsFound
                     });
                 } else {
                     const error = `❌ ${response?.error || 'Falha ao mudar categoria'}`;
@@ -679,7 +707,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     if (message.action === 'STOP_PAYOUT_MONITORING') {
         payoutControllerInstance.log(`Recebido comando para parar monitoramento: ${message.reason}`, 'INFO');
-        payoutControllerInstance.stopMonitoring();
+        payoutControllerInstance.cancelPayoutMonitoring();
         sendResponse({ success: true, message: 'Monitoramento parado' });
         return true;
     }

@@ -1,5 +1,60 @@
 # Changelog - Trade Manager Pro
 
+## Versão 1.0.12 (Estável) - 2024-01-19
+
+### 🎯 **Migração de Funções para Dev-Tools**
+- **Funcionalidade:** Migração completa de funções de desenvolvimento para módulo dev-tools
+- **Benefício:** Código mais organizado, modular e seguindo arquitetura estabelecida
+- **Arquitetura:** Separação clara entre funções de produção e desenvolvimento
+
+### 🔧 **Melhorias Implementadas**
+1. **Migração de Funções:**
+   - `testSwitchAssetCategory()` - Migrada para dev-tools.js
+   - `formatAssetsList()` - Função auxiliar para formatação
+   - `testFindBestAsset()` - Busca de melhor ativo
+   - Todas as funções de debug do modal
+
+2. **Correção de Captura de Ativos:**
+   - Seletor correto: `li.alist__item` baseado na estrutura HTML real
+   - Verificação de payout válido (ignora N/A e schedule-info)
+   - Captura de todos os ativos (ativos e inativos)
+   - Filtro para retornar apenas ativos válidos
+   - Ordenação por ativo (ativos primeiro) e payout (maior primeiro)
+
+3. **Debug Detalhado:**
+   - Logs de debug para rastrear parâmetros
+   - Verificação de categoria undefined
+   - Fallback para categoria 'crypto'
+   - Logs de captura de lista inicial e final
+
+4. **Fluxo Otimizado:**
+   - Abrir modal → Mudar categoria → Aguardar carregar → Capturar lista → Selecionar ativo → Aguardar seleção → Capturar lista FINAL → Fechar modal
+   - Captura da lista final antes de fechar o modal
+
+### 📊 **Arquivos Modificados**
+- `src/content/content.js` - Correção de captura de ativos e debug detalhado
+- `src/content/dev-tools.js` - Adição de funções migradas e correção de comunicação
+- `src/content/payout-controller.js` - Melhoria na exibição de resultados
+- `src/layout/index.html` - Botão de debug de captura de ativos
+
+### 🏗️ **Arquitetura da Captura de Ativos**
+```
+Dev-Tools → chrome.runtime.sendMessage → Content.js → AssetManager.getAvailableAssets() → Lista formatada
+```
+
+### 🎯 **Correções Críticas**
+- **Problema:** Função `testSwitchAssetCategory` não existia no dev-tools
+- **Solução:** Implementada função completa com comunicação correta
+- **Resultado:** Parâmetros chegando corretamente no content.js
+
+### 🔍 **Debug Implementado**
+- Logs detalhados de parâmetros recebidos
+- Verificação de categoria undefined
+- Logs de captura de lista inicial e final
+- Debug de seletores e elementos encontrados
+
+---
+
 ## Versão 1.0.11 (Estável) - 2024-01-18
 
 ### 🎯 **Refatoração do Painel de Desenvolvimento**
