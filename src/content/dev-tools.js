@@ -1047,7 +1047,14 @@ const devUpdateStatus = (message, type = 'info') => {
                 
                 if (response && response.success) {
                     let resultText = `${response.message}<br><br>`;
+                    
+                    // Mostrar categoria solicitada vs categoria ativa
+                    const categoryInfo = response.requestedCategory && response.requestedCategory !== response.category ? 
+                        `Categoria solicitada: ${response.requestedCategory} → Categoria ativa: ${response.category}` :
+                        `Categoria: ${response.category}`;
+                    
                     resultText += `<strong>Ativos de ${response.category}:</strong><br>`;
+                    resultText += `<small>(${categoryInfo})</small><br><br>`;
                     
                     // Verificar se temos ativos capturados
                     if (response.assets && response.assets.length > 0) {

@@ -954,10 +954,23 @@ function capturePayoutFromDOM() {
               assetsListText = 'Nenhum ativo encontrado';
             }
             
-            // 8. Retornar resultado completo
+            // 8. Detectar categoria ativa atual para verificação
+            let activeCategoryName = category;
+            const activeCategoryElement = document.querySelector('.assets-block__nav-item--active');
+            if (activeCategoryElement) {
+              const activeClass = activeCategoryElement.className;
+              if (activeClass.includes('cryptocurrency')) activeCategoryName = 'cryptocurrency';
+              else if (activeClass.includes('currency')) activeCategoryName = 'currency';
+              else if (activeClass.includes('commodity')) activeCategoryName = 'commodity';
+              else if (activeClass.includes('stock')) activeCategoryName = 'stock';
+              else if (activeClass.includes('index')) activeCategoryName = 'index';
+            }
+            
+            // 9. Retornar resultado completo
             const result = {
               success: categoryChanged && (assetSelected || finalAssets.length > 0),
-              category: category, // Usar a categoria corrigida
+              category: activeCategoryName, // Usar categoria detectada
+              requestedCategory: category, // Categoria solicitada originalmente
               assets: finalAssets, // Lista final capturada antes de fechar
               message: finalMessage,
               assetsList: assetsListText,
@@ -2196,14 +2209,32 @@ const AssetManager = {
         const activeControl = document.querySelector('.currencies-block__in.active');
         safeLog(`DEBUG: Modal aberto: ${!!modal}, Active control: ${!!activeControl}`, 'DEBUG');
         
-        // CORRETO: Usar o seletor baseado na estrutura HTML fornecida
+        // ✅ MELHORADO: Usar seletores mais robustos para diferentes categorias
         let assetItems = document.querySelectorAll("li.alist__item");
         safeLog(`DEBUG: Seletor li.alist__item encontrou ${assetItems.length} itens`, 'DEBUG');
         
-        // FALLBACK: Se não encontrar, tentar o seletor específico
+        // FALLBACK: Se não encontrar, tentar seletores específicos para diferentes categorias
         if (assetItems.length === 0) {
-          assetItems = document.querySelectorAll("#modal-root > div > div > div > div.assets-block__col.assets-block__col-body > div.assets-block__body-wrap > div > div > div.assets-block__body-currency > ul li");
-          safeLog(`DEBUG: Seletor específico encontrou ${assetItems.length} itens`, 'DEBUG');
+          // Tentar diferentes categorias baseado na estrutura HTML fornecida
+          const categorySelectors = [
+            "#modal-root > div > div > div > div.assets-block__col.assets-block__col-body > div.assets-block__body-wrap > div > div > div.assets-block__body-currency > ul li",
+            "#modal-root > div > div > div > div.assets-block__col.assets-block__col-body > div.assets-block__body-wrap > div > div > div.assets-block__body-cryptocurrency > ul li",
+            "#modal-root > div > div > div > div.assets-block__col.assets-block__col-body > div.assets-block__body-wrap > div > div > div.assets-block__body-commodity > ul li",
+            "#modal-root > div > div > div > div.assets-block__col.assets-block__col-body > div.assets-block__body-wrap > div > div > div.assets-block__body-stock > ul li",
+            "#modal-root > div > div > div > div.assets-block__col.assets-block__col-body > div.assets-block__body-wrap > div > div > div.assets-block__body-index > ul li",
+            // Seletor genérico para qualquer categoria
+            ".assets-block__body-wrap ul li",
+            ".assets-block__col-body ul li"
+          ];
+          
+          for (const selector of categorySelectors) {
+            assetItems = document.querySelectorAll(selector);
+            safeLog(`DEBUG: Seletor ${selector} encontrou ${assetItems.length} itens`, 'DEBUG');
+            if (assetItems.length > 0) {
+              safeLog(`✅ Encontrados ${assetItems.length} ativos usando seletor: ${selector}`, 'INFO');
+              break;
+            }
+          }
         }
         
         if (assetItems.length === 0) {
@@ -3237,24 +3268,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // Resposta assíncrona
   }
   
-  if (message.action === 'TEST_SWITCH_ASSET_CATEGORY') {
-    safeLog(`Solicitação de troca de categoria para ${message.category} recebida`, 'INFO');
-    
-    const category = message.category || 'crypto';
-    
-    AssetManager.switchToBestAsset(85, category)
-      .then(result => {
-        sendResponse(result);
-      })
-      .catch(error => {
-        sendResponse({
-          success: false,
-          error: error.message
-        });
-      });
-    
-    return true; // Resposta assíncrona
-  }
+  // ❌ HANDLER DUPLICADO REMOVIDO - O handler correto está na linha 877
+  // if (message.action === 'TEST_SWITCH_ASSET_CATEGORY') {
+  //   safeLog(`Solicitação de troca de categoria para ${message.category} recebida`, 'INFO');
+  //   
+  //   const category = message.category || 'crypto';
+  //   
+  //   AssetManager.switchToBestAsset(85, category)
+  //     .then(result => {
+  //       sendResponse(result);
+  //     })
+  //     .catch(error => {
+  //       sendResponse({
+  //         success: false,
+  //         error: error.message
+  //       });
+  //     });
+  //   
+  //   return true; // Resposta assíncrona
+  // }
   
   // ✅ HANDLER ESPECÍFICO PARA TEST_SWITCH_TO_BEST_ASSET (usando wrapper de automação)
   if (message.action === 'TEST_SWITCH_TO_BEST_ASSET') {
