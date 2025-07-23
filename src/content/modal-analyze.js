@@ -464,9 +464,9 @@ function showAnalysisModal(result) {
             }
         }, 500);
         
-        if (typeof logAndUpdateStatus === 'function') {
-            logAndUpdateStatus('Operação executada manualmente pelo usuário - aguardando resultado', 'INFO', 'trade-execution', true);
-        } else if (typeof addLog === 'function') {
+        window.sendLog('Operação executada manualmente pelo usuário - aguardando resultado', 'INFO', 'trade-execution');
+        window.sendStatus('Operação executada manualmente pelo usuário - aguardando resultado', 'info');
+        if (typeof addLog === 'function') {
             addLog('✅ [MODAL] Operação executada manualmente - status mantido como "Operando..."', 'INFO');
         }
     };
@@ -477,9 +477,9 @@ function showAnalysisModal(result) {
         autoExecutionEnabled = false;
         
         // Log da ação do usuário
-        if (typeof logAndUpdateStatus === 'function') {
-            logAndUpdateStatus('Usuário escolheu aguardar próxima análise', 'INFO', 'ui', true);
-        } else if (typeof addLog === 'function') {
+        window.sendLog('Usuário escolheu aguardar próxima análise', 'INFO', 'ui');
+        window.sendStatus('Usuário escolheu aguardar próxima análise', 'info');
+        if (typeof addLog === 'function') {
             addLog('Usuário escolheu aguardar próxima análise', 'INFO', 'ui');
         }
         
@@ -507,9 +507,9 @@ function showAnalysisModal(result) {
             window.cancelCurrentOperation('Operação cancelada pelo usuário no modal de análise');
         } else {
             // Fallback para o comportamento anterior
-        if (typeof logAndUpdateStatus === 'function') {
-            logAndUpdateStatus('Operação cancelada pelo usuário', 'INFO', 'trade-execution', true);
-        } else if (typeof addLog === 'function') {
+        window.sendLog('Operação cancelada pelo usuário', 'INFO', 'trade-execution');
+        window.sendStatus('Operação cancelada pelo usuário', 'info');
+        if (typeof addLog === 'function') {
             addLog('Operação cancelada pelo usuário', 'INFO', 'trade-execution');
         }
         if (typeof updateStatus === 'function') {
@@ -537,9 +537,8 @@ function showAnalysisModal(result) {
             window.cancelCurrentOperation('Modal de análise fechado pelo usuário');
         } else {
             // Fallback para o comportamento anterior
-            if (typeof logAndUpdateStatus === 'function') {
-                logAndUpdateStatus('Modal fechado pelo usuário (operação cancelada)', 'INFO', 'ui', true);
-            }
+                    window.sendLog('Modal fechado pelo usuário (operação cancelada)', 'INFO', 'ui');
+        window.sendStatus('Modal fechado pelo usuário (operação cancelada)', 'info');
         }
     };
     countdownElement.ondblclick = () => {
@@ -547,9 +546,8 @@ function showAnalysisModal(result) {
         countdownElement.textContent = 'Cancelado';
         countdownElement.classList.add('cancelled');
         autoExecutionEnabled = false;
-        if (typeof logAndUpdateStatus === 'function') {
-            logAndUpdateStatus('Fechamento automático cancelado. Aguardando ação manual.', 'INFO', 'ui', true);
-        }
+        window.sendLog('Fechamento automático cancelado. Aguardando ação manual.', 'INFO', 'ui');
+        window.sendStatus('Fechamento automático cancelado. Aguardando ação manual.', 'info');
     };
     window.onclick = (event) => {
         if (event.target === modal) {
@@ -570,9 +568,8 @@ function showAnalysisModal(result) {
                 window.cancelCurrentOperation('Modal de análise fechado ao clicar fora');
             } else {
                 // Fallback para o comportamento anterior
-                if (typeof logAndUpdateStatus === 'function') {
-                    logAndUpdateStatus('Modal fechado ao clicar fora (operação cancelada)', 'INFO', 'ui', true);
-                }
+                        window.sendLog('Modal fechado ao clicar fora (operação cancelada)', 'INFO', 'ui');
+        window.sendStatus('Modal fechado ao clicar fora (operação cancelada)', 'info');
             }
         }
     };

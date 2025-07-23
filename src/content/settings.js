@@ -1,3 +1,22 @@
+// Settings Module - Trade Manager Pro
+// ================== SISTEMA DE LOGS PADRÃO ==================
+// Usar o sistema global de logs declarado em log-sys.js
+
+// Função simplificada para logs usando o sistema global
+const logFromSettings = (message, level = 'INFO') => {
+    // Usar diretamente a função global
+    window.sendLog(message, level, 'settings.js');
+};
+
+// Função para status usando o sistema global
+const statusFromSettings = (message, type = 'info', duration = 3000) => {
+    // Usar diretamente a função global
+    window.sendStatus(message, type, duration);
+};
+
+// Log de inicialização do módulo settings
+logFromSettings('Módulo de configurações inicializado', 'INFO');
+
 // ================== ELEMENTOS DA UI ==================
 const settingsUI = {
     closeBtn: document.getElementById('close-settings'),
@@ -37,27 +56,6 @@ const checkCriticalElements = () => {
     });
     
     return allFound;
-};
-
-// Função simplificada para enviar logs ao sistema centralizado
-const logFromSettings = (message, level = 'INFO') => {
-    try {
-        if (chrome && chrome.runtime && chrome.runtime.id) {
-            chrome.runtime.sendMessage({
-                action: 'addLog',
-                logMessage: message,
-                level: level,
-                source: 'settings.js'
-            }, (response) => {
-                // Callback para tratar resposta e evitar erro de listener assíncrono
-                if (chrome.runtime.lastError) {
-                    // Erro silencioso - não precisa fazer nada
-                }
-            });
-        }
-    } catch (error) {
-        // Erro silencioso
-    }
 };
 
 // ================== GERENCIAMENTO DE ESTADO ==================

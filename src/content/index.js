@@ -1,4 +1,55 @@
 // Trade Manager Pro - Index Module
+// ================== SISTEMA DE COMUNICAÇÃO INTERNA ==================
+// Sistema de recebimento de status via window.postMessage
+
+// Listener para mensagens internas do iframe (PRIMEIRA COISA A SER DECLARADA)
+window.addEventListener('message', (event) => {
+    // Verificar se a mensagem é para atualizar status
+    if (event.data && event.data.type === 'UPDATE_STATUS') {
+        try {
+            const { message, type = 'info', duration = 3000 } = event.data.data;
+            
+            // Log para debug
+            console.log(`[INDEX] Recebido status via window.postMessage: ${message} (${type})`);
+            
+            // Atualizar status diretamente no DOM
+            const statusElement = document.getElementById('status-processo');
+            if (statusElement) {
+                let statusClass = 'info'; // Default class
+                switch (String(type).toLowerCase()) {
+                    case 'error': statusClass = 'error'; break;
+                    case 'warn': statusClass = 'warn'; break;
+                    case 'success': statusClass = 'success'; break;
+                    // default é 'info'
+                }
+                
+                statusElement.className = 'status-processo'; // Reset classes
+                statusElement.classList.add(statusClass, 'visible');
+                statusElement.textContent = message;
+                
+                // Limpar status após a duração, se especificado e > 0
+                if (typeof duration === 'number' && duration > 0) {
+                    setTimeout(() => {
+                        if (statusElement.textContent === message) { // Só limpa se ainda for a mesma mensagem
+                            statusElement.classList.remove('visible');
+                        }
+                    }, duration);
+                }
+            }
+            
+            // Log de confirmação
+            console.log(`[INDEX] Status atualizado com sucesso via window.postMessage`);
+            
+        } catch (error) {
+            console.error(`[INDEX] ERRO CRÍTICO ao processar status: ${error.message}`);
+            throw new Error(`Sistema de status falhou: ${error.message}`);
+        }
+    }
+});
+
+// Log de inicialização do sistema de comunicação
+console.log('[INDEX] Sistema de comunicação interna inicializado');
+
 // ================== VALIDAÇÃO DE DOMÍNIO ==================
 // IMPORTANTE: Esta extensão só deve funcionar na Pocket Option
 const validateDomain = () => {
@@ -1581,27 +1632,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     // - getTimeframeMinutes()
     // - renderAnalysisResults()
 
-    // Função unificada para logs e status
-    const logAndUpdateStatus = (message, level = 'INFO', source = 'index.js', showStatus = true, duration = 3000) => {
-        // Log para o sistema centralizado
-        addLog(message, level);
-        
-        // Atualizar o status visível se solicitado
-        if (showStatus) {
-            // Mapear nível de log para tipo de status
-            let statusType = 'info';
-            switch (level.toUpperCase()) {
-                case 'ERROR': statusType = 'error'; break;
-                case 'WARN': statusType = 'warn'; break;
-                case 'SUCCESS': statusType = 'success'; break;
-                default: statusType = 'info';
-            }
-            
-            updateStatus(message, statusType, duration);
-        }
-    };
-
-    // Função removida - usar updateStatus() diretamente
+    // Função removida - usar window.sendLog() e window.sendStatus() diretamente
 
     //Adicionar um listener para mensagens do chrome.runtime
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -1621,7 +1652,8 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 autoActive: config.automation
             });
             
-            logAndUpdateStatus('Configurações atualizadas via runtime', 'SUCCESS', 'index.js', true, 2000);
+            window.sendLog('Configurações atualizadas via runtime', 'SUCCESS', 'index.js');
+            window.sendStatus('Configurações atualizadas via runtime', 'success', 2000);
             addLog('Configurações atualizadas com sucesso via chrome.runtime', 'SUCCESS');
             
             // Responder à mensagem se necessário
@@ -1671,7 +1703,8 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             }
 
             console.log(`Encontradas ${pendingOperations.length} operações pendentes para processamento`);
-            logAndUpdateStatus(`Processando ${pendingOperations.length} operações pendentes`, 'INFO', 'trade-execution', true);
+            window.sendLog(`Processando ${pendingOperations.length} operações pendentes`, 'INFO', 'trade-execution');
+            window.sendStatus(`Processando ${pendingOperations.length} operações pendentes`, 'info');
 
             // Limpar operações pendentes imediatamente para evitar processamento duplicado
             localStorage.removeItem('pendingOperations');
@@ -1683,7 +1716,8 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             operationsToProcess.forEach((op, index) => {
                 setTimeout(() => {
                     try {
-                        logAndUpdateStatus(`Executando operação pendente: ${op.action}`, 'INFO', 'trade-execution', true);
+                        window.sendLog(`Executando operação pendente: ${op.action}`, 'INFO', 'trade-execution');
+                window.sendStatus(`Executando operação pendente: ${op.action}`, 'info');
                         
                         // Enviar para o background
                         chrome.runtime.sendMessage({ 
@@ -1691,19 +1725,23 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                             tradeAction: op.action
                         }, (response) => {
                             if (chrome.runtime.lastError) {
-                                logAndUpdateStatus(`Falha ao executar operação pendente: ${chrome.runtime.lastError.message}`, 'ERROR', 'trade-execution', true);
+                                window.sendLog(`Falha ao executar operação pendente: ${chrome.runtime.lastError.message}`, 'ERROR', 'trade-execution');
+                        window.sendStatus(`Falha ao executar operação pendente: ${chrome.runtime.lastError.message}`, 'error');
                                 return;
                             }
                             
                             if (response && response.success) {
-                                logAndUpdateStatus(`Operação pendente ${op.action} executada com sucesso`, 'SUCCESS', 'trade-execution', true);
+                                window.sendLog(`Operação pendente ${op.action} executada com sucesso`, 'SUCCESS', 'trade-execution');
+                        window.sendStatus(`Operação pendente ${op.action} executada com sucesso`, 'success');
                             } else {
                                 const errorMsg = response ? response.error : 'Sem resposta do background';
-                                logAndUpdateStatus(`Falha na execução pendente: ${errorMsg}`, 'ERROR', 'trade-execution', true);
+                                window.sendLog(`Falha na execução pendente: ${errorMsg}`, 'ERROR', 'trade-execution');
+                                window.sendStatus(`Falha na execução pendente: ${errorMsg}`, 'error');
                             }
                         });
                     } catch (error) {
-                        logAndUpdateStatus(`Erro ao executar operação pendente: ${error.message}`, 'ERROR', 'trade-execution', true);
+                        window.sendLog(`Erro ao executar operação pendente: ${error.message}`, 'ERROR', 'trade-execution');
+                        window.sendStatus(`Erro ao executar operação pendente: ${error.message}`, 'error');
                     }
                 }, index * 2000); // Executar a cada 2 segundos
             });
@@ -1712,7 +1750,8 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             if (pendingOperations.length > 5) {
                 const remainingOperations = pendingOperations.slice(5);
                 localStorage.setItem('pendingOperations', JSON.stringify(remainingOperations));
-                logAndUpdateStatus(`${remainingOperations.length} operações pendentes restantes serão processadas posteriormente`, 'INFO', 'trade-execution', true);
+                window.sendLog(`${remainingOperations.length} operações pendentes restantes serão processadas posteriormente`, 'INFO', 'trade-execution');
+                window.sendStatus(`${remainingOperations.length} operações pendentes restantes serão processadas posteriormente`, 'info');
             }
         } catch (error) {
             console.error('Erro ao processar operações pendentes:', error);
@@ -2603,6 +2642,53 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             }, 500);
         }
     });
+
+    // ================== COMUNICAÇÃO INTERNA VIA WINDOW.POSTMESSAGE ==================
+    // Teste de comunicação direta entre arquivos do iframe (sem chrome.runtime)
+    
+    // Listener para mensagens internas do iframe
+    window.addEventListener('message', (event) => {
+        // Verificar se a mensagem é para atualizar status
+        if (event.data && event.data.type === 'UPDATE_STATUS') {
+            try {
+                const { message, type = 'info', duration = 3000 } = event.data.data;
+                
+                // Log para debug
+                console.log(`[INDEX] Recebido status via window.postMessage: ${message} (${type})`);
+                
+                // Usar a função updateStatus existente
+                updateStatus(message, type.toUpperCase(), duration);
+                
+                // Log de confirmação
+                console.log(`[INDEX] Status atualizado com sucesso via window.postMessage`);
+                
+            } catch (error) {
+                console.error(`[INDEX] Erro ao processar status via window.postMessage:`, error);
+            }
+        }
+        
+        // Verificar se a mensagem é para adicionar log
+        if (event.data && event.data.type === 'LOG_MESSAGE') {
+            try {
+                const { message, level = 'INFO', source = 'SYSTEM' } = event.data.data;
+                
+                // Log para debug
+                console.log(`[INDEX] Recebido log via window.postMessage: ${message} (${level}) de ${source}`);
+                
+                // Usar a função addLog existente
+                addLog(message, level, source);
+                
+                // Log de confirmação
+                console.log(`[INDEX] Log adicionado com sucesso via window.postMessage`);
+                
+            } catch (error) {
+                console.error(`[INDEX] Erro ao processar log via window.postMessage:`, error);
+            }
+        }
+    });
+    
+    // Log de inicialização do sistema de comunicação interna
+    console.log('[INDEX] Sistema de comunicação interna via window.postMessage inicializado');
 } else {
     console.log('Trade Manager Pro - Index Module já foi carregado anteriormente');
 }

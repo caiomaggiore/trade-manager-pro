@@ -314,3 +314,303 @@ git push origin master --tags
 ```
 
 Seguindo este processo, garantimos que a versão no `manifest.json` esteja sempre sincronizada com as tags do Git, criando um histórico de lançamentos limpo e confiável. 
+
+## 8. Comunicação Interna do Iframe - Padrão Implementado
+
+### ✅ Resultado do Teste: SUCESSO TOTAL
+A comunicação via `window.postMessage` foi validada e implementada com sucesso. O sistema agora usa um padrão unificado para comunicação interna.
+
+### Sistema Global de Logs Implementado
+
+#### Funções Globais Disponíveis:
+```javascript
+// Enviar log (simples e direto)
+window.sendLog(message, level = 'INFO', source = 'SYSTEM')
+
+// Enviar status (simples e direto)
+window.sendStatus(message, type = 'info', duration = 3000)
+```
+
+#### Estrutura das Mensagens:
+```javascript
+// Para logs
+window.postMessage({
+    type: 'LOG_MESSAGE',
+    data: {
+        message: 'Mensagem do log',
+        level: 'INFO', // DEBUG, INFO, WARN, ERROR, SUCCESS
+        source: 'nome-do-modulo'
+    }
+}, '*');
+
+// Para status
+window.postMessage({
+    type: 'UPDATE_STATUS',
+    data: {
+        message: 'Mensagem de status',
+        type: 'info', // info, success, warn, error
+        duration: 3000
+    }
+}, '*');
+```
+
+### Padrão de Implementação por Arquivo
+
+#### 1. log-sys.js (PRIMEIRO A SER CARREGADO)
+```javascript
+// ================== SISTEMA GLOBAL DE LOGS ==================
+// Função global para envio de logs via window.postMessage
+window.sendLog = (message, level = 'INFO', source = 'SYSTEM') => {
+    // Implementação direta sem fallbacks
+    window.postMessage({
+        type: 'LOG_MESSAGE',
+        data: { message, level, source }
+    }, '*');
+};
+
+// Função global para envio de status via window.postMessage
+window.sendStatus = (message, type = 'info', duration = 3000) => {
+    // Implementação direta sem fallbacks
+    window.postMessage({
+        type: 'UPDATE_STATUS',
+        data: { message, type, duration }
+    }, '*');
+};
+
+// Listener para receber logs (apenas log-sys.js recebe logs)
+window.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'LOG_MESSAGE') {
+        // Processar log recebido
+    }
+});
+```
+
+#### 2. index.js (SEGUNDO A SER CARREGADO)
+```javascript
+// ================== SISTEMA DE COMUNICAÇÃO INTERNA ==================
+// Listener para mensagens internas do iframe (PRIMEIRA COISA A SER DECLARADA)
+window.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'UPDATE_STATUS') {
+        // Processar status recebido (apenas index.js recebe status)
+    }
+});
+```
+
+#### 3. Qualquer Outro Arquivo
+```javascript
+// ================== SISTEMA DE LOGS PADRÃO ==================
+// Função simplificada para logs usando o sistema global
+const logFromModule = (message, level = 'INFO') => {
+    // Uso direto da função global
+    window.sendLog(message, level, 'nome-do-modulo');
+};
+
+// Função para status usando o sistema global
+const statusFromModule = (message, type = 'info', duration = 3000) => {
+    // Uso direto da função global
+    window.sendStatus(message, type, duration);
+};
+```
+
+### Vantagens do Novo Padrão:
+
+#### ✅ **Simplicidade Máxima:**
+- **Uma linha para logs:** `window.sendLog(message, level, source)`
+- **Uma linha para status:** `window.sendStatus(message, type)`
+- **Sem fallbacks complexos** - se falhar, é erro crítico
+- **Código limpo e direto**
+
+#### ✅ **Responsabilidades Claras:**
+- **log-sys.js:** Recebe e processa logs
+- **index.js:** Recebe e processa status
+- **Outros arquivos:** Apenas enviam mensagens
+
+#### ✅ **Performance:**
+- Comunicação síncrona sem overhead
+- Sem verificações desnecessárias
+- Código otimizado
+
+#### ✅ **Manutenibilidade:**
+- Funções globais centralizadas
+- Padrão único em todo o projeto
+- Fácil de debugar (erros críticos são claros)
+
+### Exemplo de Uso em Qualquer Arquivo:
+
+```javascript
+// Log simples
+logFromModule('Operação iniciada', 'INFO');
+
+// Log de erro
+logFromModule('Erro na operação', 'ERROR');
+
+// Status para o usuário
+statusFromModule('Operação concluída com sucesso', 'success');
+
+// Ou usar diretamente as funções globais:
+window.sendLog('Mensagem direta', 'INFO', 'meu-modulo');
+window.sendStatus('Status direto', 'success');
+```
+
+### Tratamento de Erros:
+
+```javascript
+// Se o sistema falhar, é um erro crítico que deve ser corrigido
+try {
+    window.sendLog('Mensagem', 'INFO', 'meu-modulo');
+} catch (error) {
+    // Erro crítico do sistema - deve ser investigado
+    console.error('Sistema de logs falhou:', error);
+    // Não há fallback - o erro deve ser corrigido
+}
+```
+
+## 9. Comunicação Interna do Iframe - Padrão Implementado
+
+### ✅ Resultado do Teste: SUCESSO TOTAL
+A comunicação via `window.postMessage` foi validada e implementada com sucesso. O sistema agora usa um padrão unificado para comunicação interna.
+
+### Sistema Global de Logs Implementado
+
+#### Funções Globais Disponíveis:
+```javascript
+// Enviar log (simples e direto)
+window.sendLog(message, level = 'INFO', source = 'SYSTEM')
+
+// Enviar status (simples e direto)
+window.sendStatus(message, type = 'info', duration = 3000)
+```
+
+#### Estrutura das Mensagens:
+```javascript
+// Para logs
+window.postMessage({
+    type: 'LOG_MESSAGE',
+    data: {
+        message: 'Mensagem do log',
+        level: 'INFO', // DEBUG, INFO, WARN, ERROR, SUCCESS
+        source: 'nome-do-modulo'
+    }
+}, '*');
+
+// Para status
+window.postMessage({
+    type: 'UPDATE_STATUS',
+    data: {
+        message: 'Mensagem de status',
+        type: 'info', // info, success, warn, error
+        duration: 3000
+    }
+}, '*');
+```
+
+### Padrão de Implementação por Arquivo
+
+#### 1. log-sys.js (PRIMEIRO A SER CARREGADO)
+```javascript
+// ================== SISTEMA GLOBAL DE LOGS ==================
+// Função global para envio de logs via window.postMessage
+window.sendLog = (message, level = 'INFO', source = 'SYSTEM') => {
+    // Implementação direta sem fallbacks
+    window.postMessage({
+        type: 'LOG_MESSAGE',
+        data: { message, level, source }
+    }, '*');
+};
+
+// Função global para envio de status via window.postMessage
+window.sendStatus = (message, type = 'info', duration = 3000) => {
+    // Implementação direta sem fallbacks
+    window.postMessage({
+        type: 'UPDATE_STATUS',
+        data: { message, type, duration }
+    }, '*');
+};
+
+// Listener para receber logs (apenas log-sys.js recebe logs)
+window.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'LOG_MESSAGE') {
+        // Processar log recebido
+    }
+});
+```
+
+#### 2. index.js (SEGUNDO A SER CARREGADO)
+```javascript
+// ================== SISTEMA DE COMUNICAÇÃO INTERNA ==================
+// Listener para mensagens internas do iframe (PRIMEIRA COISA A SER DECLARADA)
+window.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'UPDATE_STATUS') {
+        // Processar status recebido (apenas index.js recebe status)
+    }
+});
+```
+
+#### 3. Qualquer Outro Arquivo
+```javascript
+// ================== SISTEMA DE LOGS PADRÃO ==================
+// Função simplificada para logs usando o sistema global
+const logFromModule = (message, level = 'INFO') => {
+    // Uso direto da função global
+    window.sendLog(message, level, 'nome-do-modulo');
+};
+
+// Função para status usando o sistema global
+const statusFromModule = (message, type = 'info', duration = 3000) => {
+    // Uso direto da função global
+    window.sendStatus(message, type, duration);
+};
+```
+
+### Vantagens do Novo Padrão:
+
+#### ✅ **Simplicidade Máxima:**
+- **Uma linha para logs:** `window.sendLog(message, level, source)`
+- **Uma linha para status:** `window.sendStatus(message, type)`
+- **Sem fallbacks complexos** - se falhar, é erro crítico
+- **Código limpo e direto**
+
+#### ✅ **Responsabilidades Claras:**
+- **log-sys.js:** Recebe e processa logs
+- **index.js:** Recebe e processa status
+- **Outros arquivos:** Apenas enviam mensagens
+
+#### ✅ **Performance:**
+- Comunicação síncrona sem overhead
+- Sem verificações desnecessárias
+- Código otimizado
+
+#### ✅ **Manutenibilidade:**
+- Funções globais centralizadas
+- Padrão único em todo o projeto
+- Fácil de debugar (erros críticos são claros)
+
+### Exemplo de Uso em Qualquer Arquivo:
+
+```javascript
+// Log simples
+logFromModule('Operação iniciada', 'INFO');
+
+// Log de erro
+logFromModule('Erro na operação', 'ERROR');
+
+// Status para o usuário
+statusFromModule('Operação concluída com sucesso', 'success');
+
+// Ou usar diretamente as funções globais:
+window.sendLog('Mensagem direta', 'INFO', 'meu-modulo');
+window.sendStatus('Status direto', 'success');
+```
+
+### Tratamento de Erros:
+
+```javascript
+// Se o sistema falhar, é um erro crítico que deve ser corrigido
+try {
+    window.sendLog('Mensagem', 'INFO', 'meu-modulo');
+} catch (error) {
+    // Erro crítico do sistema - deve ser investigado
+    console.error('Sistema de logs falhou:', error);
+    // Não há fallback - o erro deve ser corrigido
+}
+``` 

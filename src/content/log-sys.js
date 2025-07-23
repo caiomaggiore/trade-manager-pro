@@ -3,6 +3,69 @@
  * Este arquivo gerencia o sistema centralizado de logs da aplicação
  */
 
+// ================== SISTEMA GLOBAL DE LOGS ==================
+// Função global para envio de logs via window.postMessage
+window.sendLog = (message, level = 'INFO', source = 'SYSTEM') => {
+    try {
+        // Enviar via window.postMessage (comunicação interna)
+        window.postMessage({
+            type: 'LOG_MESSAGE',
+            data: {
+                message: message,
+                level: level.toUpperCase(),
+                source: source
+            }
+        }, '*');
+        
+        // Log de debug no console (apenas em desenvolvimento)
+        if (window.DEV_MODE) {
+            console.log(`[${source}] ${level}: ${message}`);
+        }
+    } catch (error) {
+        // Se falhar, é um erro crítico do sistema
+        console.error(`[LOG-SYS] ERRO CRÍTICO: Sistema de logs não funcionando: ${error.message}`);
+        throw new Error(`Sistema de logs falhou: ${error.message}`);
+    }
+};
+
+// Função global para envio de status via window.postMessage
+window.sendStatus = (message, type = 'info', duration = 3000) => {
+    try {
+        // Enviar via window.postMessage (comunicação interna)
+        window.postMessage({
+            type: 'UPDATE_STATUS',
+            data: {
+                message: message,
+                type: type,
+                duration: duration
+            }
+        }, '*');
+    } catch (error) {
+        // Se falhar, é um erro crítico do sistema
+        console.error(`[LOG-SYS] ERRO CRÍTICO: Sistema de status não funcionando: ${error.message}`);
+        throw new Error(`Sistema de status falhou: ${error.message}`);
+    }
+};
+
+// Função global para logs de debug (apenas em modo desenvolvimento)
+window.debugLog = (message, source = 'SYSTEM') => {
+    if (window.DEV_MODE) {
+        window.sendLog(message, 'DEBUG', source);
+    }
+};
+
+// Função global para logs de erro com stack trace
+window.errorLog = (message, error = null, source = 'SYSTEM') => {
+    let fullMessage = message;
+    if (error && error.stack) {
+        fullMessage += `\nStack: ${error.stack}`;
+    }
+    window.sendLog(fullMessage, 'ERROR', source);
+};
+
+// Log de inicialização do sistema global
+console.log('[LOG-SYS] Sistema global de logs inicializado');
+
 // ================== VERIFICAÇÃO DE PÁGINA ==================
 // Função para verificar se estamos na página de logs
 const isLogPage = () => {
@@ -791,4 +854,93 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
             }
         }
     });
-} 
+}
+
+// ================== COMUNICAÇÃO INTERNA VIA WINDOW.POSTMESSAGE ==================
+// Teste de comunicação direta entre arquivos do iframe (sem chrome.runtime)
+
+// Listener para mensagens internas do iframe
+window.addEventListener('message', (event) => {
+    // Verificar se a mensagem é para o sistema de logs
+    if (event.data && event.data.type === 'LOG_MESSAGE') {
+        try {
+            const { message, level = 'INFO', source = 'SYSTEM' } = event.data.data;
+            
+            // Log para debug
+            console.log(`[LOG-SYS] Recebido via window.postMessage: ${message} (${level}) de ${source}`);
+            
+            // Usar o sistema de logs existente
+            if (window.LogSystem) {
+                window.LogSystem.addLog(message, level, source);
+            } else {
+                // Fallback se LogSystem não estiver disponível
+                logToSystem(message, level, source);
+            }
+            
+            // Log de confirmação
+            console.log(`[LOG-SYS] Log processado com sucesso via window.postMessage`);
+            
+        } catch (error) {
+            console.error(`[LOG-SYS] Erro ao processar log via window.postMessage:`, error);
+        }
+    }
+    
+    // Verificar se a mensagem é para atualizar status
+    if (event.data && event.data.type === 'UPDATE_STATUS') {
+        try {
+            const { message, type = 'info', duration = 3000 } = event.data.data;
+            
+            // Log para debug
+            console.log(`[LOG-SYS] Recebido status via window.postMessage: ${message} (${type})`);
+            
+            // Encaminhar para o sistema de status (se disponível)
+            if (typeof window.updateStatus === 'function') {
+                window.updateStatus(message, type.toUpperCase(), duration);
+            } else {
+                // Fallback: usar o sistema existente
+                toUpdateStatus(message, type, duration);
+            }
+            
+            // Log de confirmação
+            console.log(`[LOG-SYS] Status processado com sucesso via window.postMessage`);
+            
+        } catch (error) {
+            console.error(`[LOG-SYS] Erro ao processar status via window.postMessage:`, error);
+        }
+    }
+});
+
+// Log de inicialização do sistema de comunicação interna
+console.log('[LOG-SYS] Sistema de comunicação interna via window.postMessage inicializado');
+
+// ================== SISTEMA DE RECEBIMENTO DE LOGS ==================
+// Listener para receber logs via window.postMessage (apenas log-sys.js recebe logs)
+window.addEventListener('message', (event) => {
+    // Verificar se a mensagem é para adicionar log
+    if (event.data && event.data.type === 'LOG_MESSAGE') {
+        try {
+            const { message, level = 'INFO', source = 'SYSTEM' } = event.data.data;
+            
+            // Log para debug
+            console.log(`[LOG-SYS] Recebido log via window.postMessage: ${message} (${level}) de ${source}`);
+            
+            // Usar a função addLog existente do LogSystem
+            if (typeof LogSystem !== 'undefined' && typeof LogSystem.addLog === 'function') {
+                LogSystem.addLog(message, level, source);
+            } else {
+                // Se LogSystem não estiver disponível, é um erro crítico
+                throw new Error('LogSystem não está disponível');
+            }
+            
+            // Log de confirmação
+            console.log(`[LOG-SYS] Log adicionado com sucesso via window.postMessage`);
+            
+        } catch (error) {
+            console.error(`[LOG-SYS] ERRO CRÍTICO ao processar log: ${error.message}`);
+            throw new Error(`Sistema de logs falhou: ${error.message}`);
+        }
+    }
+});
+
+// Log de inicialização do sistema de recebimento
+console.log('[LOG-SYS] Sistema de recebimento de logs inicializado'); 
