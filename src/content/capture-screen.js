@@ -28,28 +28,16 @@ function detectEnvironment() {
         // Ambiente desconhecido
         return 'unknown';
     } catch (error) {
-        console.error('Erro ao detectar ambiente:', error);
+        logToSystem(`Erro ao detectar ambiente: ${error.message}`, 'ERROR');
         return 'unknown';
     }
 }
 
-/**
- * Adiciona mensagem ao log do sistema
- * @param {string} message - Mensagem a ser registrada
- * @param {string} level - Nível do log (INFO, WARN, ERROR, SUCCESS)
- */
-function logCapture(message, level = 'INFO') {
-    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
-        chrome.runtime.sendMessage({
-            action: 'addLog',
-            logMessage: message,
-            level: level,
-            source: 'capture-screen.js'
-        });
-    } else {
-        console.log(`[${level}] ${message}`);
-    }
-}
+// Sistema de logs otimizado (novo padrão)
+// logToSystem removido - usando window.logToSystem global
+
+// Sistema de status otimizado (novo padrão)
+// updateStatus removido - usando window.updateStatus global
 
 /**
  * Captura a tela sem exibir modal - apenas retorna a dataUrl
@@ -57,7 +45,7 @@ function logCapture(message, level = 'INFO') {
  */
 function captureScreenSimple() {
     return new Promise((resolve, reject) => {
-        logCapture('Iniciando captura de tela básica', 'INFO');
+        logToSystem('Iniciando captura de tela básica', 'INFO');
         
         // Verificar se estamos em um contexto onde chrome.runtime está disponível
         if (typeof chrome === 'undefined' || !chrome.runtime) {
@@ -67,23 +55,23 @@ function captureScreenSimple() {
         try {
             // Detectar ambiente para captura adequada
             const environment = detectEnvironment();
-            logCapture(`Captura sendo executada no ambiente: ${environment}`, 'INFO');
+            logToSystem(`Ambiente de captura: ${environment}`, 'DEBUG');
             
             // No popup, precisamos usar uma abordagem diferente
             if (environment === 'popup') {
-                logCapture('Usando método de captura específico para popup', 'INFO');
+                logToSystem('Usando método de captura para popup', 'DEBUG');
                 
                 // Obter a aba ativa
                 chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                     if (chrome.runtime.lastError) {
                         const errorMsg = chrome.runtime.lastError.message;
-                        logCapture(`Erro ao obter aba ativa: ${errorMsg}`, 'ERROR');
+                        logToSystem(`Erro ao obter aba ativa: ${errorMsg}`, 'ERROR');
                         reject(new Error(errorMsg));
                         return;
                     }
                     
                     if (!tabs || !tabs[0] || !tabs[0].id) {
-                        logCapture('Nenhuma aba ativa encontrada', 'ERROR');
+                        logToSystem('Nenhuma aba ativa encontrada', 'ERROR');
                         reject(new Error('Nenhuma aba ativa encontrada'));
                         return;
                     }
@@ -94,7 +82,7 @@ function captureScreenSimple() {
                     }, (response) => {
                         if (chrome.runtime.lastError) {
                             const errorMsg = chrome.runtime.lastError.message;
-                            logCapture(`Erro na comunicação com content script: ${errorMsg}`, 'ERROR');
+                            logToSystem(`Erro na comunicação com content script: ${errorMsg}`, 'ERROR');
                             
                             // Fallback direto para o background
                             chrome.runtime.sendMessage({
@@ -105,18 +93,18 @@ function captureScreenSimple() {
                             }, (bgResponse) => {
                                 if (chrome.runtime.lastError) {
                                     const bgErrorMsg = chrome.runtime.lastError.message;
-                                    logCapture(`Erro no fallback de captura: ${bgErrorMsg}`, 'ERROR');
+                                    logToSystem(`Erro no fallback de captura: ${bgErrorMsg}`, 'ERROR');
                                     reject(new Error(bgErrorMsg));
                                     return;
                                 }
                                 
                                 if (bgResponse && bgResponse.dataUrl) {
-                                    logCapture('Captura concluída com sucesso via fallback', 'SUCCESS');
+                                    logToSystem('Captura concluída com sucesso via fallback', 'SUCCESS');
                                     window.lastCapturedImage = bgResponse.dataUrl;
                                     resolve(bgResponse.dataUrl);
                                 } else {
                                     const bgError = bgResponse && bgResponse.error ? bgResponse.error : 'Resposta sem dados de imagem';
-                                    logCapture(`Erro no fallback: ${bgError}`, 'ERROR');
+                                    logToSystem(`Erro no fallback: ${bgError}`, 'ERROR');
                                     reject(new Error(bgError));
                                 }
                             });
@@ -125,18 +113,18 @@ function captureScreenSimple() {
                         
                         if (!response || !response.success) {
                             const responseError = response && response.error ? response.error : 'Falha na captura pelo content script';
-                            logCapture(`Erro na resposta do content script: ${responseError}`, 'ERROR');
+                            logToSystem(`Erro na resposta do content script: ${responseError}`, 'ERROR');
                             reject(new Error(responseError));
                             return;
                         }
                         
                         if (!response.dataUrl) {
-                            logCapture('Resposta sem dados de imagem', 'ERROR');
+                            logToSystem('Resposta sem dados de imagem', 'ERROR');
                             reject(new Error('Resposta sem dados de imagem'));
                             return;
                         }
                         
-                        logCapture('Captura concluída com sucesso via content script', 'SUCCESS');
+                        logToSystem('Captura concluída com sucesso via content script', 'SUCCESS');
                         window.lastCapturedImage = response.dataUrl;
                         resolve(response.dataUrl);
                     });
@@ -152,26 +140,26 @@ function captureScreenSimple() {
                     // Verificar se houve erro na comunicação
                     if (chrome.runtime.lastError) {
                         const errorMsg = chrome.runtime.lastError.message;
-                        logCapture(`Erro na captura: ${errorMsg}`, 'ERROR');
+                        logToSystem(`Erro na captura: ${errorMsg}`, 'ERROR');
                         reject(new Error(errorMsg));
                         return;
                     }
                     
                     // Verificar se houve erro reportado na resposta
                     if (response && response.error) {
-                        logCapture(`Erro retornado: ${response.error}`, 'ERROR');
+                        logToSystem(`Erro retornado: ${response.error}`, 'ERROR');
                         reject(new Error(response.error));
                         return;
                     }
                     
                     // Verificar se recebemos dados de imagem
                     if (!response || !response.dataUrl) {
-                        logCapture('Resposta sem dados de imagem', 'ERROR');
+                        logToSystem('Resposta sem dados de imagem', 'ERROR');
                         reject(new Error('Sem dados de imagem'));
                         return;
                     }
                     
-                    logCapture('Captura concluída com sucesso', 'SUCCESS');
+                    logToSystem('Captura concluída com sucesso', 'SUCCESS');
                     
                     // Armazenar a imagem para uso posterior
                     window.lastCapturedImage = response.dataUrl;
@@ -180,7 +168,7 @@ function captureScreenSimple() {
                 });
             }
         } catch (error) {
-            logCapture(`Erro inesperado na captura: ${error.message}`, 'ERROR');
+            logToSystem(`Erro inesperado na captura: ${error.message}`, 'ERROR');
             reject(error);
         }
     });
@@ -192,7 +180,7 @@ function captureScreenSimple() {
  */
 function captureAndShowPopup() {
     return new Promise((resolve, reject) => {
-        logCapture('Iniciando captura para exibição em popup', 'INFO');
+        logToSystem('Iniciando captura para exibição em popup', 'INFO');
         
         captureScreenSimple()
             .then(dataUrl => {
@@ -203,20 +191,20 @@ function captureAndShowPopup() {
                         dataUrl: dataUrl
                     }, (response) => {
                         if (chrome.runtime.lastError) {
-                            logCapture(`Aviso: ${chrome.runtime.lastError.message}`, 'WARN');
+                            logToSystem(`Aviso: ${chrome.runtime.lastError.message}`, 'WARN');
                             // Continue mesmo com erro na exibição do popup
                         }
                         
                         resolve(dataUrl);
                     });
                 } catch (error) {
-                    logCapture(`Erro ao exibir popup: ${error.message}`, 'WARN');
+                    logToSystem(`Erro ao exibir popup: ${error.message}`, 'WARN');
                     // Mesmo com erro no popup, resolvemos a Promise com a dataUrl
                     resolve(dataUrl);
                 }
             })
             .catch(error => {
-                logCapture(`Erro na captura para popup: ${error.message}`, 'ERROR');
+                logToSystem(`Erro na captura para popup: ${error.message}`, 'ERROR');
                 reject(error);
             });
     });
@@ -227,7 +215,7 @@ function captureAndShowPopup() {
  * @returns {Promise<string>} URL da imagem capturada
  */
 function captureForAnalysis() {
-    logCapture('Iniciando captura para análise', 'INFO');
+    logToSystem('Iniciando captura para análise', 'INFO');
     
     // Usar um timeout para evitar "message port closed"
     let timeoutId = null;
@@ -235,7 +223,7 @@ function captureForAnalysis() {
     return new Promise((resolve, reject) => {
         // Configurar um timeout para evitar bloqueios indefinidos
         timeoutId = setTimeout(() => {
-            logCapture('Timeout na captura para análise', 'ERROR');
+            logToSystem('Timeout na captura para análise', 'ERROR');
             reject(new Error('Timeout na captura de tela para análise'));
         }, 15000); // 15 segundos de timeout
         
@@ -246,7 +234,7 @@ function captureForAnalysis() {
             
             // Se a imagem tem menos de 2 segundos, usar o cache
             if (imageAge < 2000) {
-                logCapture('Usando imagem em cache recente para análise', 'INFO');
+                logToSystem('Usando imagem em cache recente para análise', 'INFO');
                 clearTimeout(timeoutId);
                 resolve(window.lastCapturedImage);
                 return;
@@ -263,17 +251,17 @@ function captureForAnalysis() {
                     window.lastCapturedImage = dataUrl;
                     window.lastCapturedImageTimestamp = Date.now();
                     
-                    logCapture('Captura para análise concluída', 'SUCCESS');
+                    logToSystem('Captura para análise concluída', 'SUCCESS');
                     resolve(dataUrl);
                 })
                 .catch(error => {
                     clearTimeout(timeoutId);
-                    logCapture(`Erro na captura para análise: ${error.message}`, 'ERROR');
+                    logToSystem(`Erro na captura para análise: ${error.message}`, 'ERROR');
                     reject(error);
                 });
         } catch (error) {
             clearTimeout(timeoutId);
-            logCapture(`Erro crítico na captura para análise: ${error.message}`, 'ERROR');
+            logToSystem(`Erro crítico na captura para análise: ${error.message}`, 'ERROR');
             reject(error);
         }
     });
@@ -285,11 +273,11 @@ function captureForAnalysis() {
  */
 async function captureAndShow() {
     try {
-        logCapture('Iniciando captura e exibição de tela em popup', 'INFO');
+        logToSystem('Iniciando captura e exibição de tela em popup', 'INFO');
         
         // Obter o ambiente de execução
         const environment = detectEnvironment();
-        logCapture(`Captura sendo executada no ambiente: ${environment}`, 'INFO');
+        logToSystem(`Ambiente de captura: ${environment}`, 'DEBUG');
         
         // Realizar a captura
         const dataUrl = await captureScreenSimple();
@@ -298,7 +286,7 @@ async function captureAndShow() {
             throw new Error('Falha ao capturar a tela');
         }
         
-        logCapture('Captura concluída com sucesso', 'SUCCESS');
+        logToSystem('Captura concluída com sucesso', 'SUCCESS');
         
         // Solicitar exibição do popup via background
         chrome.runtime.sendMessage({
@@ -306,20 +294,20 @@ async function captureAndShow() {
             dataUrl: dataUrl
         }, response => {
             if (chrome.runtime.lastError) {
-                logCapture(`Erro ao mostrar popup: ${chrome.runtime.lastError.message}`, 'ERROR');
+                logToSystem(`Erro ao mostrar popup: ${chrome.runtime.lastError.message}`, 'ERROR');
                 return;
             }
             
             if (response && response.success) {
-                logCapture('Imagem exibida com sucesso no popup', 'SUCCESS');
+                logToSystem('Imagem exibida com sucesso no popup', 'SUCCESS');
             } else {
-                logCapture(`Erro ao exibir imagem no popup: ${response.error || 'Erro desconhecido'}`, 'ERROR');
+                logToSystem(`Erro ao exibir imagem no popup: ${response.error || 'Erro desconhecido'}`, 'ERROR');
             }
         });
         
         return dataUrl;
     } catch (error) {
-        logCapture(`Erro ao capturar e exibir tela: ${error.message}`, 'ERROR');
+        logToSystem(`Erro ao capturar e exibir tela: ${error.message}`, 'ERROR');
         throw error;
     }
 }
@@ -331,7 +319,7 @@ async function captureAndShow() {
  */
 function validateAndFixDataUrl(dataUrl) {
     if (!dataUrl) {
-        logCapture('validateAndFixDataUrl: URL de dados vazia ou indefinida', 'ERROR');
+        logToSystem('validateAndFixDataUrl: URL de dados vazia ou indefinida', 'ERROR');
         return null;
     }
     
@@ -340,7 +328,7 @@ function validateAndFixDataUrl(dataUrl) {
         return dataUrl; // Já está correto
     }
     
-    logCapture('Tentando corrigir formato de dataUrl', 'INFO');
+    logToSystem('Tentando corrigir formato de dataUrl', 'INFO');
     
     // Tentar extrair a parte base64 e reconstruir a dataUrl
     if (dataUrl.includes(',')) {
@@ -350,14 +338,14 @@ function validateAndFixDataUrl(dataUrl) {
             const base64Regex = /^[A-Za-z0-9+/=]+$/;
             if (base64Regex.test(parts[1])) {
                 const fixedDataUrl = 'data:image/png;base64,' + parts[1];
-                logCapture('Formato de dataUrl corrigido com sucesso', 'SUCCESS');
+                logToSystem('Formato de dataUrl corrigido com sucesso', 'SUCCESS');
                 return fixedDataUrl;
             }
         }
     }
     
     // Se chegou aqui, não foi possível corrigir
-    logCapture('Não foi possível corrigir o formato da dataUrl', 'ERROR');
+    logToSystem('Não foi possível corrigir o formato da dataUrl', 'ERROR');
     return dataUrl; // Retornar a original, mesmo que inválida
 }
 
@@ -367,11 +355,11 @@ function validateAndFixDataUrl(dataUrl) {
  */
 async function captureAndAnalyze() {
     try {
-        logCapture('Iniciando processo integrado de captura e análise...', 'INFO');
+        logToSystem('Iniciando processo integrado de captura e análise...', 'INFO');
         
         // Capturar a tela para análise
         const dataUrl = await captureForAnalysis();
-        logCapture('Captura realizada com sucesso, iniciando análise...', 'SUCCESS');
+        logToSystem('Captura realizada com sucesso, iniciando análise...', 'SUCCESS');
         
         // Executar análise via chrome.runtime
         return new Promise((resolve, reject) => {
@@ -383,24 +371,24 @@ async function captureAndAnalyze() {
             }, (response) => {
                 if (chrome.runtime.lastError) {
                     const errorMsg = `Erro ao iniciar análise: ${chrome.runtime.lastError.message}`;
-                    logCapture(errorMsg, 'ERROR');
+                    logToSystem(errorMsg, 'ERROR');
                     reject(new Error(errorMsg));
                     return;
                 }
                 
                 if (response && response.success) {
-                    logCapture('Análise iniciada com sucesso após captura integrada', 'SUCCESS');
+                    logToSystem('Análise iniciada com sucesso após captura integrada', 'SUCCESS');
                     resolve(true);
                 } else {
                     const errorMsg = response?.error || 'Falha ao iniciar análise';
-                    logCapture(`Erro na análise: ${errorMsg}`, 'ERROR');
+                    logToSystem(`Erro na análise: ${errorMsg}`, 'ERROR');
                     reject(new Error(errorMsg));
                 }
             });
         });
         
     } catch (error) {
-        logCapture(`Erro no processo integrado de captura e análise: ${error.message}`, 'ERROR');
+        logToSystem(`Erro no processo integrado de captura e análise: ${error.message}`, 'ERROR');
         throw error;
     }
 }
@@ -427,4 +415,4 @@ if (typeof document !== 'undefined' && document.body) {
 }
 
 // Log de inicialização
-logCapture(`Módulo de captura de tela inicializado no ambiente: ${detectEnvironment()}`, 'INFO'); 
+logToSystem(`Módulo de captura de tela inicializado no ambiente: ${detectEnvironment()}`, 'INFO'); 

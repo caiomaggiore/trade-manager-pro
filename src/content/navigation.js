@@ -1,3 +1,9 @@
+// Sistema de logs otimizado (novo padrão)
+// logToSystem removido - usando window.logToSystem global
+
+// Sistema de status otimizado (novo padrão)
+// updateStatus removido - usando window.updateStatus global
+
 // ================== GERENCIADOR DE NAVEGAÇÃO ==================
 class NavigationManager {
     constructor() {
@@ -206,8 +212,8 @@ class NavigationManager {
     updateMainUI(config) {
         // Log para debug
         if (window.addLog) {
-            window.addLog('NavigationManager: Atualizando UI principal com configurações', 'INFO');
-            window.addLog(`NavigationManager: Config recebido: ${JSON.stringify(config)}`, 'DEBUG');
+            logToSystem('NavigationManager: Atualizando UI principal com configurações', 'INFO');
+            logToSystem(`NavigationManager: Config recebido: ${JSON.stringify(config)}`, 'DEBUG');
         }
         
         // Atualiza o status de Gale
@@ -226,7 +232,7 @@ class NavigationManager {
                     galeLed.className = 'status-led gale-led active';
                 }
                 if (window.addLog) {
-                    window.addLog(`NavigationManager: Gale atualizado para Ativado (${galeLevel})`, 'DEBUG');
+                    logToSystem(`NavigationManager: Gale atualizado para Ativado (${galeLevel})`, 'DEBUG');
                 }
             } else {
                 currentGale.textContent = 'Desativado';
@@ -236,7 +242,7 @@ class NavigationManager {
                     galeLed.className = 'status-led gale-led inactive';
                 }
                 if (window.addLog) {
-                    window.addLog('NavigationManager: Gale atualizado para Desativado', 'DEBUG');
+                    logToSystem('NavigationManager: Gale atualizado para Desativado', 'DEBUG');
                 }
             }
         }
@@ -246,7 +252,7 @@ class NavigationManager {
         if (currentProfit) {
             currentProfit.textContent = `R$ ${config.dailyProfit}`;
             if (window.addLog) {
-                window.addLog(`NavigationManager: Lucro diário atualizado para R$ ${config.dailyProfit}`, 'DEBUG');
+                logToSystem(`NavigationManager: Lucro diário atualizado para R$ ${config.dailyProfit}`, 'DEBUG');
             }
         }
 
@@ -255,7 +261,7 @@ class NavigationManager {
         if (currentStop) {
             currentStop.textContent = `R$ ${config.stopLoss}`;
             if (window.addLog) {
-                window.addLog(`NavigationManager: Stop loss atualizado para R$ ${config.stopLoss}`, 'DEBUG');
+                logToSystem(`NavigationManager: Stop loss atualizado para R$ ${config.stopLoss}`, 'DEBUG');
             }
         }
 
@@ -274,7 +280,7 @@ class NavigationManager {
                     automationLed.className = 'status-led automation-led active';
                 }
                 if (window.addLog) {
-                    window.addLog('NavigationManager: Automação atualizada para Ativado', 'DEBUG');
+                    logToSystem('NavigationManager: Automação atualizada para Ativado', 'DEBUG');
                 }
             } else {
                 automationStatus.textContent = 'Desativado';
@@ -284,7 +290,7 @@ class NavigationManager {
                     automationLed.className = 'status-led automation-led inactive';
                 }
                 if (window.addLog) {
-                    window.addLog('NavigationManager: Automação atualizada para Desativado', 'DEBUG');
+                    logToSystem('NavigationManager: Automação atualizada para Desativado', 'DEBUG');
                 }
             }
         }

@@ -28,10 +28,19 @@ window.sendLog = (message, level = 'INFO', source = 'SYSTEM') => {
     }
 };
 
+// Sistema anti-loop para evitar mensagens infinitas
+let messagePending = false;
+let lastMessage = { content: '', timestamp: 0 };
+const MESSAGE_COOLDOWN = 500; // 500ms entre mensagens similares
+
 // Função global para envio de status via window.postMessage
 window.sendStatus = (message, type = 'info', duration = 3000) => {
     try {
-        // Enviar via window.postMessage (comunicação interna)
+        // ✅ VERSÃO SIMPLIFICADA: Sempre usar window.postMessage local
+        // O sistema de iframe/parent é gerenciado pelo index.js listener
+        console.log(`[LOG-SYS] 📋 Enviando status: "${message}" (${type})`);
+        
+        // Enviar via window.postMessage (será processado pelo listener do index.js)
         window.postMessage({
             type: 'UPDATE_STATUS',
             data: {
@@ -40,8 +49,40 @@ window.sendStatus = (message, type = 'info', duration = 3000) => {
                 duration: duration
             }
         }, '*');
+        
+        console.log(`[LOG-SYS] 📋 Status enviado com sucesso`);
+        
     } catch (error) {
-        // Se falhar, é um erro crítico do sistema
+        console.error(`[LOG-SYS] ERRO CRÍTICO: Sistema de status não funcionando: ${error.message}`);
+        throw new Error(`Sistema de status falhou: ${error.message}`);
+    }
+};
+
+// Função global logToSystem (interface familiar usando sistema global)
+window.logToSystem = (message, level = 'INFO', source = 'SYSTEM') => {
+    window.sendLog(message, level, source);
+};
+
+// Função global updateStatus (interface familiar usando sistema global)
+window.updateStatus = (message, type = 'info', duration = 3000) => {
+    // ✅ VERSÃO SIMPLIFICADA: Sempre usar window.postMessage local
+    // O sistema de iframe/parent é gerenciado pelo index.js listener
+    try {
+        console.log(`[LOG-SYS] 📋 Enviando status: "${message}" (${type})`);
+        
+        // Enviar via window.postMessage (será processado pelo listener do index.js)
+        window.postMessage({
+            type: 'UPDATE_STATUS',
+            data: {
+                message: message,
+                type: type,
+                duration: duration
+            }
+        }, '*');
+        
+        console.log(`[LOG-SYS] 📋 Status enviado com sucesso`);
+        
+    } catch (error) {
         console.error(`[LOG-SYS] ERRO CRÍTICO: Sistema de status não funcionando: ${error.message}`);
         throw new Error(`Sistema de status falhou: ${error.message}`);
     }
@@ -573,41 +614,86 @@ const LogSystem = {
         URL.revokeObjectURL(url);
         
         // Atualizar status em vez de mostrar alert
-        toUpdateStatus('Logs salvos como arquivo', 'success');
+        updateStatus('Logs salvos como arquivo', 'success');
     },
     
     // Função para copiar logs para a área de transferência
     async copyLogs() {
+        console.log('📋 [DEBUG] copyLogs() iniciada');
+        
         // Enviar status inicial para a UI principal
-        toUpdateStatus('Copiando logs...', 'info', 2000);
+        updateStatus('Copiando logs...', 'info', 2000);
+        console.log('📋 [DEBUG] Status inicial enviado');
 
         const logs = this.getFormattedLogs();
+        console.log('📋 [DEBUG] Logs formatados obtidos, tamanho:', logs.length);
 
         try {
-            const response = await chrome.runtime.sendMessage({
-                action: 'copyTextToClipboard',
-                text: logs
-            });
-
-            if (response && response.success) {
-                // Enviar status de sucesso para a UI principal
-                toUpdateStatus('Logs copiados para a área de transferência!', 'success', 3000);
+            // Usar o ClipboardHelper se disponível, senão usar método tradicional
+            if (window.ClipboardHelper) {
+                console.log('📋 [DEBUG] ClipboardHelper disponível, usando múltiplas estratégias...');
+                
+                const result = await window.ClipboardHelper.copyText(logs);
+                console.log('📋 [DEBUG] ClipboardHelper retornou:', result);
+                
+                // Verificar se o resultado tem o método
+                if (result && result.method) {
+                    console.log('📋 [DEBUG] Método usado:', result.method);
+                    
+                    // Enviar status de sucesso para a UI principal (mais duradouro e visível)
+                    const statusMessage = `✅ Logs copiados com sucesso via ${result.method.toUpperCase()}!`;
+                    console.log('📋 [DEBUG] Enviando status de sucesso:', statusMessage);
+                    
+                    updateStatus(statusMessage, 'success', 5000);
+                    
+                    // Log adicional para garantir que a mensagem foi enviada
+                    console.log('📋 [DEBUG] Status de sucesso enviado com updateStatus()');
+                    
+                    // Método alternativo para garantir que a mensagem apareça
+                    setTimeout(() => {
+                        if (window.sendStatus) {
+                            console.log('📋 [DEBUG] Enviando status via window.sendStatus como backup');
+                            window.sendStatus(statusMessage, 'success', 5000);
+                        }
+                    }, 100);
+                    
+                } else {
+                    console.log('📋 [DEBUG] ERRO: result.method não definido:', result);
+                    updateStatus('✅ Logs copiados com sucesso!', 'success', 5000);
+                }
+                
             } else {
-                throw new Error(response.error || 'Falha ao copiar. Resposta negativa.');
+                console.log('📋 [DEBUG] ClipboardHelper não disponível, usando método tradicional...');
+                
+                const response = await chrome.runtime.sendMessage({
+                    action: 'copyTextToClipboard',
+                    text: logs
+                });
+
+                if (response && response.success) {
+                    // Enviar status de sucesso para a UI principal
+                    updateStatus('✅ Logs copiados para a área de transferência!', 'success', 5000);
+                    console.log('📋 [DEBUG] Status enviado via método tradicional');
+                } else {
+                    throw new Error(response?.error || 'Falha ao copiar. Resposta negativa.');
+                }
             }
+            
         } catch (error) {
-            console.error('Erro ao copiar logs:', error);
+            console.error('📋 [DEBUG] Erro ao copiar logs:', error);
             // Enviar status de erro para a UI principal
-            toUpdateStatus(`Erro ao copiar: ${error.message}`, 'error', 5000);
+            updateStatus(`Erro ao copiar: ${error.message}`, 'error', 5000);
             // Oferecer download como alternativa
             this.offerDownloadAlternative();
         }
+        
+        console.log('📋 [DEBUG] copyLogs() finalizada');
     },
     
     // Oferecer download como alternativa em caso de falha na cópia
     offerDownloadAlternative() {
         setTimeout(() => {
-            toUpdateStatus('Tente usar o botão "Salvar como arquivo"', 'info');
+            updateStatus('Tente usar o botão "Salvar como arquivo"', 'info');
         }, 2000);
     }
 };
@@ -815,20 +901,10 @@ function updateLogFilters() {
     updateLogCounters();
 }
 
-// Função padronizada para enviar status para o index
-function toUpdateStatus(message, type = 'info', duration = 3000) {
-    if (chrome && chrome.runtime && chrome.runtime.id) {
-        chrome.runtime.sendMessage({
-            action: 'updateStatus',
-            message: message,
-            type: type,
-            duration: duration
-        }, (response) => {
-            // Callback para evitar erro de listener assíncrono
-            if (chrome.runtime.lastError) {
-                // Erro silencioso
-            }
-        });
+// Sistema de status otimizado (novo padrão)
+function updateStatus(message, type = 'info', duration = 5000) {
+    if (window.sendStatus) {
+        window.sendStatus(message, type, duration);
     }
 }
 
@@ -859,88 +935,67 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
 // ================== COMUNICAÇÃO INTERNA VIA WINDOW.POSTMESSAGE ==================
 // Teste de comunicação direta entre arquivos do iframe (sem chrome.runtime)
 
-// Listener para mensagens internas do iframe
+// Listener otimizado para mensagens internas do iframe
+// Sistema anti-duplicação para evitar spam de logs
+let lastProcessedLog = { hash: null, timestamp: 0 };
+const LOG_DUPLICATE_THRESHOLD = 100; // 100ms para considerar duplicata
+
 window.addEventListener('message', (event) => {
     // Verificar se a mensagem é para o sistema de logs
     if (event.data && event.data.type === 'LOG_MESSAGE') {
         try {
             const { message, level = 'INFO', source = 'SYSTEM' } = event.data.data;
             
-            // Log para debug
-            console.log(`[LOG-SYS] Recebido via window.postMessage: ${message} (${level}) de ${source}`);
+            // Criar hash para detecção de duplicatas
+            const logHash = `${message}_${level}_${source}`;
+            const currentTime = Date.now();
+            
+            // Verificar se é um log duplicado recente
+            if (lastProcessedLog.hash === logHash && 
+                (currentTime - lastProcessedLog.timestamp) < LOG_DUPLICATE_THRESHOLD) {
+                return; // Ignorar log duplicado
+            }
+            
+            // Atualizar último log processado
+            lastProcessedLog.hash = logHash;
+            lastProcessedLog.timestamp = currentTime;
+            
+            // Log para debug (apenas em modo desenvolvedor)
+            const isDevMode = window.StateManager?.getConfig()?.devMode || window.DEV_MODE;
+            if (isDevMode) {
+                console.log(`[LOG-SYS] Recebido via window.postMessage: ${message} (${level}) de ${source}`);
+            }
             
             // Usar o sistema de logs existente
-            if (window.LogSystem) {
+            if (window.LogSystem && typeof window.LogSystem.addLog === 'function') {
                 window.LogSystem.addLog(message, level, source);
             } else {
                 // Fallback se LogSystem não estiver disponível
                 logToSystem(message, level, source);
             }
             
-            // Log de confirmação
-            console.log(`[LOG-SYS] Log processado com sucesso via window.postMessage`);
+            // Log de confirmação (apenas em modo desenvolvedor)
+            if (isDevMode) {
+                console.log(`[LOG-SYS] Log processado com sucesso via window.postMessage`);
+            }
             
         } catch (error) {
             console.error(`[LOG-SYS] Erro ao processar log via window.postMessage:`, error);
         }
     }
     
-    // Verificar se a mensagem é para atualizar status
-    if (event.data && event.data.type === 'UPDATE_STATUS') {
-        try {
-            const { message, type = 'info', duration = 3000 } = event.data.data;
-            
-            // Log para debug
-            console.log(`[LOG-SYS] Recebido status via window.postMessage: ${message} (${type})`);
-            
-            // Encaminhar para o sistema de status (se disponível)
-            if (typeof window.updateStatus === 'function') {
-                window.updateStatus(message, type.toUpperCase(), duration);
-            } else {
-                // Fallback: usar o sistema existente
-                toUpdateStatus(message, type, duration);
-            }
-            
-            // Log de confirmação
-            console.log(`[LOG-SYS] Status processado com sucesso via window.postMessage`);
-            
-        } catch (error) {
-            console.error(`[LOG-SYS] Erro ao processar status via window.postMessage:`, error);
-        }
-    }
+    // REMOVIDO: Processamento UPDATE_STATUS que causava loop infinito
+    // STATUS é processado pelo listener principal em index.js (linha ~5)
+    // log-sys.js só processa LOG_MESSAGE para evitar conflitos
 });
 
 // Log de inicialização do sistema de comunicação interna
 console.log('[LOG-SYS] Sistema de comunicação interna via window.postMessage inicializado');
 
 // ================== SISTEMA DE RECEBIMENTO DE LOGS ==================
-// Listener para receber logs via window.postMessage (apenas log-sys.js recebe logs)
-window.addEventListener('message', (event) => {
-    // Verificar se a mensagem é para adicionar log
-    if (event.data && event.data.type === 'LOG_MESSAGE') {
-        try {
-            const { message, level = 'INFO', source = 'SYSTEM' } = event.data.data;
-            
-            // Log para debug
-            console.log(`[LOG-SYS] Recebido log via window.postMessage: ${message} (${level}) de ${source}`);
-            
-            // Usar a função addLog existente do LogSystem
-            if (typeof LogSystem !== 'undefined' && typeof LogSystem.addLog === 'function') {
-                LogSystem.addLog(message, level, source);
-            } else {
-                // Se LogSystem não estiver disponível, é um erro crítico
-                throw new Error('LogSystem não está disponível');
-            }
-            
-            // Log de confirmação
-            console.log(`[LOG-SYS] Log adicionado com sucesso via window.postMessage`);
-            
-        } catch (error) {
-            console.error(`[LOG-SYS] ERRO CRÍTICO ao processar log: ${error.message}`);
-            throw new Error(`Sistema de logs falhou: ${error.message}`);
-        }
-    }
-});
+// REMOVIDO: Listener duplicado que processava LOG_MESSAGE
+// O listener principal na linha ~865 já processa todas as mensagens LOG_MESSAGE
+// Esta seção foi removida para evitar processamento duplicado e logs excessivos
 
 // Log de inicialização do sistema de recebimento
 console.log('[LOG-SYS] Sistema de recebimento de logs inicializado'); 

@@ -1,14 +1,20 @@
 // modal-analyze.js
 // Modal de Análise - isolado do index.js
 
-// Dependências globais esperadas: addLog, updateStatus (ou toUpdateStatus), window.StateManager, chrome.runtime
+// Sistema de logs otimizado (novo padrão)
+// logToSystem removido - usando window.logToSystem global
+
+// Sistema de status otimizado (novo padrão)
+// updateStatus removido - usando window.updateStatus global
+
+// Dependências globais esperadas: window.StateManager, chrome.runtime
 
 function showAnalysisModal(result) {
     // Validação crítica: verificar se result e result.action existem
     if (!result) {
         // Result é undefined ou null
         if (typeof addLog === 'function') {
-            addLog('Erro: Resultado da análise é undefined', 'ERROR', 'analysis');
+            logToSystem('Erro: Resultado da análise é undefined', 'ERROR');
         }
         return;
     }
@@ -16,7 +22,7 @@ function showAnalysisModal(result) {
     if (!result.action) {
         // Result.action é undefined ou null
         if (typeof addLog === 'function') {
-            addLog(`Erro: Ação da análise é undefined. Resultado recebido: ${JSON.stringify(result)}`, 'ERROR', 'analysis');
+            logToSystem(`Erro: Ação da análise é undefined. Resultado recebido: ${JSON.stringify(result)}`, 'ERROR');
         }
         return;
     }
@@ -25,7 +31,7 @@ function showAnalysisModal(result) {
     
     // Log da análise recebida
     if (typeof addLog === 'function') {
-        addLog(`Análise concluída: ${result.action} (Confiança: ${result.trust}%)`, 'INFO', 'analysis');
+        logToSystem(`Análise concluída: ${result.action} (Confiança: ${result.trust}%)`, 'INFO');
     } else if (typeof sendToLogSystem === 'function') {
         sendToLogSystem(`Análise concluída: ${result.action} (Confiança: ${result.trust}%)`, 'INFO');
     }
@@ -50,13 +56,12 @@ function showAnalysisModal(result) {
         if (waitCountdownInterval) {
             clearInterval(waitCountdownInterval);
             waitCountdownInterval = null;
+            
             if (typeof updateStatus === 'function') {
                 updateStatus('Contagem de espera cancelada pelo usuário', 'info', 3000);
-            } else if (typeof toUpdateStatus === 'function') {
-                toUpdateStatus('Contagem de espera cancelada pelo usuário', 'info', 3000);
             }
             if (typeof addLog === 'function') {
-                addLog('Contagem de espera para nova análise cancelada pelo usuário', 'INFO', 'automation');
+                logToSystem('Contagem de espera para nova análise cancelada pelo usuário', 'INFO');
             } else if (typeof sendToLogSystem === 'function') {
                 sendToLogSystem('Contagem de espera para nova análise cancelada pelo usuário', 'INFO');
             }
@@ -104,7 +109,7 @@ function showAnalysisModal(result) {
         if (result.isTestMode) {
             testModeWarningElement.style.display = 'block';
             if (typeof addLog === 'function') {
-                addLog('Modo de teste ativado para esta análise', 'WARN', 'analysis');
+                logToSystem('Modo de teste ativado para esta análise', 'WARN');
             } else if (typeof sendToLogSystem === 'function') {
                 sendToLogSystem('Modo de teste ativado para esta análise', 'WARN');
             }
@@ -122,7 +127,7 @@ function showAnalysisModal(result) {
         isAutomationActive = isAutomationRunning;
     }
     if (typeof addLog === 'function') {
-        addLog(`Status de automação inicial: ${isAutomationActive ? 'Ativado' : 'Desativado'}`, 'DEBUG', 'automation');
+        logToSystem(`Status de automação inicial: ${isAutomationActive ? 'Ativado' : 'Desativado'}`, 'DEBUG');
     } else if (typeof sendToLogSystem === 'function') {
         sendToLogSystem(`Status de automação inicial: ${isAutomationActive ? 'Ativado' : 'Desativado'}`, 'DEBUG');
     }
@@ -132,7 +137,7 @@ function showAnalysisModal(result) {
         waitButton.style.display = 'inline-block';
         cancelButton.style.display = 'inline-block';
         if (typeof addLog === 'function') {
-            addLog('Ação WAIT detectada, configurando modal para modo de espera', 'INFO', 'ui');
+            logToSystem('Ação WAIT detectada, configurando modal para modo de espera', 'INFO', 'ui');
         } else if (typeof sendToLogSystem === 'function') {
             sendToLogSystem('Ação WAIT detectada, configurando modal para modo de espera', 'INFO');
         }
@@ -144,7 +149,7 @@ function showAnalysisModal(result) {
 
     modal.style.display = 'block';
     if (typeof addLog === 'function') {
-        addLog(`Modal de análise aberto: ${result.action}`, 'INFO', 'ui');
+        logToSystem(`Modal de análise aberto: ${result.action}`, 'INFO');
     } else if (typeof sendToLogSystem === 'function') {
         sendToLogSystem(`Modal de análise aberto: ${result.action}`, 'INFO');
     }
@@ -158,13 +163,11 @@ function showAnalysisModal(result) {
     const waitForNextAnalysis = () => {
         if (typeof updateStatus === 'function') {
             updateStatus(`Aguardando próxima análise: ${waitCountdown}s...`, 'info', 0);
-        } else if (typeof toUpdateStatus === 'function') {
-            toUpdateStatus(`Aguardando próxima análise: ${waitCountdown}s...`, 'info', 0);
         }
         createCancelWaitButton();
         if (!waitLogSent) {
             if (typeof addLog === 'function') {
-                addLog('Aguardando tempo para nova análise!', 'INFO', 'automation');
+                logToSystem('Aguardando tempo para nova análise!', 'INFO');
             } else if (typeof sendToLogSystem === 'function') {
                 sendToLogSystem('Aguardando tempo para nova análise!', 'INFO');
             }
@@ -175,8 +178,6 @@ function showAnalysisModal(result) {
             waitCountdownInterval = null;
             if (typeof updateStatus === 'function') {
                 updateStatus('Iniciando nova análise...', 'info');
-            } else if (typeof toUpdateStatus === 'function') {
-                toUpdateStatus('Iniciando nova análise...', 'info');
             }
             const cancelWaitBtn = document.getElementById('cancel-wait-btn');
             if (cancelWaitBtn) {
@@ -191,14 +192,12 @@ function showAnalysisModal(result) {
             }
             if (!automationStillEnabled) {
                 if (typeof addLog === 'function') {
-                    addLog('Automação foi desativada durante a contagem, cancelando nova análise', 'WARN', 'automation');
+                    logToSystem('Automação foi desativada durante a contagem, cancelando nova análise', 'WARN', 'automation');
                 } else if (typeof sendToLogSystem === 'function') {
                     sendToLogSystem('Automação foi desativada durante a contagem, cancelando nova análise', 'WARN');
                 }
                 if (typeof updateStatus === 'function') {
                     updateStatus('Análise cancelada - Automação desativada', 'warn', 3000);
-                } else if (typeof toUpdateStatus === 'function') {
-                    toUpdateStatus('Análise cancelada - Automação desativada', 'warn', 3000);
                 }
                 return;
             }
@@ -210,7 +209,7 @@ function showAnalysisModal(result) {
                 if (existingModal) {
                     existingModal.style.display = 'none';
                     if (typeof addLog === 'function') {
-                        addLog('Modal anterior fechado antes de nova análise', 'DEBUG', 'automation');
+                        logToSystem('Modal anterior fechado antes de nova análise', 'DEBUG');
                     }
                 }
                 
@@ -219,7 +218,7 @@ function showAnalysisModal(result) {
                 
                 if (analyzeButton) {
                         if (typeof addLog === 'function') {
-                        addLog('Simulando clique no botão "Iniciar Análise" após espera', 'INFO', 'automation');
+                        logToSystem('Simulando clique no botão "Iniciar Análise" após espera', 'INFO');
                         } else if (typeof sendToLogSystem === 'function') {
                         sendToLogSystem('Simulando clique no botão "Iniciar Análise" após espera', 'INFO');
                         }
@@ -228,16 +227,14 @@ function showAnalysisModal(result) {
                     analyzeButton.click();
                     } else {
                         if (typeof addLog === 'function') {
-                        addLog('Erro: Botão "Iniciar Análise" não encontrado para simulação de clique', 'ERROR', 'automation');
+                        logToSystem('Erro: Botão "Iniciar Análise" não encontrado para simulação de clique', 'ERROR');
                         } else if (typeof sendToLogSystem === 'function') {
                         sendToLogSystem('Erro: Botão "Iniciar Análise" não encontrado para simulação de clique', 'ERROR');
                         }
                     
                         if (typeof updateStatus === 'function') {
-                        updateStatus('Erro: Botão de análise não encontrado', 'error', 5000);
-                        } else if (typeof toUpdateStatus === 'function') {
-                        toUpdateStatus('Erro: Botão de análise não encontrado', 'error', 5000);
-                    }
+                            updateStatus('Erro: Botão de análise não encontrado', 'error', 5000);
+                        }
                 }
             }, 500);
         }
@@ -252,7 +249,7 @@ function showAnalysisModal(result) {
             if (autoExecutionEnabled) {
                 // ✅ CORREÇÃO: Execução automática SEM resetar status
                 if (typeof addLog === 'function') {
-                    addLog('✅ [MODAL] Executando operação automaticamente - status mantido como "Operando..."', 'INFO');
+                    logToSystem('✅ [MODAL] Executando operação automaticamente - status mantido como "Operando..."', 'INFO');
                 } else if (typeof sendToLogSystem === 'function') {
                     sendToLogSystem('Executando operação automaticamente após fechamento do modal', 'INFO');
                 }
@@ -268,13 +265,13 @@ function showAnalysisModal(result) {
                         automationEnabled = isAutomationRunning;
                     }
                     if (typeof addLog === 'function') {
-                        addLog(`Status de automação verificado: ${automationEnabled ? 'Ativado' : 'Desativado'}`, 'INFO', 'automation');
+                        logToSystem(`Status de automação verificado: ${automationEnabled ? 'Ativado' : 'Desativado'}`, 'INFO');
                     } else if (typeof sendToLogSystem === 'function') {
                         sendToLogSystem(`Status de automação verificado: ${automationEnabled ? 'Ativado' : 'Desativado'}`, 'INFO');
                     }
                     if (automationEnabled) {
                         if (typeof addLog === 'function') {
-                            addLog(`Iniciando contador de espera para nova análise (${waitCountdown}s)`, 'INFO', 'automation');
+                            logToSystem(`Iniciando contador de espera para nova análise (${waitCountdown}s)`, 'INFO');
                         } else if (typeof sendToLogSystem === 'function') {
                             sendToLogSystem(`Iniciando contador de espera para nova análise (${waitCountdown}s)`, 'INFO');
                         }
@@ -282,14 +279,12 @@ function showAnalysisModal(result) {
                         waitForNextAnalysis();
                     } else {
                         if (typeof addLog === 'function') {
-                            addLog('Ação WAIT ignorada, automação não está ativa', 'INFO', 'automation');
+                            logToSystem('Ação WAIT ignorada, automação não está ativa', 'INFO', 'automation');
                         } else if (typeof sendToLogSystem === 'function') {
                             sendToLogSystem('Ação WAIT ignorada, automação não está ativa', 'INFO');
                         }
                         if (typeof updateStatus === 'function') {
                             updateStatus('Análise aguardando - Automação desativada', 'info', 3000);
-                        } else if (typeof toUpdateStatus === 'function') {
-                            toUpdateStatus('Análise aguardando - Automação desativada', 'info', 3000);
                         }
                     }
                 } else if (result.action !== 'WAIT') {
@@ -298,10 +293,10 @@ function showAnalysisModal(result) {
                     
                     // ✅ DEBUG: Verificar status antes da execução automática
                     if (typeof addLog === 'function') {
-                        addLog('🔍 [MODAL DEBUG] Status ANTES da execução automática', 'DEBUG');
+                        logToSystem('🔍 [MODAL DEBUG] Status ANTES da execução automática', 'DEBUG');
                         if (window.StateManager) {
                             const status = window.StateManager.getOperationalStatus();
-                            addLog(`🔍 [MODAL DEBUG] Status atual: ${status.status}`, 'DEBUG');
+                            logToSystem(`🔍 [MODAL DEBUG] Status atual: ${status.status}`, 'DEBUG');
                         }
                     } else if (typeof sendToLogSystem === 'function') {
                         sendToLogSystem('🔍 [MODAL DEBUG] Status ANTES da execução automática', 'DEBUG');
@@ -309,7 +304,7 @@ function showAnalysisModal(result) {
                             const status = window.StateManager.getOperationalStatus();
                             sendToLogSystem(`🔍 [MODAL DEBUG] Status atual: ${status.status}`, 'DEBUG');
                         }
-                        addLog(`✅ [MODAL] Operação automática ${autoOperationId} executada - status mantido`, 'INFO');
+                        logToSystem(`✅ [MODAL] Operação automática ${autoOperationId} executada - status mantido`, 'INFO');
                     } else if (typeof sendToLogSystem === 'function') {
                         sendToLogSystem(`Iniciando operação automática ${autoOperationId} após fechamento do modal`, 'INFO');
                     }
@@ -320,10 +315,10 @@ function showAnalysisModal(result) {
                     // ✅ DEBUG: Verificar status depois da execução automática
                     setTimeout(() => {
                         if (typeof addLog === 'function') {
-                            addLog('🔍 [MODAL DEBUG] Status DEPOIS da execução automática (500ms após)', 'DEBUG');
+                            logToSystem('🔍 [MODAL DEBUG] Status DEPOIS da execução automática (500ms após)', 'DEBUG');
                             if (window.StateManager) {
                                 const status = window.StateManager.getOperationalStatus();
-                                addLog(`🔍 [MODAL DEBUG] Status atual: ${status.status}`, 'DEBUG');
+                                logToSystem(`🔍 [MODAL DEBUG] Status atual: ${status.status}`, 'DEBUG');
                             }
                         } else if (typeof sendToLogSystem === 'function') {
                             sendToLogSystem('🔍 [MODAL DEBUG] Status DEPOIS da execução automática (500ms após)', 'DEBUG');
@@ -350,11 +345,11 @@ function showAnalysisModal(result) {
             if (window.StateManager && typeof window.StateManager.getConfig === 'function') {
                 userConfig = window.StateManager.getConfig();
                 if (typeof addLog === 'function') {
-                    addLog(`Configurações obtidas: Valor=${userConfig.value}, Tempo=${userConfig.period}`, 'INFO', 'trade-execution');
+                    logToSystem(`Configurações obtidas: Valor=${userConfig.value}, Tempo=${userConfig.period}`, 'INFO', 'trade-execution');
                 }
             } else {
                 if (typeof addLog === 'function') {
-                    addLog('StateManager não disponível, usando valores padrão', 'WARN', 'trade-execution');
+                    logToSystem('StateManager não disponível, usando valores padrão', 'WARN', 'trade-execution');
                 }
             }
             
@@ -373,12 +368,12 @@ function showAnalysisModal(result) {
             };
             
             // Mostrar informação sobre a operação ao usuário
-            if (typeof toUpdateStatus === 'function') {
-                toUpdateStatus(`Executando ${action} - Valor: ${tradeData.tradeValue}, Período: ${tradeData.tradeTime}min`, 'info');
+            if (typeof updateStatus === 'function') {
+                updateStatus(`Executando ${action} - Valor: ${tradeData.tradeValue}, Período: ${tradeData.tradeTime}min`, 'info');
             }
             
             if (typeof addLog === 'function') {
-                addLog(`Enviando solicitação de operação ${action} com: valor=${tradeData.tradeValue}, período=${tradeData.tradeTime}`, 'INFO', 'trade-execution');
+                logToSystem(`Enviando solicitação de operação ${action} com: valor=${tradeData.tradeValue}, período=${tradeData.tradeTime}`, 'INFO', 'trade-execution');
             }
             
             // ✅ CORREÇÃO: Modal sempre executa diretamente, pois payout já foi verificado ANTES da análise
@@ -389,16 +384,15 @@ function showAnalysisModal(result) {
             }, (response) => {
                 if (typeof addLog === 'function') {
                     if (response && response.success) {
-                        addLog(`Operação ${action} executada com sucesso via chrome.runtime`, 'SUCCESS', 'trade-execution');
-                        if (typeof toUpdateStatus === 'function') {
-                            toUpdateStatus(`Operação ${action} executada com sucesso`, 'success');
+                        logToSystem(`Operação ${action} executada com sucesso via chrome.runtime`, 'SUCCESS');
+                        if (typeof updateStatus === 'function') {
+                            updateStatus(`Operação ${action} executada com sucesso`, 'success');
                         }
                     } else {
                         const errorMsg = response ? response.error : 'Sem resposta';
-                        addLog(`Falha ao executar operação ${action}: ${errorMsg}`, 'WARN', 'trade-execution');
-                        
-                        if (typeof toUpdateStatus === 'function') {
-                            toUpdateStatus(`Falha: ${errorMsg}`, 'warn');
+                        logToSystem(`Falha ao executar operação ${action}: ${errorMsg}`, 'WARN');
+                        if (typeof updateStatus === 'function') {
+                            updateStatus(`Falha: ${errorMsg}`, 'warn');
                         }
                     }
                 }
@@ -414,9 +408,9 @@ function showAnalysisModal(result) {
             }, (response) => {
                 if (typeof addLog === 'function') {
                     if (response && response.success) {
-                        addLog('Automação cancelada com sucesso via chrome.runtime', 'SUCCESS', 'automation');
+                        logToSystem('Automação cancelada com sucesso via chrome.runtime', 'SUCCESS');
                     } else {
-                        addLog(`Falha ao cancelar automação: ${response ? response.error : 'Sem resposta'}`, 'ERROR', 'automation');
+                        logToSystem(`Falha ao cancelar automação: ${response ? response.error : 'Sem resposta'}`, 'ERROR');
                     }
                 }
             });
@@ -431,10 +425,10 @@ function showAnalysisModal(result) {
         
         // ✅ DEBUG: Verificar status antes da execução
         if (typeof addLog === 'function') {
-            addLog('🔍 [MODAL DEBUG] Status ANTES da execução da operação', 'DEBUG');
+            logToSystem('🔍 [MODAL DEBUG] Status ANTES da execução da operação', 'DEBUG');
             if (window.StateManager) {
                 const status = window.StateManager.getOperationalStatus();
-                addLog(`🔍 [MODAL DEBUG] Status atual: ${status.status}`, 'DEBUG');
+                logToSystem(`🔍 [MODAL DEBUG] Status atual: ${status.status}`, 'DEBUG');
             }
         } else if (typeof sendToLogSystem === 'function') {
             sendToLogSystem('🔍 [MODAL DEBUG] Status ANTES da execução da operação', 'DEBUG');
@@ -450,10 +444,10 @@ function showAnalysisModal(result) {
         // ✅ DEBUG: Verificar status depois da execução
         setTimeout(() => {
             if (typeof addLog === 'function') {
-                addLog('🔍 [MODAL DEBUG] Status DEPOIS da execução da operação (500ms após)', 'DEBUG');
+                logToSystem('🔍 [MODAL DEBUG] Status DEPOIS da execução da operação (500ms após)', 'DEBUG');
                 if (window.StateManager) {
                     const status = window.StateManager.getOperationalStatus();
-                    addLog(`🔍 [MODAL DEBUG] Status atual: ${status.status}`, 'DEBUG');
+                    logToSystem(`🔍 [MODAL DEBUG] Status atual: ${status.status}`, 'DEBUG');
                 }
             } else if (typeof sendToLogSystem === 'function') {
                 sendToLogSystem('🔍 [MODAL DEBUG] Status DEPOIS da execução da operação (500ms após)', 'DEBUG');
@@ -467,7 +461,7 @@ function showAnalysisModal(result) {
         window.sendLog('Operação executada manualmente pelo usuário - aguardando resultado', 'INFO', 'trade-execution');
         window.sendStatus('Operação executada manualmente pelo usuário - aguardando resultado', 'info');
         if (typeof addLog === 'function') {
-            addLog('✅ [MODAL] Operação executada manualmente - status mantido como "Operando..."', 'INFO');
+            logToSystem('✅ [MODAL] Operação executada manualmente - status mantido como "Operando..."', 'INFO');
         }
     };
     waitButton.onclick = () => {
@@ -480,7 +474,7 @@ function showAnalysisModal(result) {
         window.sendLog('Usuário escolheu aguardar próxima análise', 'INFO', 'ui');
         window.sendStatus('Usuário escolheu aguardar próxima análise', 'info');
         if (typeof addLog === 'function') {
-            addLog('Usuário escolheu aguardar próxima análise', 'INFO', 'ui');
+            logToSystem('Usuário escolheu aguardar próxima análise', 'INFO');
         }
         
         // Iniciar o contador de WAIT (se já não estiver rodando)
@@ -510,12 +504,10 @@ function showAnalysisModal(result) {
         window.sendLog('Operação cancelada pelo usuário', 'INFO', 'trade-execution');
         window.sendStatus('Operação cancelada pelo usuário', 'info');
         if (typeof addLog === 'function') {
-            addLog('Operação cancelada pelo usuário', 'INFO', 'trade-execution');
+            logToSystem('Operação cancelada pelo usuário', 'INFO');
         }
-        if (typeof updateStatus === 'function') {
-            updateStatus('Operação cancelada pelo usuário', 'info', 3000);
-        } else if (typeof toUpdateStatus === 'function') {
-            toUpdateStatus('Operação cancelada pelo usuário', 'info', 3000);
+            if (typeof updateStatus === 'function') {
+                updateStatus('Operação cancelada pelo usuário', 'info', 3000);
             }
         }
     };

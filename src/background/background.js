@@ -16,6 +16,40 @@ let isProcessing = false;
 
 // ================== FUNÇÕES AUXILIARES ==================
 /**
+ * Envia uma mensagem de status para a interface da extensão
+ * @param {string} message - Mensagem de status
+ * @param {string} type - Tipo do status (info, success, error, warning)
+ * @param {number} duration - Duração em ms
+ */
+const sendStatusToUI = (message, type = 'info', duration = 3000) => {
+    try {
+        // Encontrar a aba da extensão e enviar status
+        chrome.tabs.query({}, (tabs) => {
+            for (const tab of tabs) {
+                if (tab.url && tab.url.includes('chrome-extension://')) {
+                    chrome.tabs.sendMessage(tab.id, {
+                        action: 'updateStatus',
+                        message: message,
+                        type: type,
+                        duration: duration
+                    }, () => {
+                        // Silenciar erros de comunicação com abas inativas
+                        if (chrome.runtime.lastError) {
+                            // Log só para debug
+                            console.log(`[Background] Status enviado para extensão: "${message}" (${type})`);
+                        } else {
+                            console.log(`[Background] ✅ Status enviado com sucesso: "${message}"`);
+                        }
+                    });
+                }
+            }
+        });
+    } catch (error) {
+        console.error(`[Background] Erro ao enviar status: ${error.message}`);
+    }
+};
+
+/**
  * Captura a imagem da guia visível
  * @returns {Promise<string>} Data URL da imagem capturada
  */
@@ -86,6 +120,7 @@ const getTradeParameters = (settings, analysis, availablePeriods) => {
 async function handleCaptureRequest(request) {
     try {
         console.log('Background: Iniciando captura de tela');
+        sendStatusToUI('Iniciando captura de tela...', 'info', 2000);
         
         // Captura a tela visível
         const dataUrl = await chrome.tabs.captureVisibleTab(null, {
@@ -94,16 +129,19 @@ async function handleCaptureRequest(request) {
         });
         
         console.log('Background: Captura realizada, verificando formato');
+        sendStatusToUI('Captura realizada, processando...', 'info', 2000);
         
         // Verificar se a captura retornou uma dataUrl válida
         if (!dataUrl || typeof dataUrl !== 'string') {
             console.error('Background: Captura falhou - dataUrl inválida ou vazia');
+            sendStatusToUI('Erro: Captura da tela falhou', 'error', 5000);
             throw new Error('Captura da tela falhou - dataUrl inválida');
         }
         
         // Verificar se a dataUrl está no formato correto
         if (!dataUrl.startsWith('data:image/')) {
             console.warn('Background: Formato de dataUrl incorreto, tentando corrigir');
+            sendStatusToUI('Corrigindo formato da imagem...', 'warning', 2000);
             
             // Se não for necessário processamento, tenta corrigir aqui mesmo
             if (!request.requireProcessing) {
@@ -121,6 +159,7 @@ async function handleCaptureRequest(request) {
                 // Se conseguiu corrigir, usa a versão corrigida
                 if (fixedDataUrl.startsWith('data:image/')) {
                     console.log('Background: Formato corrigido com sucesso');
+                    sendStatusToUI('Formato da imagem corrigido', 'success', 2000);
                     return fixedDataUrl;
                 }
                 
@@ -133,16 +172,19 @@ async function handleCaptureRequest(request) {
 
         // Se não precisar de processamento, retorna a imagem direto
         if (!request.requireProcessing) {
+            sendStatusToUI('✅ Captura concluída com sucesso', 'success', 3000);
             return dataUrl;
         }
 
         console.log('Background: Enviando para processamento no content script');
+        sendStatusToUI('Enviando para processamento...', 'info', 2000);
         
         // Envia para o content script processar
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         
         if (!tab || !tab.id) {
             console.error('Background: Nenhuma aba ativa encontrada');
+            sendStatusToUI('Erro: Nenhuma aba ativa encontrada', 'error', 5000);
             throw new Error('Nenhuma aba ativa encontrada para processamento');
         }
         
@@ -177,16 +219,19 @@ async function handleCaptureRequest(request) {
         });
         
         console.log('Background: Processamento concluído com sucesso');
+        sendStatusToUI('✅ Captura processada com sucesso', 'success', 3000);
         
         // Verificar se a resposta contém uma dataUrl válida
         if (!response.dataUrl || !response.dataUrl.startsWith('data:image/')) {
             console.error('Background: Resposta do processamento com formato inválido');
+            sendStatusToUI('Erro: Formato de imagem inválido após processamento', 'error', 5000);
             throw new Error('Formato de imagem inválido após processamento');
         }
 
         return response.dataUrl;
     } catch (error) {
         console.error('Background: Erro na captura:', error);
+        sendStatusToUI(`Erro na captura: ${error.message}`, 'error', 5000);
         throw error;
     }
 }
@@ -455,6 +500,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 .then(() => sendResponse({ success: true }))
                 .catch(err => sendResponse({ success: false, error: err.message }));
 
+        } else if (message.action === 'copyTextDirect') {
+            // MÉTODO 2: Tentar API de clipboard direto no background (experimental)
+            isAsync = true;
+            try {
+                addLog('Tentando copiar texto diretamente no background...', 'DEBUG', 'Background');
+                
+                // Service workers não têm navigator.clipboard, então usar offscreen como fallback
+                copyTextToClipboard(message.text)
+                    .then(() => {
+                        addLog('Texto copiado via offscreen (fallback do método direto)', 'SUCCESS', 'Background');
+                        sendResponse({ success: true });
+                    })
+                    .catch(error => {
+                        addLog(`Erro no método direto: ${error.message}`, 'ERROR', 'Background');
+                        sendResponse({ success: false, error: error.message });
+                    });
+                
+            } catch (error) {
+                addLog(`Erro no método direto de clipboard: ${error.message}`, 'ERROR', 'Background');
+                sendResponse({ success: false, error: error.message });
+            }
+
         } else if (message.action === 'showImagePopup') {
             isAsync = true; // DEFINIR ANTES DO AWAIT
             showImagePopup(message.dataUrl)
@@ -687,6 +754,8 @@ async function showImagePopup(dataUrl) {
  */
 async function copyTextToClipboard(text) {
     addLog('Iniciando processo de cópia para a área de transferência.', 'DEBUG', 'Clipboard');
+    sendStatusToUI('Iniciando cópia para área de transferência...', 'info', 2000);
+    
     // Caminho para o documento offscreen
     const offscreenDocumentPath = 'src/layout/offscreen.html';
 
@@ -699,6 +768,7 @@ async function copyTextToClipboard(text) {
     // Se não houver documento offscreen, crie um.
     if (existingContexts.length === 0) {
         addLog('Documento offscreen não encontrado. Criando...', 'DEBUG', 'Clipboard');
+        sendStatusToUI('Preparando área de transferência...', 'info', 2000);
         await chrome.offscreen.createDocument({
             url: offscreenDocumentPath,
             reasons: ['CLIPBOARD'],
@@ -711,6 +781,8 @@ async function copyTextToClipboard(text) {
 
     // Envia a mensagem para o documento offscreen e aguarda a resposta.
     addLog('Enviando texto para o documento offscreen para cópia.', 'DEBUG', 'Clipboard');
+    sendStatusToUI('Processando cópia...', 'info', 2000);
+    
     try {
         const response = await chrome.runtime.sendMessage({
             action: 'copyToClipboard',
@@ -719,13 +791,17 @@ async function copyTextToClipboard(text) {
 
         if (response && response.success) {
             addLog('API Offscreen retornou sucesso.', 'INFO', 'Clipboard');
+            sendStatusToUI('✅ Texto copiado com sucesso via OFFSCREEN', 'success', 4000);
         } else {
             const errorMessage = response ? response.error : 'Resposta inválida do documento offscreen.';
             addLog(`API Offscreen retornou erro: ${errorMessage}`, 'ERROR', 'Clipboard');
+            sendStatusToUI(`Erro na cópia: ${errorMessage}`, 'error', 5000);
             throw new Error(`Falha na API Offscreen: ${errorMessage}`);
         }
     } catch (error) {
         addLog(`Erro ao comunicar com o documento offscreen: ${error.message}`, 'ERROR', 'Clipboard');
+        sendStatusToUI(`Erro na cópia: ${error.message}`, 'error', 5000);
+        
         // Se o erro for sobre "Could not establish connection", pode ser uma race condition.
         if (error.message.includes('Could not establish connection')) {
              addLog('Possível race condition. O listener do offscreen pode não estar pronto.', 'WARN', 'Clipboard');

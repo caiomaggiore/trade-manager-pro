@@ -1,21 +1,10 @@
 // Dev Tools Module - Trade Manager Pro
 // ================== SISTEMA DE LOGS PADRÃO ==================
 // Usar o sistema global de logs declarado em log-sys.js
-
-// Função simplificada para logs usando o sistema global
-const devLog = (message, level = 'INFO') => {
-    // Usar diretamente a função global
-    window.sendLog(message, level, 'dev-tools.js');
-};
-
-// Função para status usando o sistema global
-const devUpdateStatus = (message, type = 'info') => {
-    // Usar diretamente a função global
-    window.sendStatus(message, type);
-};
+// window.logToSystem e window.updateStatus estão disponíveis globalmente
 
 // Log de inicialização do módulo dev-tools
-devLog('Módulo de ferramentas de desenvolvimento inicializado', 'INFO');
+logToSystem('Módulo de ferramentas de desenvolvimento inicializado', 'INFO');
 
 // ================== FUNÇÕES AUXILIARES ==================
 
@@ -27,7 +16,7 @@ devLog('Módulo de ferramentas de desenvolvimento inicializado', 'INFO');
  */
 const captureScreen = () => {
     return new Promise((resolve, reject) => {
-        devLog('Iniciando captura de tela básica...', 'INFO');
+        logToSystem('Iniciando captura de tela básica...', 'INFO');
         
         // Usar o handler existente no content.js com iframeWidth para remover o painel
         chrome.runtime.sendMessage({ 
@@ -36,17 +25,17 @@ const captureScreen = () => {
         }, (response) => {
             if (chrome.runtime.lastError) {
                 const errorMsg = chrome.runtime.lastError.message;
-                devLog(`Erro na captura: ${errorMsg}`, 'ERROR');
+                logToSystem(`Erro na captura: ${errorMsg}`, 'ERROR');
                 reject(new Error(errorMsg));
                 return;
             }
             
             if (response && response.success && response.dataUrl) {
-                devLog('Captura de tela realizada com sucesso', 'SUCCESS');
+                logToSystem('Captura de tela realizada com sucesso', 'SUCCESS');
                 resolve(response.dataUrl);
             } else {
                 const error = response ? response.error : 'Erro desconhecido na captura';
-                devLog(`Erro na captura: ${error}`, 'ERROR');
+                logToSystem(`Erro na captura: ${error}`, 'ERROR');
                 reject(new Error(error));
             }
         });
@@ -59,23 +48,23 @@ const captureScreen = () => {
  */
 const getCanvasInfo = () => {
     return new Promise((resolve, reject) => {
-        devLog('Obtendo informações do canvas...', 'INFO');
+        logToSystem('Obtendo informações do canvas...', 'INFO');
         
         // Usar o handler existente no content.js
         chrome.runtime.sendMessage({ action: 'CAPTURE_CHART_ONLY' }, (response) => {
             if (chrome.runtime.lastError) {
                 const errorMsg = chrome.runtime.lastError.message;
-                devLog(`Erro ao obter canvas info: ${errorMsg}`, 'ERROR');
+                logToSystem(`Erro ao obter canvas info: ${errorMsg}`, 'ERROR');
                 reject(new Error(errorMsg));
                 return;
             }
             
             if (response && response.success && response.canvasInfo) {
-                devLog('Informações do canvas obtidas com sucesso', 'SUCCESS');
+                logToSystem('Informações do canvas obtidas com sucesso', 'SUCCESS');
                 resolve(response.canvasInfo);
             } else {
                 const error = response ? response.error : 'Erro ao obter informações do canvas';
-                devLog(`Erro ao obter canvas info: ${error}`, 'ERROR');
+                logToSystem(`Erro ao obter canvas info: ${error}`, 'ERROR');
                 reject(new Error(error));
             }
         });
@@ -89,27 +78,27 @@ const getCanvasInfo = () => {
  * 3. Faz crop da imagem
  */
 const captureChartOnly = async () => {
-    devLog('Iniciando captura apenas do gráfico (combinando funções)...', 'INFO');
+    logToSystem('Iniciando captura apenas do gráfico (combinando funções)...', 'INFO');
     
     try {
         // Passo 1: Capturar tela completa
         const screenDataUrl = await captureScreen();
-        devLog('Tela capturada, obtendo informações do canvas...', 'INFO');
+        logToSystem('Tela capturada, obtendo informações do canvas...', 'INFO');
         
         // Passo 2: Obter informações do canvas
         const canvasInfo = await getCanvasInfo();
-        devLog('Canvas info obtida, fazendo crop...', 'INFO');
+        logToSystem('Canvas info obtida, fazendo crop...', 'INFO');
         
         // Passo 3: Fazer crop da imagem usando as informações do canvas
         const croppedImage = await cropImage(screenDataUrl, canvasInfo);
-        devLog('Crop realizado com sucesso', 'SUCCESS');
+        logToSystem('Crop realizado com sucesso', 'SUCCESS');
         
         return {
             dataUrl: croppedImage,
             canvasInfo: canvasInfo
         };
     } catch (error) {
-        devLog(`Erro na captura do gráfico: ${error.message}`, 'ERROR');
+        logToSystem(`Erro na captura do gráfico: ${error.message}`, 'ERROR');
         throw error;
     }
 };
@@ -186,18 +175,23 @@ const UI = {
 // ================== CONFIGURAÇÃO DOS BOTÕES ==================
 
 function setupCaptureDebugButtons() {
-    devLog('Configurando botões de captura no DevTools...', 'INFO');
+    logToSystem('Configurando botões de captura no DevTools...', 'INFO');
     
     // Botão de captura de tela básica
+    if (!UI.captureScreen) {
+        logToSystem('Botão de captura de tela não encontrado no DOM', 'WARN');
+        return;
+    }
+    
     UI.captureScreen.addEventListener('click', async () => {
-        devLog('=== CLIQUE DETECTADO: Botão de captura de tela ===', 'INFO');
-        devUpdateStatus('Capturando tela...', 'info');
+        logToSystem('=== CLIQUE DETECTADO: Botão de captura de tela ===', 'INFO');
+        updateStatus('Capturando tela...', 'info');
         
         try {
-            devLog('Tentando executar captura de tela...', 'DEBUG');
+            logToSystem('Tentando executar captura de tela...', 'DEBUG');
             const dataUrl = await captureScreen();
-            devLog('Captura de tela concluída com sucesso', 'SUCCESS');
-            devUpdateStatus('Captura de tela realizada com sucesso', 'success');
+            logToSystem('Captura de tela concluída com sucesso', 'SUCCESS');
+            updateStatus('Captura de tela realizada com sucesso', 'success');
             
             // Mostrar a imagem em popup
             chrome.runtime.sendMessage({
@@ -205,23 +199,23 @@ function setupCaptureDebugButtons() {
                 dataUrl: dataUrl
             });
         } catch (error) {
-            devLog(`Erro na captura: ${error.message}`, 'ERROR');
-            devUpdateStatus(`Erro na captura: ${error.message}`, 'error');
+            logToSystem(`Erro na captura: ${error.message}`, 'ERROR');
+            updateStatus(`Erro na captura: ${error.message}`, 'error');
         }
     });
-    devLog('Botão de captura de tela configurado com sucesso', 'DEBUG');
+    logToSystem('Botão de captura de tela configurado com sucesso', 'DEBUG');
 
     // Botão de informações do canvas (dimensões do gráfico)
     UI.canvasInfo.addEventListener('click', async () => {
-        devLog('=== CLIQUE DETECTADO: Botão de dimensão do gráfico ===', 'INFO');
-        devUpdateStatus('Obtendo informações do canvas...', 'info');
+        logToSystem('=== CLIQUE DETECTADO: Botão de dimensão do gráfico ===', 'INFO');
+        updateStatus('Obtendo informações do canvas...', 'info');
         
         try {
-            devLog('Tentando obter informações do canvas...', 'DEBUG');
+            logToSystem('Tentando obter informações do canvas...', 'DEBUG');
             const canvasInfo = await getCanvasInfo();
             const message = `Canvas: ${canvasInfo.width}x${canvasInfo.height} @ ${canvasInfo.x},${canvasInfo.y}`;
-            devLog(`Informações do canvas: ${message}`, 'SUCCESS');
-            devUpdateStatus(message, 'success');
+            logToSystem(`Informações do canvas: ${message}`, 'SUCCESS');
+            updateStatus(message, 'success');
             
             // Atualizar elemento de resultado
             if (UI.resultElement) {
@@ -234,22 +228,22 @@ function setupCaptureDebugButtons() {
                 `;
             }
         } catch (error) {
-            devLog(`Erro ao obter informações do canvas: ${error.message}`, 'ERROR');
-            devUpdateStatus(`Erro: ${error.message}`, 'error');
+            logToSystem(`Erro ao obter informações do canvas: ${error.message}`, 'ERROR');
+            updateStatus(`Erro: ${error.message}`, 'error');
         }
     });
-    devLog('Botão de dimensão do gráfico configurado com sucesso', 'DEBUG');
+    logToSystem('Botão de dimensão do gráfico configurado com sucesso', 'DEBUG');
 
     // Botão de captura apenas do gráfico (combina as duas funções)
     UI.chartOnly.addEventListener('click', async () => {
-        devLog('=== CLIQUE DETECTADO: Botão de captura de gráfico ===', 'INFO');
-        devUpdateStatus('Capturando apenas o gráfico...', 'info');
+        logToSystem('=== CLIQUE DETECTADO: Botão de captura de gráfico ===', 'INFO');
+        updateStatus('Capturando apenas o gráfico...', 'info');
         
         try {
-            devLog('Tentando executar captura do gráfico...', 'DEBUG');
+            logToSystem('Tentando executar captura do gráfico...', 'DEBUG');
             const result = await captureChartOnly();
-            devLog('Captura do gráfico concluída com sucesso', 'SUCCESS');
-            devUpdateStatus('Gráfico capturado com sucesso', 'success');
+            logToSystem('Captura do gráfico concluída com sucesso', 'SUCCESS');
+            updateStatus('Gráfico capturado com sucesso', 'success');
             
             // Mostrar a imagem em popup
             chrome.runtime.sendMessage({
@@ -257,21 +251,21 @@ function setupCaptureDebugButtons() {
                 dataUrl: result.dataUrl
             });
         } catch (error) {
-            devLog(`Erro na captura do gráfico: ${error.message}`, 'ERROR');
-            devUpdateStatus(`Erro na captura: ${error.message}`, 'error');
+            logToSystem(`Erro na captura do gráfico: ${error.message}`, 'ERROR');
+            updateStatus(`Erro na captura: ${error.message}`, 'error');
         }
     });
-    devLog('Botão de captura de gráfico configurado com sucesso', 'DEBUG');
+    logToSystem('Botão de captura de gráfico configurado com sucesso', 'DEBUG');
 }
 
 // ================== CONFIGURAÇÃO DOS BOTÕES DE TESTE DO SISTEMA GALE ==================
 
 function setupGaleTestButtons() {
-    devLog('Configurando botões de teste do sistema Gale...', 'INFO');
+    logToSystem('Configurando botões de teste do sistema Gale...', 'INFO');
     
     // Verificar se elementos existem
     if (!UI.simulateLoss || !UI.simulateWin || !UI.checkGaleStatus) {
-        devLog('Botões de teste de gale não encontrados', 'WARN');
+        logToSystem('Botões de teste de gale não encontrados no DOM', 'WARN');
         return;
     }
     
@@ -293,53 +287,53 @@ function setupGaleTestButtons() {
     
     // Botão para simular perda e aplicar gale
     UI.simulateLoss.addEventListener('click', () => {
-        devLog('=== CLIQUE DETECTADO: Simular perda ===', 'INFO');
+        logToSystem('=== CLIQUE DETECTADO: Simular perda ===', 'INFO');
         if (window.GaleSystem) {
             const result = window.GaleSystem.simulateGale();
-            devUpdateStatus(`Simulação de perda: ${result.message}`, result.success ? 'success' : 'error');
+            updateStatus(`Simulação de perda: ${result.message}`, result.success ? 'success' : 'error');
             
             // Atualizar display
             const updatedStatus = window.GaleSystem.getStatus();
             updateGaleStatusDisplay(updatedStatus);
         } else {
-            devUpdateStatus('Sistema de Gale não está disponível', 'error');
+            updateStatus('Sistema de Gale não está disponível', 'error');
         }
     });
     
     // Botão para simular ganho e resetar gale
     UI.simulateWin.addEventListener('click', () => {
-        devLog('=== CLIQUE DETECTADO: Simular ganho ===', 'INFO');
+        logToSystem('=== CLIQUE DETECTADO: Simular ganho ===', 'INFO');
         if (window.GaleSystem) {
             const result = window.GaleSystem.simulateReset();
-            devUpdateStatus(`Simulação de ganho: ${result.message}`, result.success ? 'success' : 'info');
+            updateStatus(`Simulação de ganho: ${result.message}`, result.success ? 'success' : 'info');
             
             // Atualizar display
             const updatedStatus = window.GaleSystem.getStatus();
             updateGaleStatusDisplay(updatedStatus);
         } else {
-            devUpdateStatus('Sistema de Gale não está disponível', 'error');
+            updateStatus('Sistema de Gale não está disponível', 'error');
         }
     });
     
     // Botão para verificar status do gale
     UI.checkGaleStatus.addEventListener('click', () => {
-        devLog('=== CLIQUE DETECTADO: Verificar status do Gale ===', 'INFO');
+        logToSystem('=== CLIQUE DETECTADO: Verificar status do Gale ===', 'INFO');
         if (window.GaleSystem) {
             const status = window.GaleSystem.getStatus();
-            devUpdateStatus(`Status do Gale: Nível ${status.level}, Próx. valor: R$ ${status.nextValue}`, 'info');
+            updateStatus(`Status do Gale: Nível ${status.level}, Próx. valor: R$ ${status.nextValue}`, 'info');
             updateGaleStatusDisplay(status);
             
             // Adicionar log com detalhes completos
-            devLog(`Status do Gale - Nível: ${status.level}, Ativo: ${status.active}, Valor original: ${status.originalValue}, Próximo valor: ${status.nextValue}`, 'INFO');
+            logToSystem(`Status do Gale - Nível: ${status.level}, Ativo: ${status.active}, Valor original: ${status.originalValue}, Próximo valor: ${status.nextValue}`, 'INFO');
         } else {
-            devUpdateStatus('Sistema de Gale não está disponível', 'error');
+            updateStatus('Sistema de Gale não está disponível', 'error');
         }
     });
     
     // Botão para resetar status de erro do sistema
     if (UI.resetSystemError) {
         UI.resetSystemError.addEventListener('click', () => {
-            devLog('=== CLIQUE DETECTADO: Resetar erro do sistema ===', 'INFO');
+            logToSystem('=== CLIQUE DETECTADO: Resetar erro do sistema ===', 'INFO');
             if (window.StateManager) {
                 const wasReset = window.StateManager.resetErrorStatus();
                 if (wasReset) {
@@ -348,36 +342,36 @@ function setupGaleTestButtons() {
                         action: 'SYSTEM_ERROR_RESET',
                         success: true
                     });
-                    devUpdateStatus('Status de erro resetado com sucesso', 'success');
-                    devLog('Status de erro do sistema resetado manualmente', 'INFO');
+                    updateStatus('Status de erro resetado com sucesso', 'success');
+                    logToSystem('Status de erro do sistema resetado manualmente', 'INFO');
                 } else {
-                    devUpdateStatus('Sistema não estava em estado de erro', 'info');
-                    devLog('Tentativa de reset, mas sistema não estava em erro', 'DEBUG');
+                    updateStatus('Sistema não estava em estado de erro', 'info');
+                    logToSystem('Tentativa de reset, mas sistema não estava em erro', 'DEBUG');
                 }
             } else {
-                devUpdateStatus('StateManager não disponível', 'error');
-                devLog('StateManager não disponível para reset de erro', 'ERROR');
+                updateStatus('StateManager não disponível', 'error');
+                logToSystem('StateManager não disponível para reset de erro', 'ERROR');
             }
         });
-        devLog('Botão de reset de status de erro configurado', 'DEBUG');
+        logToSystem('Botão de reset de status de erro configurado', 'DEBUG');
     }
     
-    devLog('Botões de teste do sistema de Gale configurados com sucesso', 'INFO');
+    logToSystem('Botões de teste do sistema de Gale configurados com sucesso', 'INFO');
 }
 
 // ================== CONFIGURAÇÃO DO BOTÃO DE TESTE DE ANÁLISE ==================
 
 function setupDevAnalysisButton() {
-    devLog('Configurando botão de teste de análise...', 'INFO');
+    logToSystem('Configurando botão de teste de análise...', 'INFO');
     
     if (!UI.testAnalysis) {
-        devLog('Botão de teste de análise não encontrado', 'WARN');
+        logToSystem('Botão de teste de análise não encontrado no DOM', 'WARN');
         return;
     }
     
     UI.testAnalysis.addEventListener('click', async () => {
-        devLog('=== CLIQUE DETECTADO: Teste de análise ===', 'INFO');
-        devLog('Executando teste de análise (modo desenvolvedor)', 'INFO');
+        logToSystem('=== CLIQUE DETECTADO: Teste de análise ===', 'INFO');
+        logToSystem('Executando teste de análise (modo desenvolvedor)', 'INFO');
         
         try {
             // Simular análise com dados mock
@@ -393,25 +387,25 @@ function setupDevAnalysisButton() {
             // Mostrar modal com resultado
             if (typeof showAnalysisModal === 'function') {
                 showAnalysisModal(mockResult);
-                devLog('Modal de análise de teste exibido com sucesso', 'SUCCESS');
-                devUpdateStatus('Análise de teste executada com sucesso', 'success');
+                logToSystem('Modal de análise de teste exibido com sucesso', 'SUCCESS');
+                updateStatus('Análise de teste executada com sucesso', 'success');
             } else {
-                devLog('Função showAnalysisModal não encontrada', 'ERROR');
-                devUpdateStatus('Erro: Modal não disponível', 'error');
+                logToSystem('Função showAnalysisModal não encontrada', 'ERROR');
+                updateStatus('Erro: Modal não disponível', 'error');
             }
         } catch (error) {
-            devLog(`Erro no teste de análise: ${error.message}`, 'ERROR');
-            devUpdateStatus(`Erro no teste: ${error.message}`, 'error');
+            logToSystem(`Erro no teste de análise: ${error.message}`, 'ERROR');
+            updateStatus(`Erro no teste: ${error.message}`, 'error');
         }
     });
     
-    devLog('Botão de teste de análise configurado com sucesso', 'DEBUG');
+    logToSystem('Botão de teste de análise configurado com sucesso', 'DEBUG');
 }
 
 // ================== CONFIGURAÇÃO DOS BOTÕES DE TESTE DE PAYOUT E ATIVOS ==================
 
 function setupPayoutAndAssetTestButtons() {
-    devLog('Configurando botões de teste de payout e ativos...', 'INFO');
+    logToSystem('Configurando botões de teste de payout e ativos...', 'INFO');
     
     // Função para atualizar resultado dos testes de ativos
     const updateAssetTestResult = (message, isError = false) => {
@@ -425,7 +419,7 @@ function setupPayoutAndAssetTestButtons() {
     // Botão de teste de captura de payout
     if (UI.testCapturePayout) {
         UI.testCapturePayout.addEventListener('click', async () => {
-            devLog('=== CLIQUE DETECTADO: Teste de captura de payout ===', 'INFO');
+            logToSystem('=== CLIQUE DETECTADO: Teste de captura de payout ===', 'INFO');
             
             // Atualizar resultado na tela
             if (UI.payoutResult) {
@@ -433,8 +427,8 @@ function setupPayoutAndAssetTestButtons() {
                 UI.payoutResult.style.backgroundColor = '#f0f8ff';
             }
             
-            devLog('Iniciando teste de captura de payout via content.js', 'INFO');
-            devUpdateStatus('Capturando payout do DOM...', 'info');
+            logToSystem('Iniciando teste de captura de payout via content.js', 'INFO');
+            updateStatus('Capturando payout do DOM...', 'info');
             
             try {
                 // Usar chrome.runtime para comunicar com content.js que tem acesso ao DOM
@@ -469,13 +463,13 @@ function setupPayoutAndAssetTestButtons() {
                     UI.payoutResult.style.backgroundColor = '#e8f5e8';
                 }
                 
-                devLog(`✅ Payout capturado com sucesso: ${response.payout}%`, 'SUCCESS');
-                devUpdateStatus(`Payout capturado: ${response.payout}%`, 'success');
+                logToSystem(`✅ Payout capturado com sucesso: ${response.payout}%`, 'SUCCESS');
+                updateStatus(`Payout capturado: ${response.payout}%`, 'success');
                 
             } catch (error) {
                 const errorMsg = error.message;
-                devLog(`❌ Erro na captura de payout: ${errorMsg}`, 'ERROR');
-                devUpdateStatus(`Erro na captura: ${errorMsg}`, 'error');
+                logToSystem(`❌ Erro na captura de payout: ${errorMsg}`, 'ERROR');
+                updateStatus(`Erro na captura: ${errorMsg}`, 'error');
                 
                 if (UI.payoutResult) {
                     UI.payoutResult.textContent = `Erro: ${errorMsg}`;
@@ -483,74 +477,74 @@ function setupPayoutAndAssetTestButtons() {
                 }
             }
         });
-        devLog('Botão de teste de captura de payout configurado', 'DEBUG');
+        logToSystem('Botão de teste de captura de payout configurado', 'DEBUG');
     }
     
     // Botão para buscar melhor ativo
     if (UI.testFindBestAsset) {
         UI.testFindBestAsset.addEventListener('click', async () => {
-            devLog('=== CLIQUE DETECTADO: Buscar melhor ativo ===', 'INFO');
+            logToSystem('=== CLIQUE DETECTADO: Buscar melhor ativo ===', 'INFO');
             const minPayout = parseInt(UI.minPayoutInput?.value || '85', 10);
             updateAssetTestResult(`Buscando melhor ativo (payout >= ${minPayout}%)...`);
             
             try {
                 const result = await testFindBestAsset(minPayout);
                 updateAssetTestResult(result.message);
-                devLog(`Melhor ativo encontrado: ${result.message}`, 'SUCCESS');
+                logToSystem(`Melhor ativo encontrado: ${result.message}`, 'SUCCESS');
             } catch (error) {
                 const errorMsg = typeof error === 'string' ? error : error.message;
                 updateAssetTestResult(errorMsg, true);
-                devLog(`Erro ao buscar melhor ativo: ${errorMsg}`, 'ERROR');
+                logToSystem(`Erro ao buscar melhor ativo: ${errorMsg}`, 'ERROR');
             }
         });
-        devLog('Botão de busca de melhor ativo configurado', 'DEBUG');
+        logToSystem('Botão de busca de melhor ativo configurado', 'DEBUG');
     }
     
     // Botão para mudar para moedas
     if (UI.testSwitchToCurrency) {
         UI.testSwitchToCurrency.addEventListener('click', async () => {
-            devLog('=== CLIQUE DETECTADO: Mudar para moedas ===', 'INFO');
+            logToSystem('=== CLIQUE DETECTADO: Mudar para moedas ===', 'INFO');
             updateAssetTestResult('Mudando para categoria Currencies...');
             
             try {
                 const result = await testSwitchAssetCategory('currency');
                 updateAssetTestResult(result.message);
-                devLog(`Mudança para moedas: ${result.message}`, 'SUCCESS');
+                logToSystem(`Mudança para moedas: ${result.message}`, 'SUCCESS');
             } catch (error) {
                 const errorMsg = typeof error === 'string' ? error : error.message;
                 updateAssetTestResult(errorMsg, true);
-                devLog(`Erro ao mudar para moedas: ${errorMsg}`, 'ERROR');
+                logToSystem(`Erro ao mudar para moedas: ${errorMsg}`, 'ERROR');
             }
         });
-        devLog('Botão de mudança para moedas configurado', 'DEBUG');
+        logToSystem('Botão de mudança para moedas configurado', 'DEBUG');
     }
     
     // Botão para mudar para crypto
     if (UI.testSwitchToCrypto) {
         UI.testSwitchToCrypto.addEventListener('click', async () => {
-            devLog('=== CLIQUE DETECTADO: Mudar para crypto ===', 'INFO');
+            logToSystem('=== CLIQUE DETECTADO: Mudar para crypto ===', 'INFO');
             updateAssetTestResult('Mudando para categoria Cryptocurrencies...');
             
             try {
                 const result = await testSwitchAssetCategory('crypto');
                 updateAssetTestResult(result.message);
-                devLog(`Mudança para crypto: ${result.message}`, 'SUCCESS');
+                logToSystem(`Mudança para crypto: ${result.message}`, 'SUCCESS');
             } catch (error) {
                 const errorMsg = typeof error === 'string' ? error : error.message;
                 updateAssetTestResult(errorMsg, true);
-                devLog(`Erro ao mudar para crypto: ${errorMsg}`, 'ERROR');
+                logToSystem(`Erro ao mudar para crypto: ${errorMsg}`, 'ERROR');
             }
         });
-        devLog('Botão de mudança para crypto configurado', 'DEBUG');
+        logToSystem('Botão de mudança para crypto configurado', 'DEBUG');
     }
     
-    devLog('Botões de teste de payout e ativos configurados com sucesso', 'INFO');
+    logToSystem('Botões de teste de payout e ativos configurados com sucesso', 'INFO');
 }
 
 // ================== CONFIGURAÇÃO DOS BOTÕES DE DEBUG DO MODAL ==================
 
 function setupModalDebugButtons() {
-    devLog('Configurando botões de debug do modal...', 'INFO');
+    logToSystem('Configurando botões de debug do modal...', 'INFO');
     
     // Função para atualizar resultado dos testes de modal
     const updateModalDebugResult = (message, isError = false) => {
@@ -564,7 +558,7 @@ function setupModalDebugButtons() {
     // Botão para abrir modal
     if (UI.debugOpenModal) {
         UI.debugOpenModal.addEventListener('click', async () => {
-            devLog('=== CLIQUE DETECTADO: Abrir modal ===', 'INFO');
+            logToSystem('=== CLIQUE DETECTADO: Abrir modal ===', 'INFO');
             updateModalDebugResult('🔄 Executando: AssetManager.openAssetModal()...');
             
             try {
@@ -583,23 +577,23 @@ function setupModalDebugButtons() {
                 
                 if (response && response.success) {
                     updateModalDebugResult('✅ Modal aberto com sucesso via AssetManager.openAssetModal()');
-                    devLog('Modal aberto com sucesso', 'SUCCESS');
+                    logToSystem('Modal aberto com sucesso', 'SUCCESS');
                 } else {
                     throw new Error(response?.error || 'Erro desconhecido ao abrir modal');
                 }
             } catch (error) {
                 const errorMsg = error.message;
                 updateModalDebugResult(`❌ Erro ao abrir modal: ${errorMsg}`, true);
-                devLog(`Erro ao abrir modal: ${errorMsg}`, 'ERROR');
+                logToSystem(`Erro ao abrir modal: ${errorMsg}`, 'ERROR');
             }
         });
-        devLog('Botão de abrir modal configurado', 'DEBUG');
+        logToSystem('Botão de abrir modal configurado', 'DEBUG');
     }
     
     // Botão para fechar modal
     if (UI.debugCloseModal) {
         UI.debugCloseModal.addEventListener('click', async () => {
-            devLog('=== CLIQUE DETECTADO: Fechar modal ===', 'INFO');
+            logToSystem('=== CLIQUE DETECTADO: Fechar modal ===', 'INFO');
             updateModalDebugResult('🔄 Executando: AssetManager.closeAssetModal()...');
             
             try {
@@ -618,23 +612,23 @@ function setupModalDebugButtons() {
                 
                 if (response && response.success) {
                     updateModalDebugResult('✅ Modal fechado com sucesso via AssetManager.closeAssetModal()');
-                    devLog('Modal fechado com sucesso', 'SUCCESS');
+                    logToSystem('Modal fechado com sucesso', 'SUCCESS');
                 } else {
                     throw new Error(response?.error || 'Erro desconhecido ao fechar modal');
                 }
             } catch (error) {
                 const errorMsg = error.message;
                 updateModalDebugResult(`❌ Erro ao fechar modal: ${errorMsg}`, true);
-                devLog(`Erro ao fechar modal: ${errorMsg}`, 'ERROR');
+                logToSystem(`Erro ao fechar modal: ${errorMsg}`, 'ERROR');
             }
         });
-        devLog('Botão de fechar modal configurado', 'DEBUG');
+        logToSystem('Botão de fechar modal configurado', 'DEBUG');
     }
     
     // Botão para verificar status do modal
     if (UI.debugCheckStatus) {
         UI.debugCheckStatus.addEventListener('click', async () => {
-            devLog('=== CLIQUE DETECTADO: Verificar status do modal ===', 'INFO');
+            logToSystem('=== CLIQUE DETECTADO: Verificar status do modal ===', 'INFO');
             updateModalDebugResult('🔍 Verificando status do modal...');
             
             try {
@@ -653,23 +647,23 @@ function setupModalDebugButtons() {
                 
                 if (response && response.success) {
                     updateModalDebugResult(`📊 Status do modal: ${JSON.stringify(response.status, null, 2)}`);
-                    devLog(`Status do modal verificado: ${JSON.stringify(response.status)}`, 'INFO');
+                    logToSystem(`Status do modal verificado: ${JSON.stringify(response.status)}`, 'INFO');
                 } else {
                     throw new Error(response?.error || 'Erro desconhecido ao verificar status');
                 }
             } catch (error) {
                 const errorMsg = error.message;
                 updateModalDebugResult(`❌ Erro ao verificar status: ${errorMsg}`, true);
-                devLog(`Erro ao verificar status do modal: ${errorMsg}`, 'ERROR');
+                logToSystem(`Erro ao verificar status do modal: ${errorMsg}`, 'ERROR');
             }
         });
-        devLog('Botão de verificar status do modal configurado', 'DEBUG');
+        logToSystem('Botão de verificar status do modal configurado', 'DEBUG');
     }
     
     // Botão de toggle do modal
     if (UI.debugToggleModal) {
         UI.debugToggleModal.addEventListener('click', async () => {
-            devLog('Testando toggle do modal de ativos...', 'INFO');
+            logToSystem('Testando toggle do modal de ativos...', 'INFO');
             updateModalDebugResult('Testando toggle do modal...', false);
             
             try {
@@ -697,7 +691,7 @@ function setupModalDebugButtons() {
     // Botão de debug de captura de ativos
     if (UI.debugAssetCapture) {
         UI.debugAssetCapture.addEventListener('click', async () => {
-            devLog('Iniciando debug de captura de ativos...', 'INFO');
+            logToSystem('Iniciando debug de captura de ativos...', 'INFO');
             updateModalDebugResult('Iniciando debug de captura de ativos...', false);
             
             try {
@@ -713,7 +707,7 @@ function setupModalDebugButtons() {
                 
                 if (response && response.success) {
                     updateModalDebugResult(`✅ Debug concluído: Modal aberto: ${response.modalOpen}, Containers: ${response.possibleContainers}`, false);
-                    devLog(`Debug: Modal aberto: ${response.modalOpen}, Containers encontrados: ${response.possibleContainers}`, 'INFO');
+                    logToSystem(`Debug: Modal aberto: ${response.modalOpen}, Containers encontrados: ${response.possibleContainers}`, 'INFO');
                 } else {
                     updateModalDebugResult(`❌ Erro no debug: ${response ? response.error : 'Erro desconhecido'}`, true);
                 }
@@ -736,7 +730,7 @@ function setupModalDebugButtons() {
     `;
     
     testInternalCommunicationBtn.addEventListener('click', () => {
-        devLog('=== CLIQUE DETECTADO: Teste de comunicação interna ===', 'INFO');
+        logToSystem('=== CLIQUE DETECTADO: Teste de comunicação interna ===', 'INFO');
         updateModalDebugResult('🧪 Testando comunicação interna via window.postMessage...', false);
         
         try {
@@ -787,12 +781,12 @@ function setupModalDebugButtons() {
             }, 2000);
             
             updateModalDebugResult('✅ Testes de comunicação interna enviados!<br><br>Verifique:<br>• Console do navegador<br>• Sistema de logs<br>• Status na tela', false);
-            devLog('Testes de comunicação interna via window.postMessage enviados com sucesso', 'SUCCESS');
+            logToSystem('Testes de comunicação interna via window.postMessage enviados com sucesso', 'SUCCESS');
             
         } catch (error) {
             const errorMsg = error.message;
             updateModalDebugResult(`❌ Erro no teste de comunicação: ${errorMsg}`, true);
-            devLog(`Erro no teste de comunicação interna: ${errorMsg}`, 'ERROR');
+            logToSystem(`Erro no teste de comunicação interna: ${errorMsg}`, 'ERROR');
         }
     });
     
@@ -802,11 +796,11 @@ function setupModalDebugButtons() {
         const panelGrid = modalDebugPanel.querySelector('.panel-grid');
         if (panelGrid) {
             panelGrid.appendChild(testInternalCommunicationBtn);
-            devLog('Botão de teste de comunicação interna adicionado ao painel', 'DEBUG');
+            logToSystem('Botão de teste de comunicação interna adicionado ao painel', 'DEBUG');
         }
     }
     
-    devLog('Botões de debug do modal configurados com sucesso', 'INFO');
+    logToSystem('Botões de debug do modal configurados com sucesso', 'INFO');
 }
 
 // ================== FUNÇÕES DE VISIBILIDADE DO PAINEL ==================
@@ -814,16 +808,16 @@ function setupModalDebugButtons() {
 function updateDevPanelVisibility(devModeEnabled) {
     const devPanel = document.getElementById('gale-test-panel');
     if (!devPanel) {
-        devLog('Painel de desenvolvimento não encontrado no DOM', 'ERROR');
+        logToSystem('Painel de desenvolvimento não encontrado no DOM', 'ERROR');
         return;
     }
     
     if (devModeEnabled) {
         devPanel.classList.remove('hidden');
-        devLog('Painel de desenvolvimento EXIBIDO', 'INFO');
+        logToSystem('Painel de desenvolvimento EXIBIDO', 'INFO');
     } else {
         devPanel.classList.add('hidden');
-        devLog('Painel de desenvolvimento OCULTO', 'INFO');
+        logToSystem('Painel de desenvolvimento OCULTO', 'INFO');
     }
 }
 
@@ -831,17 +825,33 @@ function updateDevPanelVisibility(devModeEnabled) {
 
 function initDevTools() {
     try {
-        devLog('Inicializando DevTools (seguindo arquitetura)...', 'INFO');
+        logToSystem('Inicializando DevTools (seguindo arquitetura)...', 'INFO');
         
+        // Aguardar DOM estar pronto antes de configurar botões
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                setupAllDevToolsButtons();
+            });
+        } else {
+            setupAllDevToolsButtons();
+        }
+        
+        logToSystem('DevTools inicializado com sucesso (seguindo arquitetura)', 'SUCCESS');
+    } catch (error) {
+        logToSystem(`Erro ao inicializar DevTools: ${error.message}`, 'ERROR');
+    }
+}
+
+function setupAllDevToolsButtons() {
+    try {
         setupCaptureDebugButtons();
         setupGaleTestButtons();
         setupDevAnalysisButton();
         setupPayoutAndAssetTestButtons();
         setupModalDebugButtons();
-        
-        devLog('DevTools inicializado com sucesso (seguindo arquitetura)', 'SUCCESS');
+        logToSystem('Todos os botões do DevTools configurados com sucesso', 'SUCCESS');
     } catch (error) {
-        devLog(`Erro ao inicializar DevTools: ${error.message}`, 'ERROR');
+        logToSystem(`Erro ao configurar botões do DevTools: ${error.message}`, 'ERROR');
     }
 }
 
@@ -849,17 +859,17 @@ function initDevTools() {
 
 // Listener para mensagens do chrome.runtime (seguindo arquitetura)
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    devLog(`DevTools recebeu mensagem: ${message.action}`, 'DEBUG');
+    logToSystem(`DevTools recebeu mensagem: ${message.action}`, 'DEBUG');
     
     // Handler para captura de tela
     if (message.action === 'DEV_CAPTURE_SCREEN') {
         captureScreen()
             .then(dataUrl => {
-                devLog('Captura de tela realizada via mensagem', 'SUCCESS');
+                logToSystem('Captura de tela realizada via mensagem', 'SUCCESS');
                 sendResponse({ success: true, dataUrl: dataUrl });
             })
             .catch(error => {
-                devLog(`Erro na captura via mensagem: ${error.message}`, 'ERROR');
+                logToSystem(`Erro na captura via mensagem: ${error.message}`, 'ERROR');
                 sendResponse({ success: false, error: error.message });
             });
         return true; // Resposta assíncrona
@@ -869,11 +879,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'DEV_GET_CANVAS_INFO') {
         getCanvasInfo()
             .then(canvasInfo => {
-                devLog('Informações do canvas obtidas via mensagem', 'SUCCESS');
+                logToSystem('Informações do canvas obtidas via mensagem', 'SUCCESS');
                 sendResponse({ success: true, canvasInfo: canvasInfo });
             })
             .catch(error => {
-                devLog(`Erro ao obter canvas info via mensagem: ${error.message}`, 'ERROR');
+                logToSystem(`Erro ao obter canvas info via mensagem: ${error.message}`, 'ERROR');
                 sendResponse({ success: false, error: error.message });
             });
         return true; // Resposta assíncrona
@@ -883,11 +893,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'DEV_CAPTURE_CHART_ONLY') {
         captureChartOnly()
             .then(result => {
-                devLog('Captura do gráfico realizada via mensagem', 'SUCCESS');
+                logToSystem('Captura do gráfico realizada via mensagem', 'SUCCESS');
                 sendResponse({ success: true, dataUrl: result.dataUrl, canvasInfo: result.canvasInfo });
             })
             .catch(error => {
-                devLog(`Erro na captura do gráfico via mensagem: ${error.message}`, 'ERROR');
+                logToSystem(`Erro na captura do gráfico via mensagem: ${error.message}`, 'ERROR');
                 sendResponse({ success: false, error: error.message });
             });
         return true; // Resposta assíncrona
@@ -909,7 +919,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     // Handler para reset de erro do sistema
     if (message.action === 'SYSTEM_ERROR_RESET') {
-        devLog('Reset de erro do sistema confirmado', 'INFO');
+        logToSystem('Reset de erro do sistema confirmado', 'INFO');
         sendResponse({ success: true });
         return true;
     }
@@ -918,11 +928,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'TEST_GEMINI_CONNECTION') {
         testGeminiConnection()
             .then(result => {
-                devLog('Teste de conectividade Gemini realizado via mensagem', 'SUCCESS');
+                logToSystem('Teste de conectividade Gemini realizado via mensagem', 'SUCCESS');
                 sendResponse({ success: true, connected: result });
             })
             .catch(error => {
-                devLog(`Erro no teste de conectividade: ${error.message}`, 'ERROR');
+                logToSystem(`Erro no teste de conectividade: ${error.message}`, 'ERROR');
                 sendResponse({ success: false, error: error.message });
             });
         return true; // Resposta assíncrona
@@ -933,10 +943,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         try {
             const { symbol, timeframe } = message;
             const mockData = generateMockData(symbol, timeframe);
-            devLog('Dados simulados gerados via mensagem', 'SUCCESS');
+            logToSystem('Dados simulados gerados via mensagem', 'SUCCESS');
             sendResponse({ success: true, data: mockData });
         } catch (error) {
-            devLog(`Erro ao gerar dados simulados: ${error.message}`, 'ERROR');
+            logToSystem(`Erro ao gerar dados simulados: ${error.message}`, 'ERROR');
             sendResponse({ success: false, error: error.message });
         }
         return true;
@@ -947,10 +957,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         try {
             const { result } = message;
             renderAnalysisResults(result);
-            devLog('Resultados de análise renderizados via mensagem', 'SUCCESS');
+            logToSystem('Resultados de análise renderizados via mensagem', 'SUCCESS');
             sendResponse({ success: true });
         } catch (error) {
-            devLog(`Erro ao renderizar resultados: ${error.message}`, 'ERROR');
+            logToSystem(`Erro ao renderizar resultados: ${error.message}`, 'ERROR');
             sendResponse({ success: false, error: error.message });
         }
         return true;
@@ -964,29 +974,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // Não expor funções globalmente - usar chrome.runtime para comunicação
 // Todas as funções são acessadas via mensagens do chrome.runtime
 
-devLog('Módulo DevTools carregado (seguindo arquitetura)', 'INFO');
+logToSystem('Módulo DevTools carregado (seguindo arquitetura)', 'INFO');
 
 // ================== FUNÇÕES DE ANÁLISE E TESTE ==================
 
 // Função para teste de conectividade da API Gemini
 const testGeminiConnection = async () => {
     try {
-        devLog('Verificando conectividade do sistema...', 'INFO');
-        devUpdateStatus('Sistema verificando conectividade...', 'info');
+        logToSystem('Verificando conectividade do sistema...', 'INFO');
+        updateStatus('Sistema verificando conectividade...', 'info');
         
         // Verificação básica sem fazer requisição real
         if (window.API_KEY && window.API_URL) {
-            devLog('Configurações de API encontradas', 'SUCCESS');
-            devUpdateStatus('Sistema pronto para análises', 'success');
+            logToSystem('Configurações de API encontradas', 'SUCCESS');
+            updateStatus('Sistema pronto para análises', 'success');
             return true;
         } else {
-            devLog('Configurações de API não encontradas', 'WARN');
-            devUpdateStatus('Sistema em modo limitado', 'warn');
+            logToSystem('Configurações de API não encontradas', 'WARN');
+            updateStatus('Sistema em modo limitado', 'warn');
             return false;
         }
     } catch (error) {
-        devLog(`Erro na verificação: ${error.message}`, 'ERROR');
-        devUpdateStatus('Erro na verificação do sistema', 'error');
+        logToSystem(`Erro na verificação: ${error.message}`, 'ERROR');
+        updateStatus('Erro na verificação do sistema', 'error');
         return false;
     }
 };
@@ -1012,7 +1022,7 @@ const generateMockData = (symbol, timeframe) => {
         lastPrice = close;
     }
     
-    devLog(`Gerados ${candles.length} candles simulados para ${symbol}`, 'DEBUG');
+    logToSystem(`Gerados ${candles.length} candles simulados para ${symbol}`, 'DEBUG');
     
     return {
         symbol,
@@ -1093,9 +1103,9 @@ const renderAnalysisResults = (result) => {
         
         resultsContainer.appendChild(signalsSection);
         
-        devLog('Resultados da análise renderizados', 'SUCCESS');
+        logToSystem('Resultados da análise renderizados', 'SUCCESS');
     } catch (error) {
-        devLog(`Erro ao renderizar resultados: ${error.message}`, 'ERROR');
+        logToSystem(`Erro ao renderizar resultados: ${error.message}`, 'ERROR');
     }
 };
 
@@ -1104,7 +1114,7 @@ const renderAnalysisResults = (result) => {
 // Função para testar troca de categoria de ativos
 const testSwitchAssetCategory = async (category) => {
     return new Promise((resolve, reject) => {
-        devLog(`Iniciando teste de troca para categoria: ${category}`, 'INFO');
+        logToSystem(`Iniciando teste de troca para categoria: ${category}`, 'INFO');
         
         chrome.runtime.sendMessage({
             action: 'TEST_SWITCH_ASSET_CATEGORY',
@@ -1112,7 +1122,7 @@ const testSwitchAssetCategory = async (category) => {
         }, (response) => {
             if (chrome.runtime.lastError) {
                 const error = `Erro: ${chrome.runtime.lastError.message}`;
-                devLog(error, 'ERROR');
+                logToSystem(error, 'ERROR');
                 reject(error);
                 return;
             }
@@ -1147,8 +1157,8 @@ const testSwitchAssetCategory = async (category) => {
                     resultText += `❌ Nenhum ativo encontrado na categoria ${response.category}`;
                 }
                 
-                devLog(`Teste de troca de categoria concluído: ${response.message}`, 'SUCCESS');
-                devLog(`Total de ativos capturados: ${response.totalAssetsFound || 0}`, 'INFO');
+                logToSystem(`Teste de troca de categoria concluído: ${response.message}`, 'SUCCESS');
+                logToSystem(`Total de ativos capturados: ${response.totalAssetsFound || 0}`, 'INFO');
                 
                 resolve({
                     success: true,
@@ -1160,7 +1170,7 @@ const testSwitchAssetCategory = async (category) => {
                 });
             } else {
                 const error = `❌ ${response?.error || 'Falha ao mudar categoria'}`;
-                devLog(`Erro no teste de troca de categoria: ${response?.error}`, 'ERROR');
+                logToSystem(`Erro no teste de troca de categoria: ${response?.error}`, 'ERROR');
                 reject({
                     success: false,
                     message: error
@@ -1184,7 +1194,7 @@ const formatAssetsList = (assets) => {
 // Função para testar busca de melhor ativo
 const testFindBestAsset = async (minPayout = 85) => {
     return new Promise((resolve, reject) => {
-        devLog(`Iniciando busca de melhor ativo (payout >= ${minPayout}%)`, 'INFO');
+        logToSystem(`Iniciando busca de melhor ativo (payout >= ${minPayout}%)`, 'INFO');
         
         chrome.runtime.sendMessage({
             action: 'TEST_FIND_BEST_ASSET',
@@ -1192,13 +1202,13 @@ const testFindBestAsset = async (minPayout = 85) => {
         }, (response) => {
             if (chrome.runtime.lastError) {
                 const error = `Erro: ${chrome.runtime.lastError.message}`;
-                devLog(error, 'ERROR');
+                logToSystem(error, 'ERROR');
                 reject(error);
                 return;
             }
             
             if (response && response.success) {
-                devLog(`Melhor ativo encontrado: ${response.message}`, 'SUCCESS');
+                logToSystem(`Melhor ativo encontrado: ${response.message}`, 'SUCCESS');
                 resolve({
                     success: true,
                     message: response.message,
@@ -1206,7 +1216,7 @@ const testFindBestAsset = async (minPayout = 85) => {
                 });
             } else {
                 const error = `❌ ${response?.error || 'Falha ao encontrar melhor ativo'}`;
-                devLog(`Erro na busca de melhor ativo: ${response?.error}`, 'ERROR');
+                logToSystem(`Erro na busca de melhor ativo: ${response?.error}`, 'ERROR');
                 reject({
                     success: false,
                     message: error
@@ -1221,11 +1231,11 @@ const testFindBestAsset = async (minPayout = 85) => {
 // Inicializar quando o DOM estiver pronto
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-        devLog('DOM carregado, inicializando DevTools automaticamente...', 'INFO');
+        logToSystem('DOM carregado, inicializando DevTools automaticamente...', 'INFO');
         initDevTools();
     });
 } else {
     // DOM já está pronto
-    devLog('DOM já está pronto, inicializando DevTools...', 'INFO');
+    logToSystem('DOM já está pronto, inicializando DevTools...', 'INFO');
     initDevTools();
 } 

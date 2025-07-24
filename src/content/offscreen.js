@@ -1,39 +1,32 @@
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'copyToClipboard') {
-        // Cria uma área de texto temporária. É a forma mais robusta de copiar
-        // em um contexto de segundo plano (offscreen) onde o foco não está disponível.
-        const textarea = document.createElement('textarea');
-        textarea.value = request.text;
-        
-        // Adiciona o elemento ao DOM para que possa ser selecionado.
-        document.body.appendChild(textarea);
-        
-        let success = false;
-        let errorMessage = '';
+/**
+ * Offscreen Document - Clipboard functionality SIMPLES
+ * Versão ultra-simplificada sem tratamento complexo de erros
+ */
 
+// Listener para mensagens do background script
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'copyToClipboard') {
+        // Método ultra-simples: só execCommand sem verificações
         try {
-            textarea.select();
-            // O comando execCommand é síncrono e funciona bem em documentos sem foco.
-            success = document.execCommand('copy');
-            if (!success) {
-                errorMessage = 'document.execCommand("copy") retornou false.';
-            }
-        } catch (err) {
-            success = false;
-            errorMessage = err.message;
-        } finally {
-            // Limpa o DOM removendo o elemento temporário.
-            document.body.removeChild(textarea);
+            const textArea = document.createElement('textarea');
+            textArea.value = message.text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-9999px';
+            textArea.style.opacity = '0';
+            
+            document.body.appendChild(textArea);
+            textArea.select();
+            
+            const success = document.execCommand('copy');
+            document.body.removeChild(textArea);
+            
+            sendResponse({ success: success });
+        } catch (error) {
+            sendResponse({ success: false, error: 'Falha simples' });
         }
-
-        if (success) {
-            console.log('Texto copiado com sucesso para a área de transferência via execCommand.');
-            sendResponse({ success: true });
-        } else {
-            console.error('Falha ao copiar texto:', errorMessage);
-            sendResponse({ success: false, error: errorMessage });
-        }
+        
+        return true;
     }
-    // A operação é síncrona, então não é necessário retornar true.
-    return false; 
-}); 
+});
+
+console.log('Offscreen simples carregado'); 

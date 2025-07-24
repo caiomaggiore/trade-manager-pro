@@ -1,21 +1,10 @@
 // Settings Module - Trade Manager Pro
 // ================== SISTEMA DE LOGS PADRÃO ==================
 // Usar o sistema global de logs declarado em log-sys.js
-
-// Função simplificada para logs usando o sistema global
-const logFromSettings = (message, level = 'INFO') => {
-    // Usar diretamente a função global
-    window.sendLog(message, level, 'settings.js');
-};
-
-// Função para status usando o sistema global
-const statusFromSettings = (message, type = 'info', duration = 3000) => {
-    // Usar diretamente a função global
-    window.sendStatus(message, type, duration);
-};
+// window.logToSystem e window.updateStatus estão disponíveis globalmente
 
 // Log de inicialização do módulo settings
-logFromSettings('Módulo de configurações inicializado', 'INFO');
+logToSystem('Módulo de configurações inicializado', 'INFO');
 
 // ================== ELEMENTOS DA UI ==================
 const settingsUI = {
@@ -61,10 +50,10 @@ const checkCriticalElements = () => {
 // ================== GERENCIAMENTO DE ESTADO ==================
 // Carregar configurações nos campos
 const loadSettingsToUI = (config) => {
-    logFromSettings('Carregando configurações para a UI: ' + JSON.stringify(config), 'INFO');
+    logToSystem('Carregando configurações para a UI', 'INFO');
     
     if (!config) {
-        logFromSettings('Nenhuma configuração encontrada, carregando padrões do default.json', 'WARN');
+        logToSystem('Nenhuma configuração encontrada, carregando padrões do default.json', 'WARN');
         
         // Tentar carregar default.json se existir
         fetch('../config/default.json')
@@ -75,11 +64,11 @@ const loadSettingsToUI = (config) => {
                 return response.json();
             })
             .then(defaultConfig => {
-                logFromSettings('Configurações padrão carregadas com sucesso de default.json', 'SUCCESS');
+                logToSystem('Configurações padrão carregadas com sucesso de default.json', 'SUCCESS');
                 applySettingsToUI(defaultConfig);
             })
             .catch(error => {
-                logFromSettings('Erro ao carregar default.json: ' + error.message, 'ERROR');
+                logToSystem('Erro ao carregar default.json: ' + error.message, 'ERROR');
                 // Se não conseguir carregar o arquivo, usar valores padrão hardcoded
                 applySettingsToUI({
                     gale: { active: true, level: '1x' },
@@ -99,7 +88,7 @@ const loadSettingsToUI = (config) => {
 
 // Aplicar configurações aos elementos da UI
 const applySettingsToUI = (config) => {
-    logFromSettings('Aplicando configurações à UI', 'DEBUG');
+    updateStatus('Aplicando configurações...', 'info', 2000);
     
     // Mapeamento para a UI usando a estrutura do StateManager
     settingsUI.toggleGale.checked = config.gale?.active ?? true;
@@ -130,25 +119,22 @@ const applySettingsToUI = (config) => {
             settingsUI.minPayout.value = closestValue.toString();
         }
         
-        logFromSettings(`Payout mínimo configurado na UI: ${settingsUI.minPayout.value}%`, 'DEBUG');
+        // Payout mínimo configurado
     }
 
     // Configurar comportamento de payout insuficiente
     if (settingsUI.payoutBehavior) {
         settingsUI.payoutBehavior.value = config.payoutBehavior || 'wait';
-        logFromSettings(`Comportamento de payout configurado: ${settingsUI.payoutBehavior.value}`, 'DEBUG');
     }
 
     // Configurar intervalo de verificação de payout
     if (settingsUI.payoutTimeout) {
         settingsUI.payoutTimeout.value = config.payoutTimeout || 5;
-        logFromSettings(`Intervalo de verificação de payout configurado: ${settingsUI.payoutTimeout.value}s`, 'DEBUG');
     }
 
     // Configurar troca de ativos
     if (config.assetSwitching && settingsUI.assetPreferredCategory) {
         settingsUI.assetPreferredCategory.value = config.assetSwitching.preferredCategory || 'crypto';
-        logFromSettings(`Categoria preferida configurada: ${settingsUI.assetPreferredCategory.value}`, 'DEBUG');
     }
 
     // Atualiza o estado do select de gale
@@ -161,93 +147,72 @@ const applySettingsToUI = (config) => {
     
     // Chamada adicional com delay maior para garantir que funcione
     setTimeout(() => {
-        logFromSettings('Executando segunda chamada de updatePayoutBehaviorVisibility para garantir funcionamento', 'DEBUG');
         updatePayoutBehaviorVisibility();
     }, 500);
     
-    logFromSettings('UI atualizada com as configurações', 'SUCCESS');
+    updateStatus('Configurações aplicadas com sucesso', 'success', 3000);
+    logToSystem('UI atualizada com as configurações', 'SUCCESS');
 };
 
 // Função para atualizar a visibilidade dos campos baseado no comportamento selecionado
 const updatePayoutBehaviorVisibility = () => {
-    logFromSettings('🔄 Iniciando atualização de visibilidade dos campos de payout...', 'DEBUG');
-    
     // Verificar se todos os elementos necessários existem
     const payoutBehaviorExists = settingsUI.payoutBehavior && settingsUI.payoutBehavior.value !== undefined;
     const timeoutContainerExists = settingsUI.payoutTimeoutContainer;
     const assetContainerExists = settingsUI.assetSwitchingContainer;
     
-    logFromSettings(`📋 Elementos encontrados - Behavior: ${!!payoutBehaviorExists}, Timeout: ${!!timeoutContainerExists}, Assets: ${!!assetContainerExists}`, 'DEBUG');
-    
     if (!payoutBehaviorExists) {
-        logFromSettings('❌ Elemento payoutBehavior não encontrado ou sem valor', 'ERROR');
+        logToSystem('Elemento payoutBehavior não encontrado', 'ERROR');
         return;
     }
     
     if (!timeoutContainerExists) {
-        logFromSettings('❌ Elemento payoutTimeoutContainer não encontrado', 'ERROR');
+        logToSystem('Elemento payoutTimeoutContainer não encontrado', 'ERROR');
         return;
     }
     
     if (!assetContainerExists) {
-        logFromSettings('❌ Elemento assetSwitchingContainer não encontrado', 'ERROR');
+        logToSystem('Elemento assetSwitchingContainer não encontrado', 'ERROR');
         return;
     }
     
     const behavior = settingsUI.payoutBehavior.value;
-    logFromSettings(`🎯 Comportamento atual selecionado: "${behavior}"`, 'DEBUG');
-    
-    // Log do estado atual dos elementos ANTES da mudança
-    logFromSettings(`📊 Estado ANTES - Timeout: "${settingsUI.payoutTimeoutContainer.style.display}", Assets: "${settingsUI.assetSwitchingContainer.style.display}"`, 'DEBUG');
     
     // REMOVER estilos inline que podem estar interferindo
     settingsUI.payoutTimeoutContainer.removeAttribute('style');
     settingsUI.assetSwitchingContainer.removeAttribute('style');
-    logFromSettings('🧹 Estilos inline removidos dos elementos', 'DEBUG');
     
     // SEMPRE resetar a visibilidade primeiro - FORÇAR display none
     settingsUI.payoutTimeoutContainer.style.display = 'none';
     settingsUI.assetSwitchingContainer.style.display = 'none';
-    logFromSettings('🔄 Todos os campos condicionais resetados para oculto', 'DEBUG');
-    
-    // Log do estado APÓS o reset
-    logFromSettings(`📊 Estado APÓS RESET - Timeout: "${settingsUI.payoutTimeoutContainer.style.display}", Assets: "${settingsUI.assetSwitchingContainer.style.display}"`, 'DEBUG');
     
     // Mostrar campos baseado no comportamento
     switch (behavior) {
         case 'wait':
             settingsUI.payoutTimeoutContainer.style.display = 'block';
             settingsUI.payoutTimeoutContainer.style.visibility = 'visible';
-            logFromSettings('✅ Campo de intervalo de verificação EXIBIDO', 'INFO');
             break;
             
         case 'switch':
             settingsUI.assetSwitchingContainer.style.display = 'block';
             settingsUI.assetSwitchingContainer.style.visibility = 'visible';
-            logFromSettings('✅ Campo de troca de ativos EXIBIDO', 'INFO');
             break;
             
         case 'cancel':
         default:
-            logFromSettings('✅ Todos os campos condicionais mantidos ocultos (cancelar operação)', 'INFO');
+            // Todos os campos condicionais mantidos ocultos
             break;
     }
-    
-    // Log do estado FINAL
-    logFromSettings(`📊 Estado FINAL - Timeout: "${settingsUI.payoutTimeoutContainer.style.display}", Assets: "${settingsUI.assetSwitchingContainer.style.display}"`, 'DEBUG');
     
     // Verificação adicional - forçar refresh do DOM
     setTimeout(() => {
         const finalTimeoutDisplay = settingsUI.payoutTimeoutContainer.style.display;
         const finalAssetDisplay = settingsUI.assetSwitchingContainer.style.display;
-        logFromSettings(`🔍 Verificação pós-timeout - Timeout: "${finalTimeoutDisplay}", Assets: "${finalAssetDisplay}"`, 'DEBUG');
         
         // Se ainda não estiver correto, forçar novamente
         if ((behavior === 'wait' && finalTimeoutDisplay !== 'block') || 
             (behavior === 'switch' && finalAssetDisplay !== 'block') ||
             (behavior === 'cancel' && (finalTimeoutDisplay !== 'none' || finalAssetDisplay !== 'none'))) {
-            
-            logFromSettings('⚠️ Estado incorreto detectado, forçando correção...', 'WARN');
             
             // Forçar correção
             settingsUI.payoutTimeoutContainer.style.display = 'none';
@@ -255,15 +220,11 @@ const updatePayoutBehaviorVisibility = () => {
             
             if (behavior === 'wait') {
                 settingsUI.payoutTimeoutContainer.style.display = 'block';
-                logFromSettings('🔧 FORÇADO: Campo timeout exibido', 'WARN');
             } else if (behavior === 'switch') {
                 settingsUI.assetSwitchingContainer.style.display = 'block';
-                logFromSettings('🔧 FORÇADO: Campo assets exibido', 'WARN');
             }
         }
     }, 100);
-    
-    logFromSettings('✅ Atualização de visibilidade concluída com sucesso', 'SUCCESS');
 };
 
 // Coletar configurações da UI
@@ -295,15 +256,15 @@ const getSettingsFromUI = () => {
     };
     
     // Log detalhado para depuração
-    logFromSettings(`Payout mínimo configurado: ${config.minPayout}%`, 'INFO');
-    logFromSettings(`Comportamento de payout: ${config.payoutBehavior}`, 'INFO');
-    logFromSettings(`Intervalo de verificação de payout: ${config.payoutTimeout}s`, 'INFO');
-    logFromSettings(`Troca de ativos habilitada: ${config.assetSwitching.enabled}`, 'INFO');
+    logToSystem(`Payout mínimo configurado: ${config.minPayout}%`, 'INFO');
+    logToSystem(`Comportamento de payout: ${config.payoutBehavior}`, 'INFO');
+    logToSystem(`Intervalo de verificação de payout: ${config.payoutTimeout}s`, 'INFO');
+    logToSystem(`Troca de ativos habilitada: ${config.assetSwitching.enabled}`, 'INFO');
     if (config.assetSwitching.enabled) {
-        logFromSettings(`Categoria preferida: ${config.assetSwitching.preferredCategory}`, 'INFO');
-        logFromSettings(`Payout mínimo para troca: ${config.assetSwitching.minPayout}% (mesmo valor do payout mínimo principal)`, 'INFO');
+        logToSystem(`Categoria preferida: ${config.assetSwitching.preferredCategory}`, 'INFO');
+        logToSystem(`Payout mínimo para troca: ${config.assetSwitching.minPayout}% (mesmo valor do payout mínimo principal)`, 'INFO');
     }
-    logFromSettings('Configurações coletadas da UI: ' + JSON.stringify(config), 'DEBUG');
+    // Configurações coletadas da UI
     return config;
 };
 
@@ -350,19 +311,19 @@ const saveSettings = async () => {
             }
         };
 
-        logFromSettings('Salvando configurações...', 'INFO');
+        updateStatus('Salvando configurações...', 'info', 0);
+        logToSystem('Salvando configurações', 'INFO');
         
         // Usar StateManager se disponível, senão usar chrome.storage diretamente
         if (window.StateManager && typeof window.StateManager.saveConfig === 'function') {
-            logFromSettings('Salvando via StateManager...', 'DEBUG');
             const success = await window.StateManager.saveConfig(config);
             if (success) {
-                logFromSettings('Configurações salvas com sucesso via StateManager!', 'SUCCESS');
+                logToSystem('Configurações salvas via StateManager', 'SUCCESS');
             } else {
                 throw new Error('StateManager retornou false');
             }
         } else {
-            logFromSettings('StateManager não disponível, usando chrome.storage diretamente...', 'WARN');
+            logToSystem('StateManager não disponível, usando chrome.storage', 'WARN');
             // Fallback para chrome.storage diretamente
             await new Promise((resolve, reject) => {
                 chrome.storage.sync.set({ userConfig: config }, () => {
@@ -373,15 +334,15 @@ const saveSettings = async () => {
                     }
                 });
             });
-            logFromSettings('Configurações salvas com sucesso via chrome.storage!', 'SUCCESS');
+            logToSystem('Configurações salvas via chrome.storage', 'SUCCESS');
         }
         
         // Notificar a página principal sobre as mudanças
         const notificationSent = notifyMainPage(config);
         if (notificationSent) {
-            logFromSettings('Página principal notificada sobre as mudanças', 'SUCCESS');
+            logToSystem('Página principal notificada', 'SUCCESS');
         } else {
-            logFromSettings('Falha ao notificar página principal', 'WARN');
+            logToSystem('Falha ao notificar página principal', 'WARN');
         }
         
         // Notificar outras partes do sistema sobre mudança de configuração
@@ -395,11 +356,12 @@ const saveSettings = async () => {
                     // Erro silencioso
                 }
             });
-            logFromSettings('Notificação de atualização enviada via chrome.runtime', 'DEBUG');
         } catch (runtimeError) {
-            logFromSettings('Erro ao enviar notificação via runtime (ignorado): ' + runtimeError.message, 'DEBUG');
+            // Erro silencioso
         }
 
+        updateStatus('Configurações salvas com sucesso!', 'success', 3000);
+        
         // Mostrar feedback de sucesso no botão
         if (settingsUI.saveBtn) {
             settingsUI.saveBtn.innerHTML = `
@@ -422,12 +384,13 @@ const saveSettings = async () => {
                     window.close();
                 }
             } catch (error) {
-                logFromSettings('Erro ao fechar página: ' + error.message, 'WARN');
+                logToSystem('Erro ao fechar página: ' + error.message, 'WARN');
             }
         }, 1000);
 
     } catch (error) {
-        logFromSettings('Erro ao salvar configurações: ' + error.message, 'ERROR');
+        updateStatus('Erro ao salvar configurações', 'error', 5000);
+        logToSystem('Erro ao salvar configurações: ' + error.message, 'ERROR');
         alert('Erro ao salvar configurações: ' + error.message);
         
         // Restaurar botão em caso de erro
@@ -467,12 +430,12 @@ const closeSettings = () => {
 // ================== LISTENERS ==================
 // Adicionar eventos aos elementos da UI
 document.addEventListener('DOMContentLoaded', async () => {
-    logFromSettings('Inicializando página de configurações', 'INFO');
+    logToSystem('Inicializando página de configurações', 'INFO');
     
     // Verificar se todos os elementos críticos foram encontrados
     const elementsFound = checkCriticalElements();
     if (!elementsFound) {
-        logFromSettings('❌ Alguns elementos críticos não foram encontrados. Funcionalidade pode estar comprometida.', 'ERROR');
+        logToSystem('❌ Alguns elementos críticos não foram encontrados. Funcionalidade pode estar comprometida.', 'ERROR');
     }
     
     // Desabilitar o select de gale se o toggle estiver desativado
@@ -485,8 +448,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Listener para mudança no comportamento de payout
     if (settingsUI.payoutBehavior) {
         settingsUI.payoutBehavior.addEventListener('change', () => {
-            logFromSettings(`Comportamento de payout alterado para: ${settingsUI.payoutBehavior.value}`, 'INFO');
-            
             // Aguardar um pouco para garantir que o valor foi atualizado
             setTimeout(() => {
                 updatePayoutBehaviorVisibility();
@@ -494,15 +455,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
         
         // IMPORTANTE: Configurar estado inicial após carregar configurações
-        logFromSettings('Configurando estado inicial dos campos de payout...', 'DEBUG');
-        
         // Aguardar um pouco para garantir que as configurações foram carregadas
         setTimeout(() => {
             updatePayoutBehaviorVisibility();
         }, 200);
         
     } else {
-        logFromSettings('❌ Elemento payoutBehavior não encontrado durante a inicialização', 'ERROR');
+        logToSystem('❌ Elemento payoutBehavior não encontrado durante a inicialização', 'ERROR');
     }
     
     // Evento de salvar
@@ -525,13 +484,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 attempts++;
                 
                 if (window.StateManager && typeof window.StateManager.getConfig === 'function') {
-                    logFromSettings('StateManager encontrado e disponível', 'SUCCESS');
+                    logToSystem('StateManager encontrado e disponível', 'SUCCESS');
                     resolve(true);
                 } else if (attempts >= maxAttempts) {
-                    logFromSettings('StateManager não encontrado após múltiplas tentativas, usando chrome.storage diretamente', 'WARN');
+                    logToSystem('StateManager não encontrado após múltiplas tentativas, usando chrome.storage diretamente', 'WARN');
                     resolve(false);
                 } else {
-                    logFromSettings(`Aguardando StateManager... tentativa ${attempts}/${maxAttempts}`, 'DEBUG');
+                    logToSystem(`Aguardando StateManager... tentativa ${attempts}/${maxAttempts}`, 'DEBUG');
                     setTimeout(checkStateManager, 200);
                 }
             };
@@ -542,7 +501,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Carregar configurações
     try {
-        logFromSettings('Carregando configurações...', 'INFO');
+        logToSystem('Carregando configurações...', 'INFO');
         
         const stateManagerAvailable = await waitForStateManager();
         let config = {};
@@ -550,8 +509,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (stateManagerAvailable) {
             // Usar StateManager se disponível
             config = window.StateManager.getConfig() || {};
-            logFromSettings('Configurações carregadas via StateManager', 'SUCCESS');
-            logFromSettings(`Configurações StateManager: ${JSON.stringify(config)}`, 'DEBUG');
+            logToSystem('Configurações carregadas via StateManager', 'SUCCESS');
+            logToSystem(`Configurações StateManager: ${JSON.stringify(config)}`, 'DEBUG');
         } else {
             // Fallback para chrome.storage diretamente
             const result = await new Promise((resolve) => {
@@ -560,26 +519,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
             });
             config = result;
-            logFromSettings('Configurações carregadas via chrome.storage', 'INFO');
-            logFromSettings(`Configurações chrome.storage: ${JSON.stringify(config)}`, 'DEBUG');
+            logToSystem('Configurações carregadas via chrome.storage', 'INFO');
+            logToSystem(`Configurações chrome.storage: ${JSON.stringify(config)}`, 'DEBUG');
         }
         
         loadSettingsToUI(config);
         
     } catch (error) {
-        logFromSettings('Erro ao carregar configurações: ' + error.message, 'ERROR');
+        logToSystem('Erro ao carregar configurações: ' + error.message, 'ERROR');
         // Carregar configurações padrão em caso de erro
         loadSettingsToUI({});
     }
     
     // Verificação final para garantir que a visibilidade seja aplicada
     setTimeout(() => {
-        logFromSettings('Verificação final da visibilidade dos campos de payout...', 'DEBUG');
         if (settingsUI.payoutBehavior && settingsUI.payoutBehavior.value) {
-            logFromSettings(`Valor final do comportamento: "${settingsUI.payoutBehavior.value}"`, 'DEBUG');
             updatePayoutBehaviorVisibility();
-        } else {
-            logFromSettings('Elemento payoutBehavior ainda não está pronto na verificação final', 'WARN');
         }
         
         // *** NOVO: Adicionar botões de configurações padrão ***
@@ -589,8 +544,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // Função para notificar a página principal sobre as mudanças de configuração
 const notifyMainPage = (config) => {
-    logFromSettings('Tentando notificar a página principal sobre as alterações de configuração...', 'INFO');
-    logFromSettings(`Configuração a ser enviada: ${JSON.stringify(config)}`, 'DEBUG');
+    logToSystem('Notificando página principal sobre alterações', 'INFO');
     
     let notified = false;
     
@@ -601,21 +555,19 @@ const notifyMainPage = (config) => {
             settings: config,
             timestamp: Date.now()
         }, '*');
-        logFromSettings('Notificação enviada via postMessage', 'SUCCESS');
         notified = true;
     } catch (err) {
-        logFromSettings(`Falha ao notificar via postMessage: ${err.message}`, 'WARN');
+        logToSystem(`Falha ao notificar via postMessage: ${err.message}`, 'WARN');
     }
     
     // Método 2: Tentar acessar diretamente o StateManager da página pai, se disponível
     try {
         if (window.parent && window.parent.StateManager) {
             window.parent.StateManager.saveConfig(config);
-            logFromSettings('Notificação enviada diretamente ao StateManager da página pai', 'SUCCESS');
             notified = true;
         }
     } catch (err) {
-        logFromSettings(`Falha ao notificar via StateManager pai: ${err.message}`, 'WARN');
+        logToSystem(`Falha ao notificar via StateManager pai: ${err.message}`, 'WARN');
     }
     
     // Método 3: Enviar via mensagem do Chrome runtime para outras partes da extensão
@@ -630,48 +582,32 @@ const notifyMainPage = (config) => {
                 // Erro silencioso - não precisa fazer nada
             }
         });
-        logFromSettings('Notificação enviada via chrome.runtime.sendMessage', 'SUCCESS');
         notified = true;
     } catch (err) {
-        logFromSettings(`Falha ao notificar via chrome.runtime: ${err.message}`, 'DEBUG');
+        // Erro silencioso
     }
     
     if (notified) {
-        logFromSettings('Notificação de atualização enviada com sucesso para a página principal', 'SUCCESS');
+        logToSystem('Página principal notificada com sucesso', 'SUCCESS');
     } else {
-        logFromSettings('Não foi possível notificar a página principal por nenhum método disponível', 'ERROR');
+        logToSystem('Falha ao notificar página principal', 'ERROR');
     }
     
     return notified;
 };
 
-// Função padronizada para enviar status para o index
-function toUpdateStatus(message, type = 'info', duration = 3000) {
-    if (chrome && chrome.runtime && chrome.runtime.id) {
-        chrome.runtime.sendMessage({
-            action: 'updateStatus',
-            message: message,
-            type: type,
-            duration: duration
-        }, (response) => {
-            // Callback para tratar resposta e evitar erro de listener assíncrono
-            if (chrome.runtime.lastError) {
-                // Erro silencioso - não precisa fazer nada
-            }
-        });
-    }
-}
+
 
 // *** NOVO: Funções para gerenciar configurações padrão do usuário ***
 
 // Salvar configurações atuais como padrão do usuário
 const saveAsUserDefault = async () => {
     try {
-        logFromSettings('Salvando configurações da UI como padrão...', 'INFO');
+        logToSystem('Salvando configurações da UI como padrão...', 'INFO');
         
         // *** CORREÇÃO: Primeiro pegar configurações da UI ***
         const uiConfig = getSettingsFromUI();
-        logFromSettings(`Configurações da UI coletadas: ${JSON.stringify(uiConfig)}`, 'DEBUG');
+        // Configurações da UI coletadas
         
         if (window.StateManager && typeof window.StateManager.saveConfig === 'function') {
             // Primeiro salvar as configurações normalmente
@@ -684,8 +620,8 @@ const saveAsUserDefault = async () => {
             if (typeof window.StateManager.saveAsUserDefault === 'function') {
                 const defaultSuccess = await window.StateManager.saveAsUserDefault();
                 if (defaultSuccess) {
-                    logFromSettings('Configurações salvas como padrão com sucesso!', 'SUCCESS');
-                    toUpdateStatus('Configurações salvas como padrão', 'success');
+                    logToSystem('Configurações salvas como padrão com sucesso!', 'SUCCESS');
+                    updateStatus('Configurações salvas como padrão', 'success');
                     
                     // Notificar a página principal sobre as mudanças
                     notifyMainPage(uiConfig);
@@ -703,8 +639,8 @@ const saveAsUserDefault = async () => {
             throw new Error('StateManager ou saveConfig não disponível');
         }
     } catch (error) {
-        logFromSettings('Erro ao salvar como padrão: ' + error.message, 'ERROR');
-        toUpdateStatus('Erro ao salvar como padrão', 'error');
+        logToSystem('Erro ao salvar como padrão: ' + error.message, 'ERROR');
+        updateStatus('Erro ao salvar como padrão', 'error');
         return false;
     }
 };
@@ -712,22 +648,22 @@ const saveAsUserDefault = async () => {
 // Carregar configurações padrão do usuário
 const loadUserDefault = async () => {
     try {
-        logFromSettings('Carregando configurações padrão do usuário...', 'INFO');
+        logToSystem('Carregando configurações padrão do usuário...', 'INFO');
         
         if (window.StateManager && typeof window.StateManager.loadUserDefault === 'function') {
             const success = await window.StateManager.loadUserDefault();
             if (success) {
-                logFromSettings('Configurações padrão carregadas com sucesso!', 'SUCCESS');
+                logToSystem('Configurações padrão carregadas com sucesso!', 'SUCCESS');
                 
                 // Recarregar UI com as configurações padrão
                 const config = window.StateManager.getConfig();
-                logFromSettings(`Configurações padrão carregadas: ${JSON.stringify(config)}`, 'DEBUG');
+                // Configurações padrão carregadas
                 loadSettingsToUI(config);
                 
                 // Notificar a página principal sobre as mudanças
                 notifyMainPage(config);
                 
-                toUpdateStatus('Configurações padrão carregadas', 'success');
+                updateStatus('Configurações padrão carregadas', 'success');
                 return true;
             } else {
                 throw new Error('StateManager retornou false');
@@ -736,8 +672,8 @@ const loadUserDefault = async () => {
             throw new Error('StateManager não disponível');
         }
     } catch (error) {
-        logFromSettings('Erro ao carregar configurações padrão: ' + error.message, 'ERROR');
-        toUpdateStatus('Erro ao carregar configurações padrão', 'error');
+        logToSystem('Erro ao carregar configurações padrão: ' + error.message, 'ERROR');
+        updateStatus('Erro ao carregar configurações padrão', 'error');
         return false;
     }
 };
@@ -745,32 +681,25 @@ const loadUserDefault = async () => {
 // Atualizar visibilidade dos botões de configurações padrão
 const updateDefaultButtonsVisibility = async () => {
     try {
-        logFromSettings('Atualizando visibilidade dos botões de configurações padrão...', 'DEBUG');
-        
         if (window.StateManager && typeof window.StateManager.hasUserDefault === 'function') {
             const hasDefault = await window.StateManager.hasUserDefault();
             const loadBtn = document.getElementById('load-default-btn');
-            
-            logFromSettings(`Tem configurações padrão salvas: ${hasDefault}`, 'DEBUG');
-            logFromSettings(`Botão carregar encontrado: ${!!loadBtn}`, 'DEBUG');
             
             if (loadBtn) {
                 if (hasDefault) {
                     loadBtn.style.display = 'block';
                     loadBtn.disabled = false;
-                    logFromSettings('Botão "Carregar Padrão" exibido', 'DEBUG');
                 } else {
                     loadBtn.style.display = 'none';
-                    logFromSettings('Botão "Carregar Padrão" oculto (sem configurações padrão)', 'DEBUG');
                 }
             } else {
-                logFromSettings('Botão "Carregar Padrão" não encontrado no DOM', 'WARN');
+                logToSystem('Botão "Carregar Padrão" não encontrado', 'WARN');
             }
         } else {
-            logFromSettings('StateManager ou função hasUserDefault não disponível', 'ERROR');
+            logToSystem('StateManager não disponível', 'ERROR');
         }
     } catch (error) {
-        logFromSettings('Erro ao atualizar visibilidade dos botões: ' + error.message, 'ERROR');
+        logToSystem('Erro ao atualizar visibilidade dos botões: ' + error.message, 'ERROR');
         console.error('Erro ao atualizar visibilidade:', error);
     }
 };
@@ -778,22 +707,17 @@ const updateDefaultButtonsVisibility = async () => {
 // Adicionar botões de configurações padrão do usuário
 const addDefaultButtons = () => {
     try {
-        logFromSettings('Tentando adicionar botões de configurações padrão...', 'DEBUG');
-        
         // Verificar se já existem os botões
         if (document.getElementById('save-default-btn') || document.getElementById('load-default-btn')) {
-            logFromSettings('Botões de configurações padrão já existem', 'DEBUG');
             return; // Botões já existem
         }
         
         // Encontrar um local adequado para adicionar os botões (próximo ao botão salvar)
         const saveBtn = document.getElementById('save-settings');
         if (!saveBtn) {
-            logFromSettings('Botão salvar não encontrado, não é possível adicionar botões de configurações padrão', 'WARN');
+            logToSystem('Botão salvar não encontrado', 'WARN');
             return;
         }
-        
-        logFromSettings('Botão salvar encontrado, criando botões de configurações padrão...', 'DEBUG');
         
         // Criar container para os botões de configurações padrão
         const defaultContainer = document.createElement('div');
@@ -824,7 +748,7 @@ const addDefaultButtons = () => {
         // Event listener para salvar como padrão
         saveDefaultBtn.addEventListener('click', async (e) => {
             e.preventDefault();
-            logFromSettings('Botão "Salvar como Padrão" clicado', 'INFO');
+            logToSystem('Botão "Salvar como Padrão" clicado', 'INFO');
             
             // Alterar botão para mostrar que está processando
             saveDefaultBtn.innerHTML = `
@@ -900,7 +824,7 @@ const addDefaultButtons = () => {
         // Event listener para carregar padrão
         loadDefaultBtn.addEventListener('click', async (e) => {
             e.preventDefault();
-            logFromSettings('Botão "Carregar Padrão" clicado', 'INFO');
+            logToSystem('Botão "Carregar Padrão" clicado', 'INFO');
             
             // Alterar botão para mostrar que está processando
             loadDefaultBtn.innerHTML = `
@@ -967,16 +891,16 @@ const addDefaultButtons = () => {
         // Inserir container após o botão salvar
         saveBtn.parentNode.insertBefore(defaultContainer, saveBtn.nextSibling);
         
-        logFromSettings('Botões de configurações padrão criados e adicionados ao DOM', 'SUCCESS');
+        logToSystem('Botões de configurações padrão criados e adicionados ao DOM', 'SUCCESS');
         
         // Atualizar visibilidade inicial após um pequeno delay
         setTimeout(() => {
             updateDefaultButtonsVisibility();
         }, 100);
         
-        logFromSettings('Botões de configurações padrão adicionados com sucesso', 'SUCCESS');
+        logToSystem('Botões de configurações padrão adicionados com sucesso', 'SUCCESS');
     } catch (error) {
-        logFromSettings('Erro ao adicionar botões de configurações padrão: ' + error.message, 'ERROR');
+        logToSystem('Erro ao adicionar botões de configurações padrão: ' + error.message, 'ERROR');
         console.error('Erro ao adicionar botões:', error);
     }
 };

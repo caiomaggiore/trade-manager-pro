@@ -1,3 +1,9 @@
+// Sistema de logs otimizado (novo padrão)
+// logToSystem removido - usando window.logToSystem global
+
+// Sistema de status otimizado (novo padrão)
+// updateStatus removido - usando window.updateStatus global
+
 // Configurações padrão (fallback caso não consiga carregar default.json)
 const DEFAULT_CONFIG = {
     gale: {
@@ -76,9 +82,9 @@ class StateManager {
         this.loadConfig();
         this.loadOperationalStatus();
         
-        // *** NOVO: Inicializar módulos analisadores de forma LAZY ***
-        // Só inicializa quando necessário, não imediatamente
-        setTimeout(() => this.initializeAnalyzersLazy(), 5000); // 5 segundos após carregamento
+        // *** CORRIGIDO: Inicializar módulos analisadores de forma LAZY ***
+        // Aumentar delay para permitir carregamento completo dos módulos
+        setTimeout(() => this.initializeAnalyzersLazy(), 8000); // 8 segundos após carregamento para garantir inicialização
         
         this.tradingActive = false;
         this.analyzersInitialized = false; // *** NOVO: Controle de inicialização lazy ***
@@ -130,8 +136,10 @@ class StateManager {
             await chrome.storage.sync.set({ userConfig: normalizedConfig });
             this.state.config = normalizedConfig;
             this.notifyListeners('config');
+            logToSystem('Configurações salvas com sucesso', 'SUCCESS');
             return true;
         } catch (error) {
+            logToSystem(`Erro ao salvar configurações: ${error.message}`, 'ERROR');
             return false;
         }
     }
@@ -144,8 +152,11 @@ class StateManager {
             // Salvar configurações atuais como padrão do usuário
             await chrome.storage.sync.set({ userDefaultConfig: currentConfig });
             
+            logToSystem('Configurações salvas como padrão do usuário', 'SUCCESS');
+            updateStatus('Configurações salvas como padrão', 'success', 3000);
             return true;
         } catch (error) {
+            logToSystem(`Erro ao salvar configurações como padrão: ${error.message}`, 'ERROR');
             return false;
         }
     }
@@ -163,6 +174,8 @@ class StateManager {
                 this.state.config = normalizedConfig;
                 this.notifyListeners('config');
                 
+                logToSystem('Configurações padrão do usuário carregadas', 'SUCCESS');
+                updateStatus('Configurações padrão carregadas', 'success', 3000);
                 return true;
             } else {
                 // Se não há configurações padrão do usuário, usar DEFAULT_CONFIG
@@ -172,9 +185,12 @@ class StateManager {
                 this.state.config = defaultConfig;
                 this.notifyListeners('config');
                 
+                logToSystem('Configurações padrão do sistema carregadas', 'INFO');
+                updateStatus('Configurações padrão carregadas', 'info', 3000);
                 return true;
             }
         } catch (error) {
+            logToSystem(`Erro ao carregar configurações padrão: ${error.message}`, 'ERROR');
             return false;
         }
     }
@@ -196,6 +212,14 @@ class StateManager {
             currentOperation: operation
         };
         this.notifyListeners('automation');
+        
+        if (isRunning) {
+            logToSystem('Automação iniciada', 'INFO');
+            updateStatus('Automação iniciada', 'success', 3000);
+        } else {
+            logToSystem('Automação parada', 'INFO');
+            updateStatus('Automação parada', 'info', 3000);
+        }
     }
 
     // Obter configuração atual
@@ -296,7 +320,7 @@ class StateManager {
             const config = this.getConfig();
             this.updateAutomationState(config.automation || false, null);
             
-            console.log('Status operacional e estado de automação resetados (página recarregada)');
+            logToSystem('Status operacional e estado de automação resetados (página recarregada)', 'INFO');
             
             // Salvar o status resetado
             this.saveOperationalStatus();
@@ -356,8 +380,39 @@ class StateManager {
         // Notificar listeners
         this.notifyListeners('operationalStatus');
         
-        // Status atualizado
+        // Log da mudança de status
+        if (newStatus !== previousStatus) {
+            logToSystem(`Status operacional alterado: ${previousStatus} → ${newStatus}`, 'INFO');
+            
+            // ✅ REABILITADO COM PROTEÇÃO ANTI-LOOP
+            // Só enviar status se realmente mudou e não é uma chamada interna
+            if (typeof window.updateStatus === 'function') {
+                try {
+                    // Verificar se não estamos em um ciclo de atualizações (máximo 1 por segundo)
+                    const now = Date.now();
+                    const lastUpdate = this.operationalStatus.lastStatusUpdate || 0;
+                    
+                    if ((now - lastUpdate) > 1000) { // Cooldown de 1 segundo
+                        this.operationalStatus.lastStatusUpdate = now;
+                        
+                        // Enviar status de forma não-bloqueante
+                        setTimeout(() => {
+                            window.updateStatus(`Status: ${newStatus}`, 'info', 3000);
+                        }, 50); // Delay mínimo para evitar sobreposição
+                        
+                        console.log(`[STATE-MANAGER] ✅ updateStatus() enviado com segurança - Status: ${newStatus}`);
+                    } else {
+                        console.log(`[STATE-MANAGER] 🚫 updateStatus() bloqueado por cooldown - Status: ${newStatus}`);
+                    }
+                } catch (error) {
+                    console.log(`[STATE-MANAGER] ⚠️ Erro ao enviar updateStatus: ${error.message}`);
+                }
+            } else {
+                console.log(`[STATE-MANAGER] ⚠️ window.updateStatus não disponível - Status: ${newStatus}`);
+            }
+        }
         
+        // Status atualizado
         return true;
     }
 
@@ -377,6 +432,10 @@ class StateManager {
         
         this.updateOperationalStatus('Parado Erro', errorInfo);
         
+        // Log do erro
+        logToSystem(`Erro reportado: ${errorMessage}`, 'ERROR');
+        updateStatus(`Erro: ${errorMessage}`, 'error', 5000);
+        
         // Notificar via chrome.runtime para outros módulos
         try {
             chrome.runtime.sendMessage({
@@ -393,6 +452,9 @@ class StateManager {
     // Novo método para iniciar operação
     startOperation(operationType = 'analysis') {
         this.updateOperationalStatus('Operando...');
+        
+        logToSystem(`Operação iniciada: ${operationType}`, 'INFO');
+        updateStatus(`Iniciando ${operationType}...`, 'info', 3000);
         
         // ✅ CORREÇÃO: Não alterar estado de automação se não estiver configurada como ativa
         const config = this.getConfig();
@@ -448,6 +510,8 @@ class StateManager {
     resetErrorStatus() {
         if (this.operationalStatus.status === 'Parado Erro') {
             this.updateOperationalStatus('Pronto');
+            logToSystem('Status de erro resetado manualmente', 'INFO');
+            updateStatus('Status de erro resetado', 'success', 3000);
             return true;
         }
         return false;
@@ -475,12 +539,20 @@ class StateManager {
         
         // Módulos detectados
         
-        // Se não encontrou todos, tentar novamente em 3 segundos
+        // Se não encontrou todos, tentar novamente em 5 segundos (aumentado para evitar spam)
         if (foundModules < 4) {
             this.analyzersInitialized = false;
-            setTimeout(() => this.initializeAnalyzersLazy(), 3000);
+            // Reduzir frequência de logs para evitar spam
+            if (!this.loggedAnalyzerAttempt) {
+                logToSystem(`Módulos analisadores aguardando carregamento (${foundModules}/4), tentando novamente em 5s`, 'INFO');
+                this.loggedAnalyzerAttempt = true;
+                // Resetar log após 30 segundos para evitar spam infinito
+                setTimeout(() => { this.loggedAnalyzerAttempt = false; }, 30000);
+            }
+            setTimeout(() => this.initializeAnalyzersLazy(), 5000);
         } else {
             // Configurar listeners críticos quando módulos estiverem carregados
+            logToSystem('Todos os módulos analisadores carregados com sucesso', 'SUCCESS');
             this.setupCriticalListeners();
         }
     }
@@ -544,6 +616,9 @@ class StateManager {
         
         // Notificar listeners sobre a parada
         this.notifyListeners('automationStopped');
+        
+        logToSystem('Automação parada completamente', 'INFO');
+        updateStatus('Automação parada', 'info', 3000);
         
         return true;
     }

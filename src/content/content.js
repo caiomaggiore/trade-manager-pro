@@ -50,7 +50,7 @@ const injectInterface = () => {
     // Escuta mensagens do iframe
     window.addEventListener('message', (event) => {
         if (event.data.action === 'captureScreen') {
-            safeLog('Mensagem de captura recebida do iframe', 'INFO');
+            window.logToSystem('Mensagem de captura recebida do iframe', 'INFO');
             chrome.runtime.sendMessage({
                 action: 'initiateCapture',
                 actionType: event.data.actionType,
@@ -61,15 +61,10 @@ const injectInterface = () => {
     });
   };
   
-// Função padronizada para enviar status para o index
-function toUpdateStatus(message, type = 'info', duration = 5000) {
-    if (chrome && chrome.runtime && chrome.runtime.id) {
-        chrome.runtime.sendMessage({
-            action: 'updateStatus',
-            message: message,
-            type: type,
-            duration: duration
-        });
+// Sistema de status otimizado (novo padrão)
+function updateStatus(message, type = 'info', duration = 5000) {
+    if (window.sendStatus) {
+        window.sendStatus(message, type, duration);
     }
 }
   
@@ -84,8 +79,8 @@ function toUpdateStatus(message, type = 'info', duration = 5000) {
 function capturePayoutFromDOM() {
     return new Promise((resolve, reject) => {
         try {
-            safeLog('🔍 Iniciando captura de payout do DOM da PocketOption', 'INFO');
-            toUpdateStatus('Capturando payout...', 'info');
+            window.logToSystem('🔍 Iniciando captura de payout do DOM da PocketOption', 'INFO');
+            updateStatus('Capturando payout...', 'info');
             
             // Seletores específicos da PocketOption para encontrar o payout
             const payoutSelectors = [
@@ -101,7 +96,7 @@ function capturePayoutFromDOM() {
             ];
             
             // ✅ DEBUG: Primeiro, vamos listar TODOS os elementos que contêm %
-            safeLog('🔍 [DEBUG] Listando TODOS os elementos que contêm % na página:', 'DEBUG');
+            window.logToSystem('🔍 [DEBUG] Listando TODOS os elementos que contêm % na página:', 'DEBUG');
             const allElementsWithPercent = document.querySelectorAll('*');
             let elementCount = 0;
             for (const elem of allElementsWithPercent) {
@@ -109,11 +104,11 @@ function capturePayoutFromDOM() {
                 if (text.includes('%') && text.length < 50) {
                     elementCount++;
                     if (elementCount <= 10) { // Limitar para não poluir logs
-                        safeLog(`🔍 [DEBUG] Elemento ${elementCount}: "${text}" (tag: ${elem.tagName}, classes: ${elem.className})`, 'DEBUG');
+                        window.logToSystem(`🔍 [DEBUG] Elemento ${elementCount}: "${text}" (tag: ${elem.tagName}, classes: ${elem.className})`, 'DEBUG');
                     }
                 }
             }
-            safeLog(`🔍 [DEBUG] Total de elementos com % encontrados: ${elementCount}`, 'DEBUG');
+            window.logToSystem(`🔍 [DEBUG] Total de elementos com % encontrados: ${elementCount}`, 'DEBUG');
             
             let payoutElement = null;
             let payoutValue = 0;
@@ -122,14 +117,14 @@ function capturePayoutFromDOM() {
             // Tentar encontrar o elemento de payout
             for (const selector of payoutSelectors) {
                 const elements = document.querySelectorAll(selector);
-                safeLog(`🔎 Testando seletor "${selector}" - encontrados ${elements.length} elementos`, 'DEBUG');
+                window.logToSystem(`🔎 Testando seletor "${selector}" - encontrados ${elements.length} elementos`, 'DEBUG');
                 
                 if (elements.length > 0) {
                     // Testar cada elemento encontrado
                     for (let i = 0; i < elements.length; i++) {
                         const element = elements[i];
                         const text = element.textContent || element.innerText || '';
-                        safeLog(`📝 Elemento ${i+1}: "${text}"`, 'DEBUG');
+                        window.logToSystem(`📝 Elemento ${i+1}: "${text}"`, 'DEBUG');
                         
                         // Verificar se contém um valor de payout válido
                         const payoutMatch = text.match(/(\d+(?:\.\d+)?)\s*%?/);
@@ -139,7 +134,7 @@ function capturePayoutFromDOM() {
                                 payoutElement = element;
                                 payoutValue = value;
                                 foundSelector = selector;
-                                safeLog(`✅ Elemento de payout encontrado com seletor: ${selector} (${i+1}º elemento)`, 'SUCCESS');
+                                window.logToSystem(`✅ Elemento de payout encontrado com seletor: ${selector} (${i+1}º elemento)`, 'SUCCESS');
                                 break;
                             }
                         }
@@ -151,7 +146,7 @@ function capturePayoutFromDOM() {
             
             // Se não encontrou com seletores específicos, fazer busca ampla
             if (!payoutElement) {
-                safeLog('🔍 Seletores específicos não funcionaram, fazendo busca ampla...', 'DEBUG');
+                window.logToSystem('🔍 Seletores específicos não funcionaram, fazendo busca ampla...', 'DEBUG');
                 
                 // Busca ampla por elementos que contêm %
                 const allElements = document.querySelectorAll('*');
@@ -167,7 +162,7 @@ function capturePayoutFromDOM() {
                                 payoutValue = value;
                                 payoutElement = element;
                                 foundSelector = 'busca-ampla';
-                                safeLog(`🎯 Payout encontrado em busca ampla: ${payoutValue}%`, 'INFO');
+                                window.logToSystem(`🎯 Payout encontrado em busca ampla: ${payoutValue}%`, 'INFO');
                                 break;
                             }
                         }
@@ -186,8 +181,8 @@ function capturePayoutFromDOM() {
                     elementText: payoutElement.textContent || payoutElement.innerText || ''
                 };
                 
-                safeLog(`✅ Payout capturado com sucesso: ${payoutValue}% (seletor: ${foundSelector})`, 'SUCCESS');
-                toUpdateStatus(`Payout encontrado: ${payoutValue}%`, 'success');
+                window.logToSystem(`✅ Payout capturado com sucesso: ${payoutValue}% (seletor: ${foundSelector})`, 'SUCCESS');
+                updateStatus(`Payout encontrado: ${payoutValue}%`, 'success');
                 
                 resolve(result);
             } else {
@@ -201,15 +196,15 @@ function capturePayoutFromDOM() {
                     elementText: 'Valor padrão'
                 };
                 
-                safeLog('⚠️ Payout não encontrado no DOM, usando valor padrão: 85%', 'WARN');
-                toUpdateStatus('Payout não encontrado, usando padrão: 85%', 'warn');
+                window.logToSystem('⚠️ Payout não encontrado no DOM, usando valor padrão: 85%', 'WARN');
+                updateStatus('Payout não encontrado, usando padrão: 85%', 'warn');
                 
                 resolve(defaultResult);
             }
             
         } catch (error) {
-            safeLog(`❌ Erro ao capturar payout: ${error.message}`, 'ERROR');
-            toUpdateStatus(`Erro na captura: ${error.message}`, 'error');
+            window.logToSystem(`❌ Erro ao capturar payout: ${error.message}`, 'ERROR');
+            updateStatus(`Erro na captura: ${error.message}`, 'error');
             
             reject(new Error(`Falha na captura de payout: ${error.message}`));
         }
@@ -224,11 +219,11 @@ function capturePayoutFromDOM() {
   const startTradeMonitoring = () => {
     // Verificar se o observer já existe
     if (window._tradeObserver) {
-      safeLog("Observer já existe, não será criado novamente", "INFO");
+      window.logToSystem("Observer já existe, não será criado novamente", "INFO");
       return;
     }
     
-    safeLog("Iniciando monitoramento de operações", "INFO");
+    window.logToSystem("Iniciando monitoramento de operações", "INFO");
     
     // Função para processar modal de notificação de trade
     const processTradeModal = (modal) => {
@@ -305,7 +300,7 @@ function capturePayoutFromDOM() {
           timestamp: Date.now()
         };
         
-        safeLog(`Operação detectada: ${result.status} ${result.symbol}`, 'INFO');
+        window.logToSystem(`Operação detectada: ${result.status} ${result.symbol}`, 'INFO');
         
         // Enviar resultado para processamento
         chrome.runtime.sendMessage({
@@ -314,7 +309,7 @@ function capturePayoutFromDOM() {
         });
         
       } catch (error) {
-        safeLog(`Erro ao processar modal de operação: ${error.message}`, 'ERROR');
+        window.logToSystem(`Erro ao processar modal de operação: ${error.message}`, 'ERROR');
       }
     };
     
@@ -352,14 +347,14 @@ function capturePayoutFromDOM() {
     // Armazenar referência para evitar duplicação
     window._tradeObserver = observer;
     
-    safeLog("Monitoramento de operações iniciado com sucesso", "SUCCESS");
+    window.logToSystem("Monitoramento de operações iniciado com sucesso", "SUCCESS");
   };
   
   // Inicialização do fechamento do modal de tutorial
   const modalTutorial = document.querySelector('.tutorial-v1__close-icon');
   if (modalTutorial) {
     setTimeout(() => {
-        safeLog('Fechando modal de tutorial...', 'INFO');
+        window.logToSystem('Fechando modal de tutorial...', 'INFO');
         modalTutorial.click();
     }, 1000);
   }
@@ -382,7 +377,7 @@ function capturePayoutFromDOM() {
   // Adicione o listener para processamento
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'processCapture') {
-        safeLog('Processando captura de tela', 'INFO');
+        window.logToSystem('Processando captura de tela', 'INFO');
         
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
@@ -392,14 +387,14 @@ function capturePayoutFromDOM() {
             try {
                 // Verificar se a imagem carregou corretamente
                 if (img.width === 0 || img.height === 0) {
-                    safeLog('Erro: Imagem carregada com dimensões inválidas', 'ERROR');
+                    window.logToSystem('Erro: Imagem carregada com dimensões inválidas', 'ERROR');
                     sendResponse({ error: 'Dimensões de imagem inválidas' });
                     return;
                 }
                 
                 // Verificar se há informações de crop do canvas
                 if (message.canvasCrop) {
-                    safeLog('📸 Aplicando crop do canvas do gráfico', 'INFO');
+                    window.logToSystem('📸 Aplicando crop do canvas do gráfico', 'INFO');
                     
                     const crop = message.canvasCrop;
                     let cropX = crop.x;
@@ -431,17 +426,17 @@ function capturePayoutFromDOM() {
                     // Desenhar apenas a área do canvas
                     ctx.drawImage(img, adjustedCropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
                     
-                    safeLog(`✅ Crop aplicado: ${cropWidth}x${cropHeight} @ ${adjustedCropX},${cropY}`, 'SUCCESS');
+                    window.logToSystem(`✅ Crop aplicado: ${cropWidth}x${cropHeight} @ ${adjustedCropX},${cropY}`, 'SUCCESS');
                 } else {
                     // Processamento normal (remover apenas o iframe)
-                    safeLog('📸 Aplicando processamento normal (remoção do iframe)', 'INFO');
+                    window.logToSystem('📸 Aplicando processamento normal (remoção do iframe)', 'INFO');
                     
                     // Calculando dimensões com base no iframe
                     let width = img.width;
                     if (message.iframeWidth && message.iframeWidth > 0) {
                         width = img.width - message.iframeWidth;
                     } else {
-                        safeLog(`Usando largura total da imagem: ${width}px`, 'INFO');
+                        window.logToSystem(`Usando largura total da imagem: ${width}px`, 'INFO');
                     }
                     
                     canvas.width = width;
@@ -456,30 +451,30 @@ function capturePayoutFromDOM() {
                 
                 // Verificar se o dataUrl está no formato correto
                 if (!dataUrl.startsWith('data:image/png')) {
-                    safeLog('Aviso: dataUrl não está no formato esperado', 'WARN');
+                    window.logToSystem('Aviso: dataUrl não está no formato esperado', 'WARN');
                     // Tentar forçar o formato correto
                     const fixedDataUrl = 'data:image/png;base64,' + dataUrl.split(',')[1];
-                    safeLog('Formato corrigido manualmente', 'INFO');
+                    window.logToSystem('Formato corrigido manualmente', 'INFO');
                     sendResponse({ dataUrl: fixedDataUrl });
                 } else {
                     // Imagem válida, retornar normalmente
-                    safeLog('Captura processada com sucesso', 'SUCCESS');
+                    window.logToSystem('Captura processada com sucesso', 'SUCCESS');
                     sendResponse({ dataUrl: dataUrl });
                 }
             } catch (error) {
-                safeLog(`Erro ao processar captura: ${error.message}`, 'ERROR');
+                window.logToSystem(`Erro ao processar captura: ${error.message}`, 'ERROR');
                 sendResponse({ error: error.message });
             }
         };
   
         img.onerror = () => {
-            safeLog('Erro ao carregar imagem para processamento', 'ERROR');
+            window.logToSystem('Erro ao carregar imagem para processamento', 'ERROR');
             sendResponse({ error: 'Erro ao carregar imagem' });
         };
         
         // Verificar se a dataUrl recebida é válida
         if (!message.dataUrl || typeof message.dataUrl !== 'string' || !message.dataUrl.startsWith('data:')) {
-            safeLog('dataUrl recebida inválida: ' + (message.dataUrl ? message.dataUrl.substring(0, 20) + '...' : 'undefined'), 'ERROR');
+            window.logToSystem('dataUrl recebida inválida: ' + (message.dataUrl ? message.dataUrl.substring(0, 20) + '...' : 'undefined'), 'ERROR');
             sendResponse({ error: 'URL de dados de imagem inválida' });
             return true;
         }
@@ -498,7 +493,7 @@ function capturePayoutFromDOM() {
     
     // Listener para solicitações de captura do popup ou do botão
     if (message.action === 'CAPTURE_POPUP_REQUEST' || message.action === 'CAPTURE_REQUEST') {
-        safeLog(`Recebida solicitação para captura de tela: ${message.action}`, 'INFO');
+        window.logToSystem(`Recebida solicitação para captura de tela: ${message.action}`, 'INFO');
         
         try {
             // Solicitar captura diretamente ao background e retornar dataUrl
@@ -510,19 +505,19 @@ function capturePayoutFromDOM() {
             }, (response) => {
                 if (chrome.runtime.lastError) {
                     const errorMsg = chrome.runtime.lastError.message;
-                    safeLog(`Erro na captura: ${errorMsg}`, 'ERROR');
+                    window.logToSystem(`Erro na captura: ${errorMsg}`, 'ERROR');
                     sendResponse({ success: false, error: errorMsg });
                     return;
                 }
                 
                 if (response.error) {
-                    safeLog(`Erro retornado na captura: ${response.error}`, 'ERROR');
+                    window.logToSystem(`Erro retornado na captura: ${response.error}`, 'ERROR');
                     sendResponse({ success: false, error: response.error });
                     return;
                 }
                 
                 if (!response.dataUrl) {
-                    safeLog('Resposta sem dados de imagem', 'ERROR');
+                    window.logToSystem('Resposta sem dados de imagem', 'ERROR');
                     sendResponse({ success: false, error: 'Sem dados de imagem' });
                     return;
                 }
@@ -530,11 +525,11 @@ function capturePayoutFromDOM() {
                 // Armazenar para uso futuro
                 window.lastCapturedImage = response.dataUrl;
                 
-                safeLog('Captura realizada com sucesso', 'SUCCESS');
+                window.logToSystem('Captura realizada com sucesso', 'SUCCESS');
                 sendResponse({ success: true, dataUrl: response.dataUrl });
             });
         } catch (error) {
-            safeLog(`Erro ao processar solicitação de captura: ${error.message}`, 'ERROR');
+            window.logToSystem(`Erro ao processar solicitação de captura: ${error.message}`, 'ERROR');
             sendResponse({ success: false, error: error.message });
         }
         
@@ -544,7 +539,7 @@ function capturePayoutFromDOM() {
     // Listener para exibição direta do modal com imagem já capturada
     if (message.action === 'SHOW_CAPTURE_MODAL' && message.dataUrl) {
         try {
-            safeLog('Recebida solicitação direta para mostrar modal de captura', 'INFO');
+            window.logToSystem('Recebida solicitação direta para mostrar modal de captura', 'INFO');
             showCaptureModalInMainWindow(message.dataUrl);
             
             // Armazenar a imagem para possível reuso
@@ -552,7 +547,7 @@ function capturePayoutFromDOM() {
             
             sendResponse({ success: true });
         } catch (error) {
-            safeLog(`Erro ao mostrar modal: ${error.message}`, 'ERROR');
+            window.logToSystem(`Erro ao mostrar modal: ${error.message}`, 'ERROR');
             sendResponse({ success: false, error: error.message });
         }
         return true;
@@ -566,7 +561,7 @@ function capturePayoutFromDOM() {
     
     // Handler para executar operações de compra/venda
     if (message.action === 'EXECUTE_TRADE_ACTION') {
-      safeLog(`Recebido comando para executar ${message.tradeAction}`, 'INFO');
+      window.logToSystem(`Recebido comando para executar ${message.tradeAction}`, 'INFO');
       
       // Log para registrar a solicitação da operação
       try {
@@ -601,7 +596,7 @@ function capturePayoutFromDOM() {
         // Verificar payout antes de executar a operação
         const checkPayout = async () => {
           try {
-            safeLog('Verificando payout atual...', 'INFO');
+            window.logToSystem('Verificando payout atual...', 'INFO');
             
             // Procurar elementos que mostram o payout
             const payoutElements = document.querySelectorAll('.payout-info, .profit-info, [class*="payout"], [class*="profit"]');
@@ -616,7 +611,7 @@ function capturePayoutFromDOM() {
                   const payoutValue = parseInt(matches[1], 10);
                   if (payoutValue > 0 && payoutValue <= 100) {
                                         currentPayout = payoutValue;
-                    safeLog(`Payout atual: ${currentPayout}%`, 'INFO');
+                    window.logToSystem(`Payout atual: ${currentPayout}%`, 'INFO');
                                         break;
                                     }
                                 }
@@ -634,7 +629,7 @@ function capturePayoutFromDOM() {
                   const payoutValue = parseInt(matches[1], 10);
                   if (payoutValue > 0 && payoutValue <= 100) {
                                 currentPayout = payoutValue;
-                    safeLog(`Payout encontrado (método alternativo): ${currentPayout}%`, 'INFO');
+                    window.logToSystem(`Payout encontrado (método alternativo): ${currentPayout}%`, 'INFO');
                                 break;
                         }
                     }
@@ -643,7 +638,7 @@ function capturePayoutFromDOM() {
             
             // Se ainda não encontrou, usar valor padrão
             if (currentPayout === 0) {
-              safeLog('Não foi possível detectar o payout. Usando valor padrão de 85%.', 'WARN');
+              window.logToSystem('Não foi possível detectar o payout. Usando valor padrão de 85%.', 'WARN');
               currentPayout = 85; // Valor padrão caso não consiga encontrar
             }
             
@@ -651,26 +646,26 @@ function capturePayoutFromDOM() {
             const minPayout = tradeData.minPayout || 80;
             
             // Log detalhado sobre o valor mínimo de payout que está sendo utilizado
-            safeLog(`Usando payout mínimo configurado: ${minPayout}% (via tradeData.minPayout)`, 'INFO');
+            window.logToSystem(`Usando payout mínimo configurado: ${minPayout}% (via tradeData.minPayout)`, 'INFO');
             
             if (currentPayout < minPayout) {
               // Alterado de ERROR para WARN e adicionado envio para o status
               const warningMsg = `Payout atual (${currentPayout}%) abaixo do mínimo configurado (${minPayout}%). Operação cancelada.`;
-              safeLog(warningMsg, 'WARN');
+              window.logToSystem(warningMsg, 'WARN');
               
               // Adicionar registro mais específico no log
-              sendLog(`ALERTA DE PAYOUT: Operação ${message.tradeAction} não executada. Payout atual (${currentPayout}%) está abaixo do mínimo configurado (${minPayout}%)`, 'WARN', 'payout-verification');
+              window.logToSystem(`ALERTA DE PAYOUT: Operação ${message.tradeAction} não executada. Payout atual (${currentPayout}%) está abaixo do mínimo configurado (${minPayout}%)`, 'WARN', 'payout-verification');
               
               // Enviar para o sistema de status usando a função padronizada
-              toUpdateStatus(`Payout insuficiente (${currentPayout}%)`, 'warn', 5000);
+              updateStatus(`Payout insuficiente (${currentPayout}%)`, 'warn', 5000);
               
               return { success: false, error: `Payout insuficiente (${currentPayout}%)` };
             }
             
-            safeLog(`Payout verificado e aprovado: ${currentPayout}% >= ${minPayout}%`, 'SUCCESS');
+            window.logToSystem(`Payout verificado e aprovado: ${currentPayout}% >= ${minPayout}%`, 'SUCCESS');
             return { success: true, payout: currentPayout };
           } catch (error) {
-            safeLog(`Erro ao verificar payout: ${error.message}`, 'ERROR');
+            window.logToSystem(`Erro ao verificar payout: ${error.message}`, 'ERROR');
             return { success: true }; // Continua mesmo com erro na verificação
           }
         };
@@ -692,12 +687,12 @@ function capturePayoutFromDOM() {
             operationId: operationId // Novo: incluir o ID único da operação
           };
           
-          safeLog(`Executando operação ${operationId} com: Valor=${operationConfig.tradeValue}, Tempo=${operationConfig.tradeTime}min`, 'INFO');
+          window.logToSystem(`Executando operação ${operationId} com: Valor=${operationConfig.tradeValue}, Tempo=${operationConfig.tradeTime}min`, 'INFO');
           
           // Usar a função executeTradeAction existente
           executeTradeAction(message.tradeAction, operationConfig)
             .then(result => {
-              safeLog(`Operação ${operationId} concluída com sucesso`, 'SUCCESS');
+              window.logToSystem(`Operação ${operationId} concluída com sucesso`, 'SUCCESS');
               
               sendResponse({ 
                 success: true, 
@@ -707,9 +702,9 @@ function capturePayoutFromDOM() {
               });
             })
             .catch(error => {
-              safeLog(`Erro ao executar operação ${operationId}: ${error.message || JSON.stringify(error)}`, 'ERROR');
+              window.logToSystem(`Erro ao executar operação ${operationId}: ${error.message || JSON.stringify(error)}`, 'ERROR');
               // Enviar mensagem para o status
-              toUpdateStatus(`Erro: ${error.message || 'Falha na operação'}`, 'error', 5000);
+              updateStatus(`Erro: ${error.message || 'Falha na operação'}`, 'error', 5000);
               sendResponse({ 
                 success: false, 
                 error: error.message || 'Erro desconhecido ao executar operação',
@@ -722,9 +717,9 @@ function capturePayoutFromDOM() {
       } catch (error) {
         // Captura erros gerais
         const errorMsg = `Erro ao processar operação ${message.tradeAction}: ${error.message}`;
-        safeLog(errorMsg, 'ERROR');
+        window.logToSystem(errorMsg, 'ERROR');
         // Enviar mensagem para o status
-        toUpdateStatus(errorMsg, 'error', 5000);
+        updateStatus(errorMsg, 'error', 5000);
         sendResponse({ 
           success: false, 
           error: errorMsg
@@ -735,22 +730,22 @@ function capturePayoutFromDOM() {
     
     // Adicionar handler específico para análise de gráficos
     if (message.action === 'ANALYZE_GRAPH') {
-      safeLog('Iniciando análise do gráfico a partir da solicitação', 'INFO');
+      window.logToSystem('Iniciando análise do gráfico a partir da solicitação', 'INFO');
       
       // Processar análise de gráfico aqui
       try {
         // Capturar screenshot para análise
-        safeLog('Capturando tela para análise', 'INFO');
+        window.logToSystem('Capturando tela para análise', 'INFO');
         
         // Simular execução da análise e retornar sucesso para testes
         setTimeout(() => {
-          safeLog('Análise de gráfico concluída com sucesso', 'SUCCESS');
+          window.logToSystem('Análise de gráfico concluída com sucesso', 'SUCCESS');
           sendResponse({ success: true, result: 'Análise simulada' });
         }, 500);
         
         return true; // Manter canal aberto para resposta assíncrona
       } catch (error) {
-        safeLog(`Erro durante análise de gráfico: ${error.message}`, 'ERROR');
+        window.logToSystem(`Erro durante análise de gráfico: ${error.message}`, 'ERROR');
         sendResponse({ success: false, error: error.message });
         return true;
       }
@@ -770,23 +765,23 @@ function capturePayoutFromDOM() {
     // Handler para solicitação de payout do automation.js - USANDO A MESMA FUNÇÃO DO PAINEL
     if (message.action === 'GET_CURRENT_PAYOUT') {
       try {
-        safeLog('🔍 Capturando payout atual usando capturePayoutFromDOM (mesma função do painel)...', 'INFO');
+        window.logToSystem('🔍 Capturando payout atual usando capturePayoutFromDOM (mesma função do painel)...', 'INFO');
         
         // ✅ CORREÇÃO: Usar a MESMA função que o painel de desenvolvimento usa
         capturePayoutFromDOM()
           .then(result => {
-            safeLog(`✅ Payout capturado via capturePayoutFromDOM: ${result.payout}%`, 'SUCCESS');
+            window.logToSystem(`✅ Payout capturado via capturePayoutFromDOM: ${result.payout}%`, 'SUCCESS');
           sendResponse(result);
           })
           .catch(error => {
-            safeLog(`❌ Erro na captura via capturePayoutFromDOM: ${error.message}`, 'ERROR');
+            window.logToSystem(`❌ Erro na captura via capturePayoutFromDOM: ${error.message}`, 'ERROR');
           sendResponse({ success: false, error: error.message });
         });
         
         return true; // Manter canal aberto para resposta assíncrona
         
       } catch (error) {
-        safeLog(`Erro ao processar solicitação de payout: ${error.message}`, 'ERROR');
+        window.logToSystem(`Erro ao processar solicitação de payout: ${error.message}`, 'ERROR');
         sendResponse({ success: false, error: error.message });
         return true;
       }
@@ -797,7 +792,7 @@ function capturePayoutFromDOM() {
     // Handler para abrir modal de ativos
     if (message.action === 'TEST_OPEN_ASSET_MODAL') {
       try {
-        safeLog('Recebida solicitação para abrir modal de ativos', 'INFO');
+        window.logToSystem('Recebida solicitação para abrir modal de ativos', 'INFO');
         
         // Executar abertura de forma assíncrona com timeout
         const executeOpenWithTimeout = async () => {
@@ -812,13 +807,13 @@ function capturePayoutFromDOM() {
               timeoutPromise
             ]);
             
-            safeLog(`Abertura concluída: ${result}`, 'INFO');
+            window.logToSystem(`Abertura concluída: ${result}`, 'INFO');
               sendResponse({ 
               success: result, 
               message: result ? 'Modal de ativos aberto com sucesso' : 'Falha ao abrir modal de ativos'
               });
           } catch (error) {
-            safeLog(`Erro ao abrir modal: ${error.message}`, 'ERROR');
+            window.logToSystem(`Erro ao abrir modal: ${error.message}`, 'ERROR');
             sendResponse({ success: false, error: error.message });
           }
         };
@@ -827,7 +822,7 @@ function capturePayoutFromDOM() {
         
         return true; // Manter canal aberto para resposta assíncrona
       } catch (error) {
-        safeLog(`Erro ao processar abertura de modal: ${error.message}`, 'ERROR');
+        window.logToSystem(`Erro ao processar abertura de modal: ${error.message}`, 'ERROR');
         sendResponse({ success: false, error: error.message });
         return true;
       }
@@ -836,7 +831,7 @@ function capturePayoutFromDOM() {
     // Handler para buscar melhor ativo
     if (message.action === 'TEST_FIND_BEST_ASSET') {
       try {
-        safeLog('Recebida solicitação para buscar melhor ativo', 'INFO');
+        window.logToSystem('Recebida solicitação para buscar melhor ativo', 'INFO');
         
         const minPayout = message.minPayout || 85;
         
@@ -868,7 +863,7 @@ function capturePayoutFromDOM() {
         
         return true; // Manter canal aberto para resposta assíncrona
       } catch (error) {
-        safeLog(`Erro ao buscar melhor ativo: ${error.message}`, 'ERROR');
+        window.logToSystem(`Erro ao buscar melhor ativo: ${error.message}`, 'ERROR');
         sendResponse({ success: false, error: error.message });
         return true;
       }
@@ -877,19 +872,19 @@ function capturePayoutFromDOM() {
     // Handler para mudar categoria de ativo
     if (message.action === 'TEST_SWITCH_ASSET_CATEGORY') {
       try {
-        safeLog(`Recebida solicitação para mudar categoria: ${message.category}`, 'INFO');
+        window.logToSystem(`Recebida solicitação para mudar categoria: ${message.category}`, 'INFO');
         
         // Executar troca de forma assíncrona com sequência correta
         const executeCategorySwitch = async () => {
           try {
             // DEBUG: Verificar parâmetros recebidos
-            safeLog(`🔍 [DEBUG] Parâmetros recebidos:`, 'DEBUG');
-            safeLog(`🔍 [DEBUG] message: ${JSON.stringify(message)}`, 'DEBUG');
-            safeLog(`🔍 [DEBUG] message.category: ${message.category}`, 'DEBUG');
-            safeLog(`🔍 [DEBUG] message.action: ${message.action}`, 'DEBUG');
+            window.logToSystem(`🔍 [DEBUG] Parâmetros recebidos:`, 'DEBUG');
+            window.logToSystem(`🔍 [DEBUG] message: ${JSON.stringify(message)}`, 'DEBUG');
+            window.logToSystem(`🔍 [DEBUG] message.category: ${message.category}`, 'DEBUG');
+            window.logToSystem(`🔍 [DEBUG] message.action: ${message.action}`, 'DEBUG');
             
             // 1. Primeiro abrir o modal
-            safeLog('Passo 1: Abrindo modal de ativos...', 'INFO');
+            window.logToSystem('Passo 1: Abrindo modal de ativos...', 'INFO');
             const modalOpened = await AssetManager.openAssetModal();
             if (!modalOpened) {
               throw new Error('Falha ao abrir modal de ativos');
@@ -897,14 +892,14 @@ function capturePayoutFromDOM() {
             
             // 2. Mudar para a categoria desejada
             const category = message.category || 'crypto'; // Fallback para crypto
-            safeLog(`Passo 2: Mudando para categoria ${category}...`, 'INFO');
+            window.logToSystem(`Passo 2: Mudando para categoria ${category}...`, 'INFO');
             const categoryChanged = await AssetManager.switchToAssetCategory(category);
             if (!categoryChanged) {
               throw new Error(`Falha ao mudar para categoria ${category}`);
             }
             
             // 3. Selecionar melhor ativo (sem capturar lista ainda)
-            safeLog('Passo 3: Selecionando melhor ativo...', 'INFO');
+            window.logToSystem('Passo 3: Selecionando melhor ativo...', 'INFO');
             let assetSelected = false;
             let selectedAsset = null;
             let finalMessage = '';
@@ -914,13 +909,13 @@ function capturePayoutFromDOM() {
             
             // Obter lista de ativos e selecionar o melhor
             let assets = await AssetManager.getAvailableAssets();
-            safeLog(`🔍 [DEBUG] Lista inicial capturada: ${assets.length} ativos`, 'DEBUG');
+            window.logToSystem(`🔍 [DEBUG] Lista inicial capturada: ${assets.length} ativos`, 'DEBUG');
             
             if (assets.length > 0) {
               // Ordenar por payout e selecionar o melhor
               assets.sort((a, b) => b.payout - a.payout);
               selectedAsset = assets[0];
-              safeLog(`Selecionando melhor ativo: ${selectedAsset.name} (${selectedAsset.payout}%)`, 'INFO');
+              window.logToSystem(`Selecionando melhor ativo: ${selectedAsset.name} (${selectedAsset.payout}%)`, 'INFO');
               assetSelected = await AssetManager.selectAsset(selectedAsset);
               
               if (assetSelected) {
@@ -936,12 +931,12 @@ function capturePayoutFromDOM() {
             await new Promise(resolve => setTimeout(resolve, 300));
             
             // 5. Capturar lista FINAL logo antes de fechar o modal
-            safeLog('Passo 4: Capturando lista final de ativos...', 'INFO');
+            window.logToSystem('Passo 4: Capturando lista final de ativos...', 'INFO');
             const finalAssets = await AssetManager.getAvailableAssets();
-            safeLog(`🔍 [DEBUG] Lista final capturada: ${finalAssets.length} ativos`, 'DEBUG');
+            window.logToSystem(`🔍 [DEBUG] Lista final capturada: ${finalAssets.length} ativos`, 'DEBUG');
             
             // 6. Fechar modal
-            safeLog('Passo 5: Fechando modal...', 'INFO');
+            window.logToSystem('Passo 5: Fechando modal...', 'INFO');
             await AssetManager.closeAssetModal();
             
             // 7. Formatar lista de ativos para exibição
@@ -978,19 +973,19 @@ function capturePayoutFromDOM() {
               totalAssetsFound: finalAssets.length
             };
             
-            safeLog(`Troca de categoria concluída: ${finalMessage}`, 'INFO');
-            safeLog(`Total de ativos encontrados: ${finalAssets.length}`, 'INFO');
-            safeLog(`Lista de ativos: ${assetsListText}`, 'INFO');
-            safeLog(`🔍 [DEBUG] Resultado final: ${JSON.stringify(result)}`, 'DEBUG');
+            window.logToSystem(`Troca de categoria concluída: ${finalMessage}`, 'INFO');
+            window.logToSystem(`Total de ativos encontrados: ${finalAssets.length}`, 'INFO');
+            window.logToSystem(`Lista de ativos: ${assetsListText}`, 'INFO');
+            window.logToSystem(`🔍 [DEBUG] Resultado final: ${JSON.stringify(result)}`, 'DEBUG');
             sendResponse(result);
             
           } catch (error) {
-            safeLog(`Erro na troca de categoria: ${error.message}`, 'ERROR');
+            window.logToSystem(`Erro na troca de categoria: ${error.message}`, 'ERROR');
             // Tentar fechar modal em caso de erro
             try {
               await AssetManager.closeAssetModal();
             } catch (closeError) {
-              safeLog(`Erro ao fechar modal após erro: ${closeError.message}`, 'WARN');
+              window.logToSystem(`Erro ao fechar modal após erro: ${closeError.message}`, 'WARN');
             }
             sendResponse({ success: false, error: error.message });
           }
@@ -999,7 +994,7 @@ function capturePayoutFromDOM() {
         executeCategorySwitch();
         return true; // Manter canal aberto para resposta assíncrona
       } catch (error) {
-        safeLog(`Erro ao processar mudança de categoria: ${error.message}`, 'ERROR');
+        window.logToSystem(`Erro ao processar mudança de categoria: ${error.message}`, 'ERROR');
         sendResponse({ success: false, error: error.message });
         return true;
       }
@@ -1018,7 +1013,7 @@ function capturePayoutFromDOM() {
           message: currentAsset ? `Ativo atual: ${currentAsset}` : 'Ativo atual não detectado'
         });
   } catch (error) {
-        safeLog(`Erro ao verificar ativo atual: ${error.message}`, 'ERROR');
+        window.logToSystem(`Erro ao verificar ativo atual: ${error.message}`, 'ERROR');
         sendResponse({ success: false, error: error.message });
       }
       return true;
@@ -1027,7 +1022,7 @@ function capturePayoutFromDOM() {
     // Handler para fechar modal de ativos
     if (message.action === 'CLOSE_ASSET_MODAL') {
       try {
-        safeLog('Recebida solicitação para fechar modal de ativos', 'INFO');
+        window.logToSystem('Recebida solicitação para fechar modal de ativos', 'INFO');
         
         // Executar fechamento de forma assíncrona com timeout
         const executeCloseWithTimeout = async () => {
@@ -1042,13 +1037,13 @@ function capturePayoutFromDOM() {
               timeoutPromise
             ]);
             
-            safeLog(`Fechamento concluído: ${closed}`, 'INFO');
+            window.logToSystem(`Fechamento concluído: ${closed}`, 'INFO');
             sendResponse({ 
               success: closed, 
               message: closed ? 'Modal fechado com sucesso' : 'Falha ao fechar modal'
             });
   } catch (error) {
-            safeLog(`Erro ao fechar modal: ${error.message}`, 'ERROR');
+            window.logToSystem(`Erro ao fechar modal: ${error.message}`, 'ERROR');
             sendResponse({ success: false, error: error.message });
           }
         };
@@ -1057,7 +1052,7 @@ function capturePayoutFromDOM() {
         
         return true; // Manter canal aberto para resposta assíncrona
       } catch (error) {
-        safeLog(`Erro ao processar fechamento de modal: ${error.message}`, 'ERROR');
+        window.logToSystem(`Erro ao processar fechamento de modal: ${error.message}`, 'ERROR');
         sendResponse({ success: false, error: error.message });
         return true;
       }
@@ -1066,7 +1061,7 @@ function capturePayoutFromDOM() {
     // Handler para obter status do modal de ativos
     if (message.action === 'GET_MODAL_STATUS') {
       try {
-        safeLog('Recebida solicitação para obter status do modal de ativos', 'INFO');
+        window.logToSystem('Recebida solicitação para obter status do modal de ativos', 'INFO');
         
         // Verificar se o modal está aberto com múltiplos métodos
         const isModalOpen = () => {
@@ -1110,11 +1105,11 @@ function capturePayoutFromDOM() {
           timestamp: Date.now()
         };
         
-        safeLog(`Status do modal: ${JSON.stringify(status)}`, 'INFO');
+        window.logToSystem(`Status do modal: ${JSON.stringify(status)}`, 'INFO');
         sendResponse({ success: true, status: status });
         return true;
       } catch (error) {
-        safeLog(`Erro ao obter status do modal: ${error.message}`, 'ERROR');
+        window.logToSystem(`Erro ao obter status do modal: ${error.message}`, 'ERROR');
         sendResponse({ success: false, error: error.message });
         return true;
       }
@@ -1123,7 +1118,7 @@ function capturePayoutFromDOM() {
     // Handler para toggle do modal de ativos
     if (message.action === 'TOGGLE_ASSET_MODAL') {
       try {
-        safeLog('Recebida solicitação para toggle do modal de ativos', 'INFO');
+        window.logToSystem('Recebida solicitação para toggle do modal de ativos', 'INFO');
         
         // Executar toggle de forma assíncrona
         const executeToggleWithTimeout = async () => {
@@ -1158,13 +1153,13 @@ function capturePayoutFromDOM() {
             };
             
             const isOpen = isModalOpen();
-            safeLog(`Status do modal detectado: ${isOpen ? 'ABERTO' : 'FECHADO'}`, 'INFO');
+            window.logToSystem(`Status do modal detectado: ${isOpen ? 'ABERTO' : 'FECHADO'}`, 'INFO');
             
             if (isOpen) {
               // Fechar modal
-              safeLog('Modal detectado como aberto, tentando fechar...', 'INFO');
+              window.logToSystem('Modal detectado como aberto, tentando fechar...', 'INFO');
               const result = await AssetManager.closeAssetModal();
-              safeLog('Modal fechado via toggle', 'INFO');
+              window.logToSystem('Modal fechado via toggle', 'INFO');
               sendResponse({ 
                 success: true, 
                 action: 'closed',
@@ -1172,9 +1167,9 @@ function capturePayoutFromDOM() {
               });
             } else {
               // Abrir modal
-              safeLog('Modal detectado como fechado, tentando abrir...', 'INFO');
+              window.logToSystem('Modal detectado como fechado, tentando abrir...', 'INFO');
               const result = await AssetManager.openAssetModal();
-              safeLog('Modal aberto via toggle', 'INFO');
+              window.logToSystem('Modal aberto via toggle', 'INFO');
               sendResponse({ 
                 success: true, 
                 action: 'opened',
@@ -1182,7 +1177,7 @@ function capturePayoutFromDOM() {
               });
             }
           } catch (error) {
-            safeLog(`Erro no toggle do modal: ${error.message}`, 'ERROR');
+            window.logToSystem(`Erro no toggle do modal: ${error.message}`, 'ERROR');
             sendResponse({ success: false, error: error.message });
           }
         };
@@ -1190,7 +1185,7 @@ function capturePayoutFromDOM() {
         executeToggleWithTimeout();
         return true; // Manter canal aberto para resposta assíncrona
       } catch (error) {
-        safeLog(`Erro ao processar toggle do modal: ${error.message}`, 'ERROR');
+        window.logToSystem(`Erro ao processar toggle do modal: ${error.message}`, 'ERROR');
         sendResponse({ success: false, error: error.message });
         return true;
       }
@@ -1199,21 +1194,21 @@ function capturePayoutFromDOM() {
     // Handler para debug de captura de ativos
     if (message.action === 'DEBUG_ASSET_CAPTURE') {
       try {
-        safeLog('Recebida solicitação para debug de captura de ativos', 'INFO');
+        window.logToSystem('Recebida solicitação para debug de captura de ativos', 'INFO');
         
         const executeDebug = async () => {
           try {
             const debugResult = await AssetManager.debugAssetCapture();
             sendResponse(debugResult);
           } catch (error) {
-            safeLog(`Erro no debug de captura de ativos: ${error.message}`, 'ERROR');
+            window.logToSystem(`Erro no debug de captura de ativos: ${error.message}`, 'ERROR');
             sendResponse({ success: false, error: error.message });
           }
         };
         
         executeDebug();
       } catch (error) {
-        safeLog(`Erro ao processar debug de captura de ativos: ${error.message}`, 'ERROR');
+        window.logToSystem(`Erro ao processar debug de captura de ativos: ${error.message}`, 'ERROR');
         sendResponse({ success: false, error: error.message });
       }
       return true;
@@ -1232,16 +1227,16 @@ const TradingConfig = {
     try {
       const timeControl = document.querySelector('.block--expiration-inputs .control__value');
       if (!timeControl) {
-          safeLog('Elemento de tempo não encontrado na plataforma', 'ERROR');
+          window.logToSystem('Elemento de tempo não encontrado na plataforma', 'ERROR');
         return false;
       }
       
       // Clicar no elemento para abrir o modal
       timeControl.click();
-        safeLog('Modal de tempo aberto', 'INFO');
+        window.logToSystem('Modal de tempo aberto', 'INFO');
       return true;
     } catch (error) {
-        safeLog(`Erro ao abrir modal de tempo: ${error.message}`, 'ERROR');
+        window.logToSystem(`Erro ao abrir modal de tempo: ${error.message}`, 'ERROR');
       return false;
     }
   },
@@ -1293,7 +1288,7 @@ const TradingConfig = {
             return;
           }
           
-            safeLog(`Procurando opção de tempo: ${targetTime}`, 'INFO');
+            window.logToSystem(`Procurando opção de tempo: ${targetTime}`, 'INFO');
           
           // Procurar a opção exata ou mais próxima
           let selectedOption = null;
@@ -1308,7 +1303,7 @@ const TradingConfig = {
           
           // Se não encontrou correspondência exata, converter para mapeamento e tentar novamente
           if (!selectedOption) {
-              safeLog(`Opção exata ${targetTime} não encontrada, buscando alternativa`, 'WARN');
+              window.logToSystem(`Opção exata ${targetTime} não encontrada, buscando alternativa`, 'WARN');
             
             // Mapear de segundos/minutos para os formatos disponíveis
             const formatMap = {
@@ -1349,7 +1344,7 @@ const TradingConfig = {
           }
           
           if (selectedOption) {
-              safeLog(`Selecionando opção de tempo: ${selectedOption.textContent}`, 'SUCCESS');
+              window.logToSystem(`Selecionando opção de tempo: ${selectedOption.textContent}`, 'SUCCESS');
             selectedOption.click();
             resolve(selectedOption.textContent);
           } else {
@@ -1374,7 +1369,7 @@ const TradingConfig = {
         
         const amountInput = document.querySelector('.block--bet-amount input[type="text"], [class*="amount"] input');
       if (!amountInput) {
-          safeLog('Campo de valor não encontrado na plataforma', 'ERROR');
+          window.logToSystem('Campo de valor não encontrado na plataforma', 'ERROR');
         return false;
       }
       
@@ -1383,10 +1378,10 @@ const TradingConfig = {
       amountInput.dispatchEvent(new Event('input', { bubbles: true }));
       amountInput.dispatchEvent(new Event('change', { bubbles: true }));
       
-        safeLog(`Valor de operação definido: $${parsedValue}`, 'SUCCESS');
+        window.logToSystem(`Valor de operação definido: $${parsedValue}`, 'SUCCESS');
       return true;
     } catch (error) {
-        safeLog(`Erro ao definir valor: ${error.message}`, 'ERROR');
+        window.logToSystem(`Erro ao definir valor: ${error.message}`, 'ERROR');
       return false;
     }
   },
@@ -1397,7 +1392,7 @@ const TradingConfig = {
       // Verificar se o modal está aberto
       const modal = document.querySelector('.drop-down-modal.trading-panel-modal.expiration-inputs-list-modal');
       if (!modal) {
-          safeLog('Modal de tempo não encontrado para fechar', 'WARN');
+          window.logToSystem('Modal de tempo não encontrado para fechar', 'WARN');
         return true; // Retorna true pois o modal já está fechado
       }
       
@@ -1413,36 +1408,36 @@ const TradingConfig = {
           clientY: 10
         });
         bodyElement.dispatchEvent(clickEvent);
-          safeLog('Evento de clique disparado para fechar o modal', 'INFO');
+          window.logToSystem('Evento de clique disparado para fechar o modal', 'INFO');
       }
       
       // Método 2: Verificar se há um botão de fechar no modal
       const closeButton = modal.querySelector('.close-btn, .btn-close, [data-close="true"]');
       if (closeButton) {
         closeButton.click();
-          safeLog('Botão de fechar modal clicado', 'INFO');
+          window.logToSystem('Botão de fechar modal clicado', 'INFO');
       }
       
       // Verificar se o modal foi fechado
       setTimeout(() => {
         const modalStillOpen = document.querySelector('.drop-down-modal.trading-panel-modal.expiration-inputs-list-modal');
         if (modalStillOpen) {
-            safeLog('Modal ainda aberto após tentativa de fechamento', 'WARN');
+            window.logToSystem('Modal ainda aberto após tentativa de fechamento', 'WARN');
           
           // Método 3: Tentar clicar no controle de tempo novamente para alternar (toggle)
           const timeControl = document.querySelector('.block--expiration-inputs .control__value');
           if (timeControl) {
             timeControl.click();
-              safeLog('Tentativa alternativa de fechar modal: clique no controle', 'INFO');
+              window.logToSystem('Tentativa alternativa de fechar modal: clique no controle', 'INFO');
           }
         } else {
-            safeLog('Modal de tempo fechado com sucesso', 'SUCCESS');
+            window.logToSystem('Modal de tempo fechado com sucesso', 'SUCCESS');
         }
       }, 300);
       
       return true;
     } catch (error) {
-        safeLog(`Erro ao fechar modal de tempo: ${error.message}`, 'ERROR');
+        window.logToSystem(`Erro ao fechar modal de tempo: ${error.message}`, 'ERROR');
       return false;
     }
   },
@@ -1450,7 +1445,7 @@ const TradingConfig = {
   // Configurar operação com base nas configurações do usuário
   configureOperation: async (config) => {
     try {
-        safeLog('Configurando parâmetros da operação...', 'INFO');
+        window.logToSystem('Configurando parâmetros da operação...', 'INFO');
       
       // Definir valor da operação
       if (config.tradeValue) {
@@ -1473,7 +1468,7 @@ const TradingConfig = {
         
         // Selecionar opção de tempo
         const selectedTime = await TradingConfig.selectTimeOption(timeFormat);
-          safeLog(`Tempo de operação configurado: ${selectedTime}`, 'SUCCESS');
+          window.logToSystem(`Tempo de operação configurado: ${selectedTime}`, 'SUCCESS');
         
         // Fechar o modal após a seleção
         TradingConfig.closeTimeModal();
@@ -1481,7 +1476,7 @@ const TradingConfig = {
       
       return true;
     } catch (error) {
-        safeLog(`Erro ao configurar operação: ${error.message}`, 'ERROR');
+        window.logToSystem(`Erro ao configurar operação: ${error.message}`, 'ERROR');
       return false;
     }
   }
@@ -1490,14 +1485,14 @@ const TradingConfig = {
 const executeTradeAction = async (action, config) => {
   return new Promise(async (resolve, reject) => {
     try {
-      safeLog(`Executando ação de trade: ${action}`, 'INFO');
+      window.logToSystem(`Executando ação de trade: ${action}`, 'INFO');
       
       // Se a ação for WAIT, apenas espera o tempo configurado
       if (action === 'WAIT') {
         const waitTime = (config && config.waitTime) || 5000; // Padrão de 5 segundos
-        safeLog(`Esperando ${waitTime}ms antes de prosseguir`, 'INFO');
+        window.logToSystem(`Esperando ${waitTime}ms antes de prosseguir`, 'INFO');
         setTimeout(() => {
-          safeLog('Espera concluída', 'SUCCESS');
+          window.logToSystem('Espera concluída', 'SUCCESS');
           resolve({ success: true, message: `Esperou ${waitTime}ms com sucesso` });
         }, waitTime);
         return;
@@ -1507,12 +1502,12 @@ const executeTradeAction = async (action, config) => {
       const ensureDOMLoaded = () => {
         return new Promise((domResolve) => {
           if (document.readyState === 'complete' || document.readyState === 'interactive') {
-            safeLog('DOM já está carregado, prosseguindo com a operação', 'INFO');
+            window.logToSystem('DOM já está carregado, prosseguindo com a operação', 'INFO');
             domResolve();
           } else {
-            safeLog('Aguardando carregamento do DOM...', 'INFO');
+            window.logToSystem('Aguardando carregamento do DOM...', 'INFO');
             document.addEventListener('DOMContentLoaded', () => {
-              safeLog('DOM carregou, prosseguindo com a operação', 'INFO');
+              window.logToSystem('DOM carregou, prosseguindo com a operação', 'INFO');
               domResolve();
             });
           }
@@ -1543,25 +1538,25 @@ const executeTradeAction = async (action, config) => {
       };
       
       // Registrar os valores que serão utilizados
-      safeLog(`Configurando operação: Valor=${tradeConfig.tradeValue}, Tempo=${tradeConfig.tradeTime}min`, 'INFO');
+      window.logToSystem(`Configurando operação: Valor=${tradeConfig.tradeValue}, Tempo=${tradeConfig.tradeTime}min`, 'INFO');
       
       // Enviar status para o usuário
-      toUpdateStatus(`Executando ${action}: $${tradeConfig.tradeValue}, ${tradeConfig.tradeTime}min`, 'info', 3000);
+      updateStatus(`Executando ${action}: $${tradeConfig.tradeValue}, ${tradeConfig.tradeTime}min`, 'info', 3000);
       
       // Configurar o valor da operação
       try {
         const valueInput = document.querySelector('.block.block--bet-amount input[type="text"], [class*="amount"] input');
         if (valueInput) {
-          safeLog(`Definindo valor da operação: ${tradeConfig.tradeValue}`, 'INFO');
+          window.logToSystem(`Definindo valor da operação: ${tradeConfig.tradeValue}`, 'INFO');
           valueInput.value = tradeConfig.tradeValue;
           valueInput.dispatchEvent(new Event('input', { bubbles: true }));
           valueInput.dispatchEvent(new Event('change', { bubbles: true }));
           await new Promise(r => setTimeout(r, 200)); // Pequena pausa para atualização do DOM
         } else {
-          safeLog('Elemento para definir valor não encontrado', 'WARN');
+          window.logToSystem('Elemento para definir valor não encontrado', 'WARN');
         }
       } catch (valueError) {
-        safeLog(`Erro ao definir valor: ${valueError.message}`, 'ERROR');
+        window.logToSystem(`Erro ao definir valor: ${valueError.message}`, 'ERROR');
       }
       
       // Configurar o período/tempo da operação
@@ -1572,13 +1567,13 @@ const executeTradeAction = async (action, config) => {
         // Se estiver usando período dinâmico e tiver dados da análise
         if (tradeConfig.useDynamicPeriod && tradeConfig.analysis && tradeConfig.analysis.expiration) {
           periodToUse = tradeConfig.analysis.expiration;
-          safeLog(`Usando período da análise: ${periodToUse} minutos`, 'INFO');
+          window.logToSystem(`Usando período da análise: ${periodToUse} minutos`, 'INFO');
         } else if (tradeConfig.tradeTime > 0) {
-          safeLog(`Usando período fixo configurado: ${periodToUse} minutos`, 'INFO');
+          window.logToSystem(`Usando período fixo configurado: ${periodToUse} minutos`, 'INFO');
         } else {
           // Garantir que sempre use pelo menos 1 minuto
           periodToUse = 1;
-          safeLog('Usando período mínimo: 1 minuto (valor configurado inválido)', 'WARN');
+          window.logToSystem('Usando período mínimo: 1 minuto (valor configurado inválido)', 'WARN');
         }
         
         // Configurar o período na plataforma
@@ -1595,20 +1590,20 @@ const executeTradeAction = async (action, config) => {
             // Selecionar opção de tempo
             try {
               const timeSelected = await TradingConfig.selectTimeOption(platformFormat);
-              safeLog(`Período configurado: ${timeSelected}`, 'SUCCESS');
+              window.logToSystem(`Período configurado: ${timeSelected}`, 'SUCCESS');
               
               // Fechar o modal
               TradingConfig.closeTimeModal();
               await new Promise(r => setTimeout(r, 300)); // Esperar fechamento do modal
             } catch (timeError) {
-              safeLog(`Erro ao selecionar tempo: ${timeError.message}`, 'ERROR');
+              window.logToSystem(`Erro ao selecionar tempo: ${timeError.message}`, 'ERROR');
             }
           } else {
-            safeLog('Não foi possível abrir o modal de tempo', 'WARN');
+            window.logToSystem('Não foi possível abrir o modal de tempo', 'WARN');
           }
         }
       } catch (timeError) {
-        safeLog(`Erro ao configurar período: ${timeError.message}`, 'ERROR');
+        window.logToSystem(`Erro ao configurar período: ${timeError.message}`, 'ERROR');
       }
       
       // Tentar buscar o botão várias vezes em caso de falha
@@ -1622,13 +1617,13 @@ const executeTradeAction = async (action, config) => {
         
         if (!tradeButton && attempts < maxAttempts - 1) {
           // Se não encontrou e ainda tem tentativas, espera um pouco e tenta novamente
-          safeLog(`Tentativa ${attempts+1} falhou. Aguardando para nova tentativa...`, 'WARN');
+          window.logToSystem(`Tentativa ${attempts+1} falhou. Aguardando para nova tentativa...`, 'WARN');
           await new Promise(r => setTimeout(r, 500)); // Espera 500ms entre tentativas
           attempts++;
         } else if (!tradeButton) {
           // Se esgotou as tentativas e não encontrou, retorna erro
           const errorMsg = `Não foi possível encontrar o botão para a ação ${action} após ${maxAttempts} tentativas`;
-        safeLog(errorMsg, 'ERROR');
+        window.logToSystem(errorMsg, 'ERROR');
         return reject({ success: false, message: errorMsg });
         }
       }
@@ -1637,13 +1632,13 @@ const executeTradeAction = async (action, config) => {
       if (tradeButton.disabled || tradeButton.classList.contains('disabled') || 
           getComputedStyle(tradeButton).opacity < 0.5) {
         const errorMsg = `O botão para ${action} está desabilitado ou não clicável`;
-        safeLog(errorMsg, 'WARN');
+        window.logToSystem(errorMsg, 'WARN');
         return reject({ success: false, message: errorMsg });
       }
       
       // Tenta executar o clique
       try {
-        safeLog(`Clicando no botão de ${action}...`, 'INFO');
+        window.logToSystem(`Clicando no botão de ${action}...`, 'INFO');
         
         // Rolar até o botão para garantir que ele está visível
         tradeButton.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1653,17 +1648,17 @@ const executeTradeAction = async (action, config) => {
         
         // MODIFICADO: Usar apenas um método de clique para evitar duplicação
         // Registrar que vamos clicar para fins de debug
-        safeLog(`Executando clique único no botão de ${action}`, 'INFO');
+        window.logToSystem(`Executando clique único no botão de ${action}`, 'INFO');
         
         // Opção 1: Método nativo de clique (mais confiável e evita duplicação)
         tradeButton.click();
         
         // Enviar mensagem de sucesso para o status
-        toUpdateStatus(`Operação ${action} executada com sucesso!`, 'success', 3000);
+        updateStatus(`Operação ${action} executada com sucesso!`, 'success', 3000);
         
         // Verifica se o clique foi bem sucedido
         setTimeout(() => {
-          safeLog(`Ação ${action} executada com sucesso`, 'SUCCESS');
+          window.logToSystem(`Ação ${action} executada com sucesso`, 'SUCCESS');
           resolve({ 
             success: true, 
             message: `Ação ${action} executada`,
@@ -1675,19 +1670,19 @@ const executeTradeAction = async (action, config) => {
         }, 200);
       } catch (clickError) {
         const errorMsg = `Erro ao clicar no botão de ${action}: ${clickError.message}`;
-        safeLog(errorMsg, 'ERROR');
+        window.logToSystem(errorMsg, 'ERROR');
         
         // Enviar mensagem de erro para o status
-        toUpdateStatus(errorMsg, 'error', 5000);
+        updateStatus(errorMsg, 'error', 5000);
         
         reject({ success: false, message: errorMsg });
       }
     } catch (error) {
       const errorMsg = `Erro geral ao executar a ação ${action}: ${error.message}`;
-      safeLog(errorMsg, 'ERROR');
+      window.logToSystem(errorMsg, 'ERROR');
       
       // Enviar mensagem de erro para o status
-      toUpdateStatus(errorMsg, 'error', 5000);
+      updateStatus(errorMsg, 'error', 5000);
       
       reject({ success: false, message: errorMsg });
     }
@@ -1696,7 +1691,7 @@ const executeTradeAction = async (action, config) => {
 
 function findTradeButton(action) {
   try {
-    safeLog(`Procurando botão para ação: ${action}`, 'INFO');
+    window.logToSystem(`Procurando botão para ação: ${action}`, 'INFO');
     
     // Seletores mais específicos e priorizados para os botões
     const selectors = {
@@ -1736,7 +1731,7 @@ function findTradeButton(action) {
     
     // Verificar se a ação é suportada
     if (!selectors[action]) {
-      safeLog(`Ação não suportada: ${action}`, 'ERROR');
+      window.logToSystem(`Ação não suportada: ${action}`, 'ERROR');
       return null;
     }
     
@@ -1750,7 +1745,7 @@ function findTradeButton(action) {
         const elements = document.querySelectorAll(selector);
         
         if (elements && elements.length > 0) {
-          safeLog(`Encontrados ${elements.length} elementos com seletor "${selector}"`, 'DEBUG');
+          window.logToSystem(`Encontrados ${elements.length} elementos com seletor "${selector}"`, 'DEBUG');
           
           // Iterar pelos elementos e retornar o primeiro que estiver visível
           for (const element of elements) {
@@ -1767,19 +1762,19 @@ function findTradeButton(action) {
                   element.classList.contains('btn') ||
                   element.classList.contains('button')) {
                 
-                safeLog(`Botão válido encontrado para ${action} com seletor: ${selector}`, 'SUCCESS');
+                window.logToSystem(`Botão válido encontrado para ${action} com seletor: ${selector}`, 'SUCCESS');
                 
                 // Verificar se está realmente habilitado (sem classe disabled e não tem atributo disabled)
                 if (!element.disabled && !element.classList.contains('disabled')) {
-                  safeLog(`Botão está habilitado e será usado para ${action}`, 'SUCCESS');
+                  window.logToSystem(`Botão está habilitado e será usado para ${action}`, 'SUCCESS');
                   return element;
                 } else {
                   allFoundButtons.push({element, reason: 'disabled'});
-                  safeLog(`Botão encontrado mas está desabilitado`, 'WARN');
+                  window.logToSystem(`Botão encontrado mas está desabilitado`, 'WARN');
                 }
               } else {
                 allFoundButtons.push({element, reason: 'not-interactive'});
-                safeLog(`Elemento encontrado mas não parece ser um botão interativo`, 'WARN');
+                window.logToSystem(`Elemento encontrado mas não parece ser um botão interativo`, 'WARN');
               }
             } else {
               allFoundButtons.push({element, reason: 'not-visible'});
@@ -1788,13 +1783,13 @@ function findTradeButton(action) {
         }
       } catch (err) {
         // Ignorar erros individuais de seletor e continuar tentando
-        safeLog(`Erro ao usar seletor "${selector}": ${err.message}`, 'WARN');
+        window.logToSystem(`Erro ao usar seletor "${selector}": ${err.message}`, 'WARN');
         continue;
       }
     }
     
     // Se chegou aqui, tenta uma abordagem mais ampla para botões genéricos
-    safeLog('Tentando encontrar botões genéricos de trading', 'INFO');
+    window.logToSystem('Tentando encontrar botões genéricos de trading', 'INFO');
     
     // Procurar por botões com texto/conteúdo específico
     const allButtons = document.querySelectorAll('button, a, div[role="button"], .btn, [class*="button"]');
@@ -1819,14 +1814,14 @@ function findTradeButton(action) {
           !button.disabled && 
           !button.classList.contains('disabled')) {
         
-        safeLog(`Botão encontrado por texto/classe para ${action}: "${buttonText}"`, 'SUCCESS');
+        window.logToSystem(`Botão encontrado por texto/classe para ${action}: "${buttonText}"`, 'SUCCESS');
         return button;
       }
     }
     
     // Se nada funcionou e temos botões que foram encontrados mas estavam desabilitados ou não visíveis
     if (allFoundButtons.length > 0) {
-      safeLog(`Encontrados ${allFoundButtons.length} botões potenciais, mas nenhum utilizável`, 'WARN');
+      window.logToSystem(`Encontrados ${allFoundButtons.length} botões potenciais, mas nenhum utilizável`, 'WARN');
       
       // Como último recurso, tentar usar o primeiro botão encontrado mesmo que não seja ideal
       for (const buttonInfo of allFoundButtons) {
@@ -1835,22 +1830,22 @@ function findTradeButton(action) {
         }
         
         if (buttonInfo.reason === 'disabled') {
-          safeLog('Como último recurso, tentando usar um botão que parece estar desabilitado', 'WARN');
+          window.logToSystem('Como último recurso, tentando usar um botão que parece estar desabilitado', 'WARN');
           return buttonInfo.element;
         }
         
         if (buttonInfo.reason === 'not-interactive') {
-          safeLog('Como último recurso, tentando usar um elemento que não parece ser botão', 'WARN');
+          window.logToSystem('Como último recurso, tentando usar um elemento que não parece ser botão', 'WARN');
           return buttonInfo.element;
         }
       }
     }
     
     // Se chegou aqui, não encontrou o botão
-    safeLog(`Botão para ${action} não encontrado após tentar todos os métodos`, 'ERROR');
+    window.logToSystem(`Botão para ${action} não encontrado após tentar todos os métodos`, 'ERROR');
     return null;
   } catch (error) {
-    safeLog(`Erro ao procurar botão ${action}: ${error.message}`, 'ERROR');
+    window.logToSystem(`Erro ao procurar botão ${action}: ${error.message}`, 'ERROR');
     return null;
   }
 }
@@ -1858,21 +1853,21 @@ function findTradeButton(action) {
 // Função para analisar a estrutura da interface de trading
 function inspectTradingInterface() {
   try {
-    safeLog("Inspecionando interface de trading...", "INFO");
+    window.logToSystem("Inspecionando interface de trading...", "INFO");
     
     // Verificar botões de trading
     const possibleBuyButtons = document.querySelectorAll('button.btn-call, .btn-green, [data-type="call"], .trade-button--up, [class*="call"]');
     const possibleSellButtons = document.querySelectorAll('button.btn-put, .btn-red, [data-type="put"], .trade-button--down, [class*="put"]');
     
-    safeLog(`Inspeção encontrou ${possibleBuyButtons.length} possíveis botões BUY e ${possibleSellButtons.length} possíveis botões SELL`, "INFO");
+    window.logToSystem(`Inspeção encontrou ${possibleBuyButtons.length} possíveis botões BUY e ${possibleSellButtons.length} possíveis botões SELL`, "INFO");
     
     // Se não encontrou nenhum botão, verificar toda a estrutura do DOM para classes relevantes
     if (possibleBuyButtons.length === 0 && possibleSellButtons.length === 0) {
-      safeLog("Nenhum botão de trading encontrado, verificando estrutura DOM completa...", "WARN");
+      window.logToSystem("Nenhum botão de trading encontrado, verificando estrutura DOM completa...", "WARN");
       
       // Procurar por elementos com classes que possam conter os botões
       const tradingElements = document.querySelectorAll('[class*="trading"], [class*="button"], [class*="btn"], [class*="control"]');
-      safeLog(`Encontrados ${tradingElements.length} elementos potencialmente relevantes para trading`, "INFO");
+      window.logToSystem(`Encontrados ${tradingElements.length} elementos potencialmente relevantes para trading`, "INFO");
       
       // Listar os primeiros 10 elementos com suas classes para depuração
       if (tradingElements.length > 0) {
@@ -1881,28 +1876,28 @@ function inspectTradingInterface() {
           const element = tradingElements[i];
           elementsInfo += `${i+1}. <${element.tagName.toLowerCase()}> classes: "${element.className}"\n`;
         }
-        safeLog(elementsInfo, "INFO");
+        window.logToSystem(elementsInfo, "INFO");
       }
     }
     
     // Verificar se está na página correta de trading
     const isTradingPage = document.querySelectorAll('.trading-panel, .chart-container, [class*="chart"]').length > 0;
     if (!isTradingPage) {
-      safeLog("Atenção: Interface de trading não detectada. Possível página incorreta.", "WARN");
+      window.logToSystem("Atenção: Interface de trading não detectada. Possível página incorreta.", "WARN");
     } else {
-      safeLog("Interface de trading detectada corretamente.", "SUCCESS");
+      window.logToSystem("Interface de trading detectada corretamente.", "SUCCESS");
     }
     
     // Verificar se há elementos de iframe que possam estar contendo a interface de trading
     const iframes = document.querySelectorAll('iframe');
     if (iframes.length > 0) {
-      safeLog(`Detectados ${iframes.length} iframes na página. A interface de trading pode estar dentro de um iframe.`, "WARN");
+      window.logToSystem(`Detectados ${iframes.length} iframes na página. A interface de trading pode estar dentro de um iframe.`, "WARN");
     }
     
     // Verificar elementos de modal que podem estar sobrepondo a interface
     const modals = document.querySelectorAll('.modal, [class*="modal"], [class*="popup"], [class*="dialog"]');
     if (modals.length > 0) {
-      safeLog(`Detectados ${modals.length} possíveis modais/popups que podem estar interferindo na interface`, "WARN");
+      window.logToSystem(`Detectados ${modals.length} possíveis modais/popups que podem estar interferindo na interface`, "WARN");
     }
     
     // Retornar resultado da inspeção
@@ -1914,41 +1909,13 @@ function inspectTradingInterface() {
       modalsCount: modals.length
     };
   } catch (error) {
-    safeLog(`Erro ao inspecionar interface: ${error.message}`, "ERROR");
+    window.logToSystem(`Erro ao inspecionar interface: ${error.message}`, "ERROR");
     return null;
   }
 }
 
-// Helper para logging seguro, caso a função sendLog não esteja disponível
-const safeLog = (message, level = 'info') => {
-  try {
-    // Enviar para o sistema de logs centralizado
-    chrome.runtime.sendMessage({
-      action: 'addLog',
-      logMessage: message,
-      logLevel: level.toUpperCase(),
-      logSource: 'content.js'
-    });
-    
-    // Se for um erro ou alerta, enviar também para o sistema de status
-    if (level.toUpperCase() === 'ERROR' || level.toUpperCase() === 'WARN') {
-      toUpdateStatus(message, level.toLowerCase() === 'error' ? 'error' : 'warn', 5000);
-    }
-    
-    // Log local apenas para erros
-    if (level.toUpperCase() === 'ERROR') {
-      console.error(`[${level.toUpperCase()}][content.js] ${message}`);
-    }
-  } catch (error) {
-    // Fallback para console
-    console.log(`[SafeLog] ${message}`);
-  }
-};
-
-// Função para enviar logs para o sistema central - agora usando o mesmo padrão que safeLog
-const sendLog = (message, level = 'INFO') => {
-  safeLog(message, level);
-};
+// ================== SISTEMA DE LOGS PADRÃO ==================
+// Sistema de logs global disponível via window.logToSystem
 
 // ======================================================================
 // =================== SISTEMA DE MANIPULAÇÃO DE ATIVOS ================
@@ -1958,7 +1925,7 @@ const AssetManager = {
   // Função para abrir o modal de seleção de ativos
   openAssetModal: () => {
     try {
-      safeLog('Abrindo modal de ativos...', 'INFO');
+      window.logToSystem('Abrindo modal de ativos...', 'INFO');
       
       // Usar o mesmo seletor para abrir e fechar
       const assetButton = document.querySelector('.currencies-block .pair-number-wrap');
@@ -1969,23 +1936,23 @@ const AssetManager = {
       
       // Clicar no botão para abrir o modal
       assetButton.click();
-      safeLog('Clique executado para abrir modal', 'INFO');
+      window.logToSystem('Clique executado para abrir modal', 'INFO');
       
       // Aguardar um momento para o modal aparecer
       return new Promise((resolve) => {
         setTimeout(() => {
           const activeControl = document.querySelector('.currencies-block__in.active');
           if (activeControl) {
-            safeLog('✅ Modal aberto com sucesso (classe active detectada)', 'SUCCESS');
+            window.logToSystem('✅ Modal aberto com sucesso (classe active detectada)', 'SUCCESS');
             resolve(true);
           } else {
-            safeLog('❌ Modal pode não ter aberto', 'WARN');
+            window.logToSystem('❌ Modal pode não ter aberto', 'WARN');
             resolve(false);
           }
         }, 500);
       });
     } catch (error) {
-      safeLog(`Erro ao abrir modal de ativos: ${error.message}`, 'ERROR');
+      window.logToSystem(`Erro ao abrir modal de ativos: ${error.message}`, 'ERROR');
       return Promise.resolve(false);
     }
   },
@@ -1994,12 +1961,12 @@ const AssetManager = {
   closeAssetModal: () => {
     return new Promise((resolve) => {
       try {
-        safeLog('Fechando modal de ativos...', 'INFO');
+        window.logToSystem('Fechando modal de ativos...', 'INFO');
         
         // Verificar se o modal está realmente aberto
         const activeControl = document.querySelector('.currencies-block__in.active');
         if (!activeControl) {
-          safeLog('✅ Modal já está fechado', 'INFO');
+          window.logToSystem('✅ Modal já está fechado', 'INFO');
           resolve(true);
           return;
         }
@@ -2007,12 +1974,12 @@ const AssetManager = {
         // MÉTODO DESCOBERTO: Mousedown + mouseup no wrapper do modal
         const modalWrapper = document.querySelector('.drop-down-modal-wrap.active');
         if (!modalWrapper) {
-          safeLog('❌ Wrapper do modal não encontrado', 'ERROR');
+          window.logToSystem('❌ Wrapper do modal não encontrado', 'ERROR');
           resolve(false);
           return;
         }
         
-        safeLog('Executando mousedown + mouseup no wrapper do modal...', 'INFO');
+        window.logToSystem('Executando mousedown + mouseup no wrapper do modal...', 'INFO');
         
         // Disparar mousedown
         modalWrapper.dispatchEvent(new MouseEvent('mousedown', { 
@@ -2029,16 +1996,16 @@ const AssetManager = {
             view: window
           }));
           
-          safeLog('Eventos mousedown + mouseup executados', 'INFO');
+          window.logToSystem('Eventos mousedown + mouseup executados', 'INFO');
           
           // Verificar se fechou após 500ms
           setTimeout(() => {
             const stillActive = document.querySelector('.currencies-block__in.active');
             if (!stillActive) {
-              safeLog('✅ Modal fechado com sucesso via mousedown + mouseup', 'SUCCESS');
+              window.logToSystem('✅ Modal fechado com sucesso via mousedown + mouseup', 'SUCCESS');
               resolve(true);
             } else {
-              safeLog('❌ Modal não fechou, tentando método de fallback...', 'WARN');
+              window.logToSystem('❌ Modal não fechou, tentando método de fallback...', 'WARN');
               
               // FALLBACK: Tentar clique simples no wrapper
               modalWrapper.click();
@@ -2046,10 +2013,10 @@ const AssetManager = {
               setTimeout(() => {
                 const finalCheck = document.querySelector('.currencies-block__in.active');
                 if (!finalCheck) {
-                  safeLog('✅ Modal fechado com clique de fallback', 'SUCCESS');
+                  window.logToSystem('✅ Modal fechado com clique de fallback', 'SUCCESS');
                   resolve(true);
                 } else {
-                  safeLog('❌ Modal persistiu após todos os métodos', 'ERROR');
+                  window.logToSystem('❌ Modal persistiu após todos os métodos', 'ERROR');
                   resolve(false);
                 }
               }, 300);
@@ -2058,7 +2025,7 @@ const AssetManager = {
         }, 50); // 50ms entre mousedown e mouseup
         
       } catch (error) {
-        safeLog(`Erro ao fechar modal: ${error.message}`, 'ERROR');
+        window.logToSystem(`Erro ao fechar modal: ${error.message}`, 'ERROR');
         resolve(false);
       }
     });
@@ -2067,7 +2034,7 @@ const AssetManager = {
   // Função para mudar para a categoria de ativos (Crypto, Currency, etc.)
   switchToCategory: async (category) => {
     try {
-      safeLog(`Mudando para categoria: ${category}`, 'INFO');
+      window.logToSystem(`Mudando para categoria: ${category}`, 'INFO');
       
       const result = await AssetManager.switchToAssetCategory(category);
       if (!result) {
@@ -2101,7 +2068,7 @@ const AssetManager = {
   switchToAssetCategory: (category) => {
     return new Promise((resolve, reject) => {
       try {
-        safeLog(`Tentando mudar para categoria: ${category}`, 'INFO');
+        window.logToSystem(`Tentando mudar para categoria: ${category}`, 'INFO');
         
         // Mapear categorias para seletores
         const categorySelectors = {
@@ -2126,71 +2093,71 @@ const AssetManager = {
         const categoryButton = document.querySelector(selector);
         if (!categoryButton) {
           // ✅ VERIFICAR SE A CATEGORIA JÁ ESTÁ ATIVA antes de reportar como indisponível
-          safeLog(`Seletor ${selector} não encontrado, verificando se categoria já está ativa...`, 'DEBUG');
+          window.logToSystem(`Seletor ${selector} não encontrado, verificando se categoria já está ativa...`, 'DEBUG');
           
           // Verificar se existe alguma categoria ativa que corresponda
           const activeCategory = document.querySelector('.assets-block__nav-item--active');
           if (activeCategory) {
             const activeCategoryClass = activeCategory.className;
-            safeLog(`Categoria ativa encontrada: ${activeCategoryClass}`, 'DEBUG');
+            window.logToSystem(`Categoria ativa encontrada: ${activeCategoryClass}`, 'DEBUG');
             
             // Verificar se a categoria ativa corresponde à solicitada
             if (activeCategoryClass.includes('cryptocurrency') && (category.toLowerCase() === 'crypto' || category.toLowerCase() === 'cryptocurrency')) {
-              safeLog(`✅ Categoria ${category} já está ativa (verificação por classe ativa)`, 'SUCCESS');
+              window.logToSystem(`✅ Categoria ${category} já está ativa (verificação por classe ativa)`, 'SUCCESS');
               resolve(true);
               return;
             }
             if (activeCategoryClass.includes('currency') && (category.toLowerCase() === 'currency' || category.toLowerCase() === 'currencies')) {
-              safeLog(`✅ Categoria ${category} já está ativa (verificação por classe ativa)`, 'SUCCESS');
+              window.logToSystem(`✅ Categoria ${category} já está ativa (verificação por classe ativa)`, 'SUCCESS');
               resolve(true);
               return;
             }
             if (activeCategoryClass.includes('commodity') && (category.toLowerCase() === 'commodity' || category.toLowerCase() === 'commodities')) {
-              safeLog(`✅ Categoria ${category} já está ativa (verificação por classe ativa)`, 'SUCCESS');
+              window.logToSystem(`✅ Categoria ${category} já está ativa (verificação por classe ativa)`, 'SUCCESS');
               resolve(true);
               return;
             }
             if (activeCategoryClass.includes('stock') && (category.toLowerCase() === 'stock' || category.toLowerCase() === 'stocks')) {
-              safeLog(`✅ Categoria ${category} já está ativa (verificação por classe ativa)`, 'SUCCESS');
+              window.logToSystem(`✅ Categoria ${category} já está ativa (verificação por classe ativa)`, 'SUCCESS');
               resolve(true);
               return;
             }
             if (activeCategoryClass.includes('index') && (category.toLowerCase() === 'index' || category.toLowerCase() === 'indices')) {
-              safeLog(`✅ Categoria ${category} já está ativa (verificação por classe ativa)`, 'SUCCESS');
+              window.logToSystem(`✅ Categoria ${category} já está ativa (verificação por classe ativa)`, 'SUCCESS');
               resolve(true);
               return;
             }
           }
           
           // ✅ Se chegou aqui, categoria não está disponível (DEBUG, não ERROR)
-          safeLog(`🔄 Categoria ${category} não disponível na plataforma no momento`, 'DEBUG');
+          window.logToSystem(`🔄 Categoria ${category} não disponível na plataforma no momento`, 'DEBUG');
           reject(new Error(`Categoria ${category} não disponível`));
           return;
         }
         
         // Verificar se já está ativo
         if (categoryButton.classList.contains('assets-block__nav-item--active')) {
-          safeLog(`✅ Categoria ${category} já está ativa`, 'SUCCESS');
+          window.logToSystem(`✅ Categoria ${category} já está ativa`, 'SUCCESS');
           resolve(true);
           return;
         }
         
         // Clicar na categoria
         categoryButton.click();
-        safeLog(`Mudança para categoria ${category} executada`, 'SUCCESS');
+        window.logToSystem(`Mudança para categoria ${category} executada`, 'SUCCESS');
         
         // Aguardar um momento para a lista atualizar
         setTimeout(() => {
           if (categoryButton.classList.contains('assets-block__nav-item--active')) {
-            safeLog(`✅ Categoria ${category} ativada com sucesso`, 'SUCCESS');
+            window.logToSystem(`✅ Categoria ${category} ativada com sucesso`, 'SUCCESS');
             resolve(true);
           } else {
-            safeLog(`⚠️ Falha ao ativar categoria ${category}`, 'WARN');
+            window.logToSystem(`⚠️ Falha ao ativar categoria ${category}`, 'WARN');
             resolve(false);
           }
         }, 300);
       } catch (error) {
-        safeLog(`Erro ao mudar categoria: ${error.message}`, 'ERROR');
+        window.logToSystem(`Erro ao mudar categoria: ${error.message}`, 'ERROR');
         reject(error);
       }
     });
@@ -2200,18 +2167,18 @@ const AssetManager = {
   getAvailableAssets: () => {
     return new Promise((resolve) => {
       try {
-        safeLog('Obtendo lista de ativos disponíveis...', 'INFO');
+        window.logToSystem('Obtendo lista de ativos disponíveis...', 'INFO');
         
         const assets = [];
         
         // DEBUG: Verificar se o modal está aberto
         const modal = document.querySelector('.drop-down-modal.trading-panel-modal.assets-list-modal');
         const activeControl = document.querySelector('.currencies-block__in.active');
-        safeLog(`DEBUG: Modal aberto: ${!!modal}, Active control: ${!!activeControl}`, 'DEBUG');
+        window.logToSystem(`DEBUG: Modal aberto: ${!!modal}, Active control: ${!!activeControl}`, 'DEBUG');
         
         // ✅ MELHORADO: Usar seletores mais robustos para diferentes categorias
         let assetItems = document.querySelectorAll("li.alist__item");
-        safeLog(`DEBUG: Seletor li.alist__item encontrou ${assetItems.length} itens`, 'DEBUG');
+        window.logToSystem(`DEBUG: Seletor li.alist__item encontrou ${assetItems.length} itens`, 'DEBUG');
         
         // FALLBACK: Se não encontrar, tentar seletores específicos para diferentes categorias
         if (assetItems.length === 0) {
@@ -2229,21 +2196,21 @@ const AssetManager = {
           
           for (const selector of categorySelectors) {
             assetItems = document.querySelectorAll(selector);
-            safeLog(`DEBUG: Seletor ${selector} encontrou ${assetItems.length} itens`, 'DEBUG');
+            window.logToSystem(`DEBUG: Seletor ${selector} encontrou ${assetItems.length} itens`, 'DEBUG');
             if (assetItems.length > 0) {
-              safeLog(`✅ Encontrados ${assetItems.length} ativos usando seletor: ${selector}`, 'INFO');
+              window.logToSystem(`✅ Encontrados ${assetItems.length} ativos usando seletor: ${selector}`, 'INFO');
               break;
             }
           }
         }
         
         if (assetItems.length === 0) {
-          safeLog('Nenhum ativo encontrado na lista', 'WARN');
+          window.logToSystem('Nenhum ativo encontrado na lista', 'WARN');
           resolve([]);
           return;
         }
         
-        safeLog(`Encontrados ${assetItems.length} itens de ativos com seletor`, 'INFO');
+        window.logToSystem(`Encontrados ${assetItems.length} itens de ativos com seletor`, 'INFO');
         
         assetItems.forEach((item, index) => {
           try {
@@ -2284,10 +2251,10 @@ const AssetManager = {
               index: index
             });
             
-            safeLog(`Ativo processado: ${name} (${payout}%) - Ativo: ${isActive} - Selecionado: ${isSelected}`, 'DEBUG');
+            window.logToSystem(`Ativo processado: ${name} (${payout}%) - Ativo: ${isActive} - Selecionado: ${isSelected}`, 'DEBUG');
             
           } catch (itemError) {
-            safeLog(`Erro ao processar ativo ${index}: ${itemError.message}`, 'WARN');
+            window.logToSystem(`Erro ao processar ativo ${index}: ${itemError.message}`, 'WARN');
           }
         });
         
@@ -2304,10 +2271,10 @@ const AssetManager = {
         // Filtrar apenas ativos ativos para retorno final
         const activeAssets = assets.filter(asset => asset.isActive);
         
-        safeLog(`Encontrados ${assets.length} ativos totais, ${activeAssets.length} ativos disponíveis`, 'SUCCESS');
+        window.logToSystem(`Encontrados ${assets.length} ativos totais, ${activeAssets.length} ativos disponíveis`, 'SUCCESS');
         resolve(activeAssets);
       } catch (error) {
-        safeLog(`Erro ao obter lista de ativos: ${error.message}`, 'ERROR');
+        window.logToSystem(`Erro ao obter lista de ativos: ${error.message}`, 'ERROR');
         resolve([]);
       }
     });
@@ -2316,12 +2283,12 @@ const AssetManager = {
   // Função para encontrar o melhor ativo baseado no payout mínimo
   findBestAsset: async (minPayout = 85) => {
     try {
-      safeLog(`Procurando melhor ativo com payout mínimo de ${minPayout}%`, 'INFO');
+      window.logToSystem(`Procurando melhor ativo com payout mínimo de ${minPayout}%`, 'INFO');
       
       const assets = await AssetManager.getAvailableAssets(); // ✅ AGORA É ASSÍNCRONA
       
       if (assets.length === 0) {
-        safeLog('Nenhum ativo disponível encontrado', 'WARN');
+        window.logToSystem('Nenhum ativo disponível encontrado', 'WARN');
         return null;
       }
       
@@ -2329,17 +2296,17 @@ const AssetManager = {
       const validAssets = assets.filter(asset => asset.payout >= minPayout);
       
       if (validAssets.length === 0) {
-        safeLog(`Nenhum ativo encontrado com payout >= ${minPayout}%`, 'WARN');
+        window.logToSystem(`Nenhum ativo encontrado com payout >= ${minPayout}%`, 'WARN');
         return null;
       }
       
       // Retornar o primeiro (melhor payout) que atende ao critério
       const bestAsset = validAssets[0];
-      safeLog(`Melhor ativo encontrado: ${bestAsset.name} (${bestAsset.payout}%)`, 'SUCCESS');
+      window.logToSystem(`Melhor ativo encontrado: ${bestAsset.name} (${bestAsset.payout}%)`, 'SUCCESS');
       
       return bestAsset;
     } catch (error) {
-      safeLog(`Erro ao encontrar melhor ativo: ${error.message}`, 'ERROR');
+      window.logToSystem(`Erro ao encontrar melhor ativo: ${error.message}`, 'ERROR');
       return null;
     }
   },
@@ -2347,7 +2314,7 @@ const AssetManager = {
   // Função para encontrar o melhor ativo com informações detalhadas (para testes)
   findBestAssetDetailed: async (minPayout = 85) => {
     try {
-      safeLog(`Procurando melhor ativo com payout mínimo de ${minPayout}%`, 'INFO');
+      window.logToSystem(`Procurando melhor ativo com payout mínimo de ${minPayout}%`, 'INFO');
       
       const assets = await AssetManager.getAvailableAssets(); // ✅ AGORA É ASSÍNCRONA
       
@@ -2363,7 +2330,7 @@ const AssetManager = {
       const validAssets = assets.filter(asset => asset.payout >= minPayout);
       
       if (validAssets.length === 0) {
-        safeLog(`Nenhum ativo encontrado com payout >= ${minPayout}%`, 'WARN');
+        window.logToSystem(`Nenhum ativo encontrado com payout >= ${minPayout}%`, 'WARN');
         return {
           success: false,
           error: `Nenhum ativo com payout >= ${minPayout}% encontrado`,
@@ -2384,7 +2351,7 @@ const AssetManager = {
         };
       }
       
-      safeLog(`Melhor ativo encontrado e selecionado: ${bestAsset.name} (${bestAsset.payout}%)`, 'SUCCESS');
+      window.logToSystem(`Melhor ativo encontrado e selecionado: ${bestAsset.name} (${bestAsset.payout}%)`, 'SUCCESS');
       
       return {
         success: true,
@@ -2393,7 +2360,7 @@ const AssetManager = {
         allAssets: assets
       };
     } catch (error) {
-      safeLog(`Erro ao encontrar melhor ativo: ${error.message}`, 'ERROR');
+      window.logToSystem(`Erro ao encontrar melhor ativo: ${error.message}`, 'ERROR');
       return {
         success: false,
         error: error.message,
@@ -2409,7 +2376,7 @@ const AssetManager = {
       const currentSymbolElement = document.querySelector('.current-symbol, .currencies-block .current-symbol_cropped');
       if (currentSymbolElement) {
         const currentAsset = currentSymbolElement.textContent.trim();
-        safeLog(`Ativo atual detectado: ${currentAsset}`, 'INFO');
+        window.logToSystem(`Ativo atual detectado: ${currentAsset}`, 'INFO');
         return currentAsset;
       }
       
@@ -2417,14 +2384,14 @@ const AssetManager = {
       const pairElement = document.querySelector('.pair .current-symbol');
       if (pairElement) {
         const currentAsset = pairElement.textContent.trim();
-        safeLog(`Ativo atual detectado (fallback): ${currentAsset}`, 'INFO');
+        window.logToSystem(`Ativo atual detectado (fallback): ${currentAsset}`, 'INFO');
         return currentAsset;
       }
       
-      safeLog('Não foi possível detectar o ativo atual', 'WARN');
+      window.logToSystem('Não foi possível detectar o ativo atual', 'WARN');
       return null;
     } catch (error) {
-      safeLog(`Erro ao verificar ativo atual: ${error.message}`, 'ERROR');
+      window.logToSystem(`Erro ao verificar ativo atual: ${error.message}`, 'ERROR');
       return null;
     }
   },
@@ -2439,16 +2406,16 @@ const AssetManager = {
         const currentAsset = AssetManager.getCurrentSelectedAsset();
         
         if (currentAsset && currentAsset.includes(expectedAssetName.split(' ')[0])) {
-          safeLog(`✅ Verificação confirmada: ${expectedAssetName} está selecionado`, 'SUCCESS');
+          window.logToSystem(`✅ Verificação confirmada: ${expectedAssetName} está selecionado`, 'SUCCESS');
           resolve(true);
           return;
         }
         
         if (attempts < maxRetries) {
-          safeLog(`Tentativa ${attempts}/${maxRetries}: Aguardando seleção de ${expectedAssetName}...`, 'INFO');
+          window.logToSystem(`Tentativa ${attempts}/${maxRetries}: Aguardando seleção de ${expectedAssetName}...`, 'INFO');
           setTimeout(checkSelection, 500);
         } else {
-          safeLog(`❌ Falha na verificação: ${expectedAssetName} não foi selecionado após ${maxRetries} tentativas`, 'ERROR');
+          window.logToSystem(`❌ Falha na verificação: ${expectedAssetName} não foi selecionado após ${maxRetries} tentativas`, 'ERROR');
           resolve(false);
         }
       };
@@ -2465,11 +2432,11 @@ const AssetManager = {
           throw new Error('Ativo inválido ou elemento não encontrado');
         }
         
-        safeLog(`Selecionando ativo: ${asset.name} (${asset.payout}%)`, 'INFO');
+        window.logToSystem(`Selecionando ativo: ${asset.name} (${asset.payout}%)`, 'INFO');
         
         // Verificar se já está selecionado
         if (asset.isSelected) {
-          safeLog(`Ativo ${asset.name} já está selecionado`, 'INFO');
+          window.logToSystem(`Ativo ${asset.name} já está selecionado`, 'INFO');
           resolve(true);
           return;
         }
@@ -2477,7 +2444,7 @@ const AssetManager = {
         // CORRETO: Clicar no link interno usando a estrutura fornecida
         const linkElement = asset.element.querySelector('.alist__link');
         if (linkElement) {
-          safeLog(`Clique executado no link interno (.alist__link) do ativo ${asset.name}`, 'INFO');
+          window.logToSystem(`Clique executado no link interno (.alist__link) do ativo ${asset.name}`, 'INFO');
           linkElement.click();
           
           // Aguardar um pouco para a seleção ser processada
@@ -2488,7 +2455,7 @@ const AssetManager = {
         }
         
         // FALLBACK: Se não houver link interno, tentar clicar no elemento principal do ativo
-        safeLog(`'.alist__link' não encontrado, tentando clicar no elemento principal (.alist__item) do ativo ${asset.name}`, 'INFO');
+        window.logToSystem(`'.alist__link' não encontrado, tentando clicar no elemento principal (.alist__item) do ativo ${asset.name}`, 'INFO');
         asset.element.click();
         
         // Aguardar um pouco para a seleção ser processada
@@ -2497,7 +2464,7 @@ const AssetManager = {
         }, 300);
 
       } catch (error) {
-        safeLog(`Erro ao selecionar ativo: ${error.message}`, 'ERROR');
+        window.logToSystem(`Erro ao selecionar ativo: ${error.message}`, 'ERROR');
         resolve(false);
       }
     });
@@ -2508,7 +2475,7 @@ const AssetManager = {
   // Função para encontrar melhor ativo DENTRO da categoria atual (usada pelo painel)
   switchToBestAssetInCurrentCategory: async (minPayout = 85) => {
     try {
-      safeLog(`🔍 [PAINEL] Buscando melhor ativo na categoria atual (payout >= ${minPayout}%)`, 'INFO');
+      window.logToSystem(`🔍 [PAINEL] Buscando melhor ativo na categoria atual (payout >= ${minPayout}%)`, 'INFO');
       
       // ✅ CORREÇÃO: Verificação múltipla para garantir que a categoria carregou
       let assets = [];
@@ -2519,14 +2486,14 @@ const AssetManager = {
         assets = await AssetManager.getAvailableAssets(); // ✅ AGORA É ASSÍNCRONA
         attempts++;
         
-        safeLog(`📊 [PAINEL] Tentativa ${attempts}/${maxAttempts}: ${assets.length} ativos encontrados`, 'DEBUG');
+        window.logToSystem(`📊 [PAINEL] Tentativa ${attempts}/${maxAttempts}: ${assets.length} ativos encontrados`, 'DEBUG');
         
         if (assets.length > 0) {
           break; // Lista carregou com sucesso
         }
         
         if (attempts < maxAttempts) {
-          safeLog(`⏳ [PAINEL] Lista vazia, aguardando mais 500ms...`, 'DEBUG');
+          window.logToSystem(`⏳ [PAINEL] Lista vazia, aguardando mais 500ms...`, 'DEBUG');
         await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
@@ -2540,7 +2507,7 @@ const AssetManager = {
       
       // Filtrar por payout mínimo
       const validAssets = assets.filter(asset => asset.payout >= minPayout);
-      safeLog(`🎯 [PAINEL] ${validAssets.length} ativos com payout >= ${minPayout}%`, 'DEBUG');
+      window.logToSystem(`🎯 [PAINEL] ${validAssets.length} ativos com payout >= ${minPayout}%`, 'DEBUG');
       
       if (validAssets.length === 0) {
         const bestAvailable = assets[0];
@@ -2549,7 +2516,7 @@ const AssetManager = {
       
       // Selecionar melhor ativo
       const bestAsset = validAssets[0];
-      safeLog(`🎯 [PAINEL] Selecionando melhor ativo: ${bestAsset.name} (${bestAsset.payout}%)`, 'SUCCESS');
+      window.logToSystem(`🎯 [PAINEL] Selecionando melhor ativo: ${bestAsset.name} (${bestAsset.payout}%)`, 'SUCCESS');
       
       const assetSelected = await AssetManager.selectAsset(bestAsset); // ✅ AGORA É ASSÍNCRONA
       if (!assetSelected) {
@@ -2565,7 +2532,7 @@ const AssetManager = {
     } catch (error) {
       // ✅ CONVERSÃO: Erro interno da busca em categoria específica vira AVISO silencioso
       // Não reportar como ERROR para não alarmar - é parte normal da busca sequencial
-      safeLog(`🔍 [BUSCA CATEGORIA] ${error.message}`, 'DEBUG');
+      window.logToSystem(`🔍 [BUSCA CATEGORIA] ${error.message}`, 'DEBUG');
       return {
         success: false,
         error: error.message
@@ -2576,18 +2543,18 @@ const AssetManager = {
   // Função WRAPPER para automação - busca sequencial em múltiplas categorias
   switchToBestAssetForAutomation: async (minPayout = 85, preferredCategory = 'crypto') => {
     try {
-      safeLog(`🚀 [AUTOMAÇÃO] Iniciando busca inteligente de ativo (payout >= ${minPayout}%, categoria preferida: ${preferredCategory})`, 'INFO');
+      window.logToSystem(`🚀 [AUTOMAÇÃO] Iniciando busca inteligente de ativo (payout >= ${minPayout}%, categoria preferida: ${preferredCategory})`, 'INFO');
       
       // ✅ ETAPA 1: PREPARAÇÃO
       const currentAsset = AssetManager.getCurrentSelectedAsset();
-      safeLog(`📊 [ESTADO ATUAL] Ativo antes da busca: ${currentAsset || 'Não detectado'}`, 'INFO');
+      window.logToSystem(`📊 [ESTADO ATUAL] Ativo antes da busca: ${currentAsset || 'Não detectado'}`, 'INFO');
       
       // Abrir modal de ativos
       const modalOpened = await AssetManager.openAssetModal();
       if (!modalOpened) {
         throw new Error('MODAL_OPEN_FAILED: Falha ao abrir modal de ativos');
       }
-      safeLog(`✅ [MODAL] Modal de ativos aberto com sucesso`, 'INFO');
+      window.logToSystem(`✅ [MODAL] Modal de ativos aberto com sucesso`, 'INFO');
       
       // Aguardar modal carregar
       await new Promise(resolve => setTimeout(resolve, 800));
@@ -2603,7 +2570,7 @@ const AssetManager = {
       ];
       
       const categoriesToTry = [...new Set(allCategories)];
-      safeLog(`📂 [CATEGORIAS] ${categoriesToTry.length} categorias para verificar: ${categoriesToTry.join(', ')}`, 'INFO');
+      window.logToSystem(`📂 [CATEGORIAS] ${categoriesToTry.length} categorias para verificar: ${categoriesToTry.join(', ')}`, 'INFO');
       
       // ✅ ETAPA 3: BUSCA SEQUENCIAL USANDO FUNÇÃO DO PAINEL
       let bestResult = null;
@@ -2613,22 +2580,22 @@ const AssetManager = {
       
       for (const category of categoriesToTry) {
         categoriesAttempted.push(category);
-        safeLog(`🔍 [CATEGORIA] Tentando categoria: ${category}`, 'DEBUG');
+        window.logToSystem(`🔍 [CATEGORIA] Tentando categoria: ${category}`, 'DEBUG');
         
         try {
           // Ativar categoria
           const categoryChanged = await AssetManager.switchToAssetCategory(category);
           if (!categoryChanged) {
-            safeLog(`🔄 [CATEGORIA] ${category} não disponível na plataforma`, 'DEBUG');
+            window.logToSystem(`🔄 [CATEGORIA] ${category} não disponível na plataforma`, 'DEBUG');
             categoriesFailed.push(`${category} (não disponível)`);
             continue;
           }
           
-          safeLog(`✅ [CATEGORIA] ${category} ativada, aguardando carregar...`, 'DEBUG');
+          window.logToSystem(`✅ [CATEGORIA] ${category} ativada, aguardando carregar...`, 'DEBUG');
           await new Promise(resolve => setTimeout(resolve, 1500));
           
           // ✅ USAR FUNÇÃO DO PAINEL COM TRATAMENTO SILENCIOSO DE ERROS
-          safeLog(`🔧 [AUTOMAÇÃO] Usando função do painel para categoria ${category}`, 'DEBUG');
+          window.logToSystem(`🔧 [AUTOMAÇÃO] Usando função do painel para categoria ${category}`, 'DEBUG');
           
           try {
             // ✅ CHAMADA SILENCIOSA - não propagar erros de categoria individual
@@ -2643,17 +2610,17 @@ const AssetManager = {
                 `categoria preferida (${category})` : 
                 `fallback para categoria ${category}`;
               
-              safeLog(`🎯 [ENCONTRADO] Ativo adequado na ${categoryLabel}: ${bestResult.asset.name} (${bestResult.asset.payout}%)`, 'SUCCESS');
-              safeLog(`🛑 [PARADA] Parando busca - ativo adequado encontrado`, 'INFO');
+              window.logToSystem(`🎯 [ENCONTRADO] Ativo adequado na ${categoryLabel}: ${bestResult.asset.name} (${bestResult.asset.payout}%)`, 'SUCCESS');
+              window.logToSystem(`🛑 [PARADA] Parando busca - ativo adequado encontrado`, 'INFO');
               break; // ✅ PARAR - ENCONTROU ATIVO ADEQUADO!
             } else {
-              safeLog(`📝 [RESULTADO] Categoria ${category}: ${categoryResult.error}`, 'DEBUG');
+              window.logToSystem(`📝 [RESULTADO] Categoria ${category}: ${categoryResult.error}`, 'DEBUG');
               categoriesFailed.push(`${category} (${categoryResult.error})`);
             }
           } catch (categorySearchError) {
             // ✅ CAPTURAR ERROS DA FUNÇÃO BASE SEM PROPAGAR
             const errorMsg = categorySearchError.message || 'Erro na busca';
-            safeLog(`📝 [RESULTADO] Categoria ${category}: ${errorMsg}`, 'DEBUG');
+            window.logToSystem(`📝 [RESULTADO] Categoria ${category}: ${errorMsg}`, 'DEBUG');
             categoriesFailed.push(`${category} (${errorMsg})`);
             
             // ✅ IMPORTANTE: Continuar para próxima categoria sem interromper o loop
@@ -2661,51 +2628,51 @@ const AssetManager = {
           }
           
         } catch (categoryError) {
-          safeLog(`🔄 [CATEGORIA] ${category} não acessível: ${categoryError.message}`, 'DEBUG');
+          window.logToSystem(`🔄 [CATEGORIA] ${category} não acessível: ${categoryError.message}`, 'DEBUG');
           categoriesFailed.push(`${category} (erro: ${categoryError.message})`);
           continue;
         }
       }
       
       // ✅ ETAPA 4: ANÁLISE DO RESULTADO
-      safeLog(`📊 [BUSCA FINAL] Categorias verificadas: ${categoriesAttempted.join(', ')}`, 'INFO');
+      window.logToSystem(`📊 [BUSCA FINAL] Categorias verificadas: ${categoriesAttempted.join(', ')}`, 'INFO');
       
       if (categoriesFailed.length > 0) {
-        safeLog(`📂 [FALHAS] ${categoriesFailed.length} categorias falharam: ${categoriesFailed.join(', ')}`, 'DEBUG');
+        window.logToSystem(`📂 [FALHAS] ${categoriesFailed.length} categorias falharam: ${categoriesFailed.join(', ')}`, 'DEBUG');
       }
       
       // ❌ ERRO: Nenhum ativo adequado encontrado em nenhuma categoria
       if (!bestResult) {
         const errorMsg = `AUTOMATION_SEARCH_FAILED: Nenhum ativo com payout >= ${minPayout}% encontrado em nenhuma categoria. Falhas: ${categoriesFailed.join('; ')}`;
-        safeLog(`❌ [ERRO CRÍTICO] ${errorMsg}`, 'ERROR');
+        window.logToSystem(`❌ [ERRO CRÍTICO] ${errorMsg}`, 'ERROR');
         throw new Error(errorMsg);
       }
       
       // ✅ ETAPA 5: GARANTIR QUE ATIVO FOI SELECIONADO ANTES DE FECHAR MODAL
-      safeLog(`🎯 [SELEÇÃO] Garantindo que ativo ${bestResult.asset.name} está selecionado...`, 'DEBUG');
+      window.logToSystem(`🎯 [SELEÇÃO] Garantindo que ativo ${bestResult.asset.name} está selecionado...`, 'DEBUG');
       
       // Tentar selecionar o ativo novamente para garantir
       try {
         const assetSelected = await AssetManager.selectAsset(bestResult.asset); // ✅ AGORA É ASSÍNCRONA
         if (assetSelected) {
-          safeLog(`✅ [SELEÇÃO] Ativo ${bestResult.asset.name} selecionado com sucesso`, 'DEBUG');
+          window.logToSystem(`✅ [SELEÇÃO] Ativo ${bestResult.asset.name} selecionado com sucesso`, 'DEBUG');
         }
       } catch (selectionError) {
-        safeLog(`⚠️ [SELEÇÃO] Aviso na seleção final: ${selectionError.message}`, 'WARN');
+        window.logToSystem(`⚠️ [SELEÇÃO] Aviso na seleção final: ${selectionError.message}`, 'WARN');
       }
       
       // Aguardar seleção processar
       await new Promise(resolve => setTimeout(resolve, 800));
       
       // ✅ ETAPA 6: FECHAR MODAL
-      safeLog(`🚪 [MODAL] Fechando modal de ativos...`, 'DEBUG');
+      window.logToSystem(`🚪 [MODAL] Fechando modal de ativos...`, 'DEBUG');
       const modalClosed = await AssetManager.closeAssetModal();
       if (!modalClosed) {
-        safeLog(`⚠️ [MODAL] Aviso: Modal pode não ter fechado corretamente`, 'WARN');
+        window.logToSystem(`⚠️ [MODAL] Aviso: Modal pode não ter fechado corretamente`, 'WARN');
       }
       
       // Aguardar interface atualizar
-      safeLog(`⏳ [INTERFACE] Aguardando interface atualizar...`, 'DEBUG');
+      window.logToSystem(`⏳ [INTERFACE] Aguardando interface atualizar...`, 'DEBUG');
       await new Promise(resolve => setTimeout(resolve, 2000)); // Aumentado para 2s
       
       // ✅ ETAPA 7: VERIFICAÇÃO FINAL ROBUSTA
@@ -2717,15 +2684,15 @@ const AssetManager = {
         finalAsset = AssetManager.getCurrentSelectedAsset();
         verificationAttempts++;
         
-        safeLog(`📊 [VERIFICAÇÃO] Tentativa ${verificationAttempts}/${maxVerificationAttempts}: Ativo atual = "${finalAsset}"`, 'DEBUG');
+        window.logToSystem(`📊 [VERIFICAÇÃO] Tentativa ${verificationAttempts}/${maxVerificationAttempts}: Ativo atual = "${finalAsset}"`, 'DEBUG');
         
         if (finalAsset && finalAsset.includes(bestResult.asset.name.split(' ')[0])) {
-          safeLog(`✅ [VERIFICAÇÃO] Ativo correto detectado: ${finalAsset}`, 'SUCCESS');
+          window.logToSystem(`✅ [VERIFICAÇÃO] Ativo correto detectado: ${finalAsset}`, 'SUCCESS');
           break;
         }
         
         if (verificationAttempts < maxVerificationAttempts) {
-          safeLog(`⏳ [VERIFICAÇÃO] Aguardando mais 800ms antes da próxima verificação...`, 'DEBUG');
+          window.logToSystem(`⏳ [VERIFICAÇÃO] Aguardando mais 800ms antes da próxima verificação...`, 'DEBUG');
           await new Promise(resolve => setTimeout(resolve, 800));
         }
       }
@@ -2738,14 +2705,14 @@ const AssetManager = {
       const successMessage = `Ativo alterado para ${bestResult.asset.name} (${bestResult.asset.payout}%) - ${categoryInfo}`;
       
       if (usedCategory === preferredCategory) {
-        safeLog(`✅ [SUCESSO] Busca concluída com categoria preferida: ${successMessage}`, 'SUCCESS');
+        window.logToSystem(`✅ [SUCESSO] Busca concluída com categoria preferida: ${successMessage}`, 'SUCCESS');
       } else {
-        safeLog(`⚠️ [AVISO] Categoria preferida sem payout adequado. ${successMessage}`, 'WARN');
+        window.logToSystem(`⚠️ [AVISO] Categoria preferida sem payout adequado. ${successMessage}`, 'WARN');
       }
       
-      safeLog(`🎉 [CONCLUÍDO] Busca de ativo para automação finalizada com sucesso`, 'INFO');
-      safeLog(`📋 [RESUMO] Categorias tentadas: ${categoriesAttempted.join(', ')}`, 'INFO');
-      safeLog(`📋 [RESUMO] Categoria usada: ${usedCategory}, Ativo final: ${finalAsset}`, 'INFO');
+      window.logToSystem(`🎉 [CONCLUÍDO] Busca de ativo para automação finalizada com sucesso`, 'INFO');
+      window.logToSystem(`📋 [RESUMO] Categorias tentadas: ${categoriesAttempted.join(', ')}`, 'INFO');
+      window.logToSystem(`📋 [RESUMO] Categoria usada: ${usedCategory}, Ativo final: ${finalAsset}`, 'INFO');
       
       return {
         success: true,
@@ -2763,18 +2730,18 @@ const AssetManager = {
       
     } catch (error) {
       // ❌ TRATAMENTO DE ERRO
-      safeLog(`💥 [ERRO CRÍTICO] Busca de ativo para automação falhou: ${error.message}`, 'ERROR');
+      window.logToSystem(`💥 [ERRO CRÍTICO] Busca de ativo para automação falhou: ${error.message}`, 'ERROR');
       
       // Tentar fechar modal em caso de erro
       try {
         await AssetManager.closeAssetModal();
-        safeLog(`🚪 [CLEANUP] Modal fechado após erro`, 'DEBUG');
+        window.logToSystem(`🚪 [CLEANUP] Modal fechado após erro`, 'DEBUG');
       } catch (closeError) {
-        safeLog(`⚠️ [CLEANUP] Erro ao fechar modal: ${closeError.message}`, 'WARN');
+        window.logToSystem(`⚠️ [CLEANUP] Erro ao fechar modal: ${closeError.message}`, 'WARN');
       }
       
       const errorMsg = `AUTOMATION_SEARCH_FAILED: ${error.message}`;
-      safeLog(`❌ [RETORNO] ${errorMsg}`, 'ERROR');
+      window.logToSystem(`❌ [RETORNO] ${errorMsg}`, 'ERROR');
       
       return {
         success: false,
@@ -2786,7 +2753,7 @@ const AssetManager = {
   // Função principal para trocar para o melhor ativo (PAINEL - busca apenas na categoria atual)
   switchToBestAsset: async (minPayout = 85, preferredCategory = 'crypto') => {
     // ✅ PARA PAINEL: Usar função simples que busca apenas na categoria atual
-    safeLog(`🔍 [PAINEL] Buscando melhor ativo na categoria atual (payout >= ${minPayout}%)`, 'INFO');
+    window.logToSystem(`🔍 [PAINEL] Buscando melhor ativo na categoria atual (payout >= ${minPayout}%)`, 'INFO');
     return await AssetManager.switchToBestAssetInCurrentCategory(minPayout);
   },
 
@@ -2794,30 +2761,30 @@ const AssetManager = {
   debugAssetCapture: () => {
     return new Promise((resolve) => {
       try {
-        safeLog('🔍 [DEBUG] Iniciando debug da captura de ativos...', 'INFO');
+        window.logToSystem('🔍 [DEBUG] Iniciando debug da captura de ativos...', 'INFO');
         
         // 1. Verificar se o modal está aberto
         const modal = document.querySelector('.drop-down-modal.trading-panel-modal.assets-list-modal');
         const activeControl = document.querySelector('.currencies-block__in.active');
         const genericModal = document.querySelector('.drop-down-modal.drop-down-modal--quotes-list');
         
-        safeLog(`🔍 [DEBUG] Modal específico: ${!!modal}`, 'DEBUG');
-        safeLog(`🔍 [DEBUG] Active control: ${!!activeControl}`, 'DEBUG');
-        safeLog(`🔍 [DEBUG] Modal genérico: ${!!genericModal}`, 'DEBUG');
+        window.logToSystem(`🔍 [DEBUG] Modal específico: ${!!modal}`, 'DEBUG');
+        window.logToSystem(`🔍 [DEBUG] Active control: ${!!activeControl}`, 'DEBUG');
+        window.logToSystem(`🔍 [DEBUG] Modal genérico: ${!!genericModal}`, 'DEBUG');
         
         // 2. Testar o seletor específico fornecido pelo usuário
         const specificList = document.querySelector("#modal-root > div > div > div > div.assets-block__col.assets-block__col-body > div.assets-block__body-wrap > div > div > div.assets-block__body-currency > ul");
-        safeLog(`🔍 [DEBUG] Lista específica encontrada: ${!!specificList}`, 'DEBUG');
+        window.logToSystem(`🔍 [DEBUG] Lista específica encontrada: ${!!specificList}`, 'DEBUG');
         
         if (specificList) {
           const specificItems = specificList.querySelectorAll('li');
-          safeLog(`🔍 [DEBUG] Itens na lista específica: ${specificItems.length}`, 'DEBUG');
+          window.logToSystem(`🔍 [DEBUG] Itens na lista específica: ${specificItems.length}`, 'DEBUG');
           
           specificItems.forEach((item, index) => {
             if (index < 5) { // Mostrar apenas os primeiros 5
               const className = item.className || '';
               const textContent = item.textContent || '';
-              safeLog(`🔍 [DEBUG] Item específico ${index}: class="${className}" text="${textContent.substring(0, 50)}..."`, 'DEBUG');
+              window.logToSystem(`🔍 [DEBUG] Item específico ${index}: class="${className}" text="${textContent.substring(0, 50)}..."`, 'DEBUG');
             }
           });
         }
@@ -2847,11 +2814,11 @@ const AssetManager = {
           }
         });
         
-        safeLog(`🔍 [DEBUG] Encontrados ${possibleAssetContainers.length} possíveis containers de ativos`, 'DEBUG');
+        window.logToSystem(`🔍 [DEBUG] Encontrados ${possibleAssetContainers.length} possíveis containers de ativos`, 'DEBUG');
         
         // 4. Mostrar os primeiros 10 possíveis ativos
         possibleAssetContainers.slice(0, 10).forEach((container, index) => {
-          safeLog(`🔍 [DEBUG] Container ${index}: <${container.tagName}> class="${container.className}" text="${container.textContent}"`, 'DEBUG');
+          window.logToSystem(`🔍 [DEBUG] Container ${index}: <${container.tagName}> class="${container.className}" text="${container.textContent}"`, 'DEBUG');
         });
         
         // 5. Testar seletores específicos
@@ -2873,14 +2840,14 @@ const AssetManager = {
         
         selectors.forEach(selector => {
           const elements = document.querySelectorAll(selector);
-          safeLog(`🔍 [DEBUG] Seletor "${selector}": ${elements.length} elementos`, 'DEBUG');
+          window.logToSystem(`🔍 [DEBUG] Seletor "${selector}": ${elements.length} elementos`, 'DEBUG');
           
           if (elements.length > 0) {
             elements.forEach((element, index) => {
               if (index < 3) { // Mostrar apenas os primeiros 3
                 const className = element.className || '';
                 const textContent = element.textContent || '';
-                safeLog(`🔍 [DEBUG]   Elemento ${index}: class="${className}" text="${textContent.substring(0, 50)}..."`, 'DEBUG');
+                window.logToSystem(`🔍 [DEBUG]   Elemento ${index}: class="${className}" text="${textContent.substring(0, 50)}..."`, 'DEBUG');
               }
             });
           }
@@ -2888,13 +2855,13 @@ const AssetManager = {
         
         // 6. Procurar por elementos com payout
         const payoutElements = document.querySelectorAll('[class*="payout"], [class*="percent"]');
-        safeLog(`🔍 [DEBUG] Elementos com payout: ${payoutElements.length}`, 'DEBUG');
+        window.logToSystem(`🔍 [DEBUG] Elementos com payout: ${payoutElements.length}`, 'DEBUG');
         
         payoutElements.forEach((element, index) => {
           if (index < 5) {
             const className = element.className || '';
             const textContent = element.textContent || '';
-            safeLog(`🔍 [DEBUG] Payout ${index}: class="${className}" text="${textContent}"`, 'DEBUG');
+            window.logToSystem(`🔍 [DEBUG] Payout ${index}: class="${className}" text="${textContent}"`, 'DEBUG');
           }
         });
         
@@ -2907,7 +2874,7 @@ const AssetManager = {
         });
         
       } catch (error) {
-        safeLog(`🔍 [DEBUG] Erro no debug: ${error.message}`, 'ERROR');
+        window.logToSystem(`🔍 [DEBUG] Erro no debug: ${error.message}`, 'ERROR');
         resolve({
           success: false,
           error: error.message
@@ -2925,14 +2892,14 @@ const AssetManager = {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Handler para captura de informações do canvas
   if (message.action === 'GET_CANVAS_INFO') {
-    safeLog('🔍 Recebida solicitação para capturar informações do canvas', 'INFO');
+    window.logToSystem('🔍 Recebida solicitação para capturar informações do canvas', 'INFO');
     
     try {
       // Função para capturar informações do canvas
       const captureCanvasInfo = () => {
         return new Promise((resolve, reject) => {
           try {
-            safeLog('🔍 Iniciando captura de informações do canvas da plataforma', 'INFO');
+            window.logToSystem('🔍 Iniciando captura de informações do canvas da plataforma', 'INFO');
             
             // Seletores para encontrar o canvas do gráfico
             const canvasSelectors = [
@@ -2950,7 +2917,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             // Tentar encontrar o canvas usando os seletores
             for (const selector of canvasSelectors) {
               const elements = document.querySelectorAll(selector);
-              safeLog(`🔎 Testando seletor "${selector}" - encontrados ${elements.length} elementos`, 'DEBUG');
+              window.logToSystem(`🔎 Testando seletor "${selector}" - encontrados ${elements.length} elementos`, 'DEBUG');
               
               if (elements.length > 0) {
                 // Verificar se é realmente um canvas de gráfico
@@ -2963,7 +2930,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   if (width > 100 && height > 100) {
                     canvasElement = element;
                     foundSelector = selector;
-                    safeLog(`✅ Canvas encontrado com seletor: ${selector} (${i+1}º elemento)`, 'SUCCESS');
+                    window.logToSystem(`✅ Canvas encontrado com seletor: ${selector} (${i+1}º elemento)`, 'SUCCESS');
                     break;
                   }
                 }
@@ -2974,11 +2941,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             
             // Se não encontrou com seletores específicos, fazer busca ampla
             if (!canvasElement) {
-              safeLog('🔍 Seletores específicos não funcionaram, fazendo busca ampla...', 'DEBUG');
+              window.logToSystem('🔍 Seletores específicos não funcionaram, fazendo busca ampla...', 'DEBUG');
               
               // Busca ampla por todos os canvas
               const allCanvas = document.querySelectorAll('canvas');
-              safeLog(`🔍 Encontrados ${allCanvas.length} canvas na página`, 'DEBUG');
+              window.logToSystem(`🔍 Encontrados ${allCanvas.length} canvas na página`, 'DEBUG');
               
               for (const canvas of allCanvas) {
                 const width = canvas.width || canvas.offsetWidth;
@@ -2990,7 +2957,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     (style.position === 'absolute' || canvas.classList.contains('plot') || canvas.classList.contains('chart'))) {
                   canvasElement = canvas;
                   foundSelector = 'busca-ampla';
-                  safeLog(`🎯 Canvas encontrado em busca ampla: ${width}x${height}`, 'INFO');
+                  window.logToSystem(`🎯 Canvas encontrado em busca ampla: ${width}x${height}`, 'INFO');
                   break;
                 }
               }
@@ -3021,17 +2988,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 timestamp: new Date().toISOString()
               };
               
-              safeLog(`✅ Informações do canvas capturadas com sucesso: ${width}x${height} @ ${result.data.x},${result.data.y}`, 'SUCCESS');
+              window.logToSystem(`✅ Informações do canvas capturadas com sucesso: ${width}x${height} @ ${result.data.x},${result.data.y}`, 'SUCCESS');
               resolve(result);
             } else {
               // Canvas não encontrado
               const errorMsg = 'Canvas do gráfico não encontrado na página';
-              safeLog(`❌ ${errorMsg}`, 'ERROR');
+              window.logToSystem(`❌ ${errorMsg}`, 'ERROR');
               reject(new Error(errorMsg));
             }
             
           } catch (error) {
-            safeLog(`❌ Erro ao capturar informações do canvas: ${error.message}`, 'ERROR');
+            window.logToSystem(`❌ Erro ao capturar informações do canvas: ${error.message}`, 'ERROR');
             reject(error);
           }
         });
@@ -3040,11 +3007,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // Executar captura
       captureCanvasInfo()
         .then(result => {
-          safeLog(`✅ Informações do canvas capturadas: ${result.data.width}x${result.data.height}`, 'SUCCESS');
+          window.logToSystem(`✅ Informações do canvas capturadas: ${result.data.width}x${result.data.height}`, 'SUCCESS');
           sendResponse(result);
         })
         .catch(error => {
-          safeLog(`❌ Erro na captura do canvas: ${error.message}`, 'ERROR');
+          window.logToSystem(`❌ Erro na captura do canvas: ${error.message}`, 'ERROR');
           sendResponse({
             success: false,
             error: error.message
@@ -3054,7 +3021,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true; // Manter canal aberto para resposta assíncrona
       
     } catch (error) {
-      safeLog(`❌ Erro ao processar solicitação de canvas: ${error.message}`, 'ERROR');
+      window.logToSystem(`❌ Erro ao processar solicitação de canvas: ${error.message}`, 'ERROR');
       sendResponse({
         success: false,
         error: error.message
@@ -3065,14 +3032,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Handler para captura apenas do gráfico (retorna apenas canvas info)
   if (message.action === 'CAPTURE_CHART_ONLY') {
-    safeLog('📸 Recebida solicitação para obter informações do canvas', 'INFO');
+    window.logToSystem('📸 Recebida solicitação para obter informações do canvas', 'INFO');
     
     try {
       // Primeiro, obter informações do canvas
       const captureCanvasInfo = () => {
         return new Promise((resolve, reject) => {
           try {
-            safeLog('🔍 Obtendo informações do canvas para crop...', 'INFO');
+            window.logToSystem('🔍 Obtendo informações do canvas para crop...', 'INFO');
             
             // Seletores para encontrar o canvas do gráfico
             const canvasSelectors = [
@@ -3090,7 +3057,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             // Tentar encontrar o canvas usando os seletores
             for (const selector of canvasSelectors) {
               const elements = document.querySelectorAll(selector);
-              safeLog(`🔎 Testando seletor "${selector}" - encontrados ${elements.length} elementos`, 'DEBUG');
+              window.logToSystem(`🔎 Testando seletor "${selector}" - encontrados ${elements.length} elementos`, 'DEBUG');
               
               if (elements.length > 0) {
                 // Verificar se é realmente um canvas de gráfico
@@ -3103,7 +3070,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   if (width > 100 && height > 100) {
                     canvasElement = element;
                     foundSelector = selector;
-                    safeLog(`✅ Canvas encontrado com seletor: ${selector} (${i+1}º elemento)`, 'SUCCESS');
+                    window.logToSystem(`✅ Canvas encontrado com seletor: ${selector} (${i+1}º elemento)`, 'SUCCESS');
                     break;
                   }
                 }
@@ -3114,11 +3081,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             
             // Se não encontrou com seletores específicos, fazer busca ampla
             if (!canvasElement) {
-              safeLog('🔍 Seletores específicos não funcionaram, fazendo busca ampla...', 'DEBUG');
+              window.logToSystem('🔍 Seletores específicos não funcionaram, fazendo busca ampla...', 'DEBUG');
               
               // Busca ampla por todos os canvas
               const allCanvas = document.querySelectorAll('canvas');
-              safeLog(`🔍 Encontrados ${allCanvas.length} canvas na página`, 'DEBUG');
+              window.logToSystem(`🔍 Encontrados ${allCanvas.length} canvas na página`, 'DEBUG');
               
               for (const canvas of allCanvas) {
                 const width = canvas.width || canvas.offsetWidth;
@@ -3130,7 +3097,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     (style.position === 'absolute' || canvas.classList.contains('plot') || canvas.classList.contains('chart'))) {
                   canvasElement = canvas;
                   foundSelector = 'busca-ampla';
-                  safeLog(`🎯 Canvas encontrado em busca ampla: ${width}x${height}`, 'INFO');
+                  window.logToSystem(`🎯 Canvas encontrado em busca ampla: ${width}x${height}`, 'INFO');
                   break;
                 }
               }
@@ -3151,7 +3118,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   id: canvasElement.id
               };
               
-              safeLog(`✅ Informações do canvas obtidas: ${width}x${height} @ ${result.x},${result.y}`, 'SUCCESS');
+              window.logToSystem(`✅ Informações do canvas obtidas: ${width}x${height} @ ${result.x},${result.y}`, 'SUCCESS');
               resolve(result);
             } else {
               reject(new Error('Canvas do gráfico não encontrado na página'));
@@ -3166,21 +3133,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // Executar apenas a obtenção de informações do canvas
       captureCanvasInfo()
         .then(canvasInfo => {
-          safeLog('✅ Informações do canvas obtidas com sucesso', 'SUCCESS');
+          window.logToSystem('✅ Informações do canvas obtidas com sucesso', 'SUCCESS');
           sendResponse({ 
             success: true, 
             canvasInfo: canvasInfo 
           });
         })
         .catch(error => {
-          safeLog(`❌ Erro ao obter informações do canvas: ${error.message}`, 'ERROR');
+          window.logToSystem(`❌ Erro ao obter informações do canvas: ${error.message}`, 'ERROR');
           sendResponse({ success: false, error: error.message });
         });
       
       return true; // Manter canal aberto para resposta assíncrona
       
     } catch (error) {
-      safeLog(`❌ Erro ao processar solicitação de canvas info: ${error.message}`, 'ERROR');
+      window.logToSystem(`❌ Erro ao processar solicitação de canvas info: ${error.message}`, 'ERROR');
       sendResponse({ success: false, error: error.message });
       return true;
     }
@@ -3188,7 +3155,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Handler para captura de tela
   if (message.action === 'CAPTURE_SCREENSHOT') {
-    safeLog('Solicitação de captura de tela recebida', 'INFO');
+    window.logToSystem('Solicitação de captura de tela recebida', 'INFO');
     
     try {
       // Usar o mesmo método do popup - enviar mensagem para o background
@@ -3201,27 +3168,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }, (response) => {
             if (chrome.runtime.lastError) {
               const errorMsg = chrome.runtime.lastError.message;
-              safeLog(`❌ Erro na captura: ${errorMsg}`, 'ERROR');
+              window.logToSystem(`❌ Erro na captura: ${errorMsg}`, 'ERROR');
               sendResponse({ success: false, error: errorMsg });
               return;
             }
             
         if (response && response.error) {
-          safeLog(`❌ Erro na captura: ${response.error}`, 'ERROR');
+          window.logToSystem(`❌ Erro na captura: ${response.error}`, 'ERROR');
               sendResponse({ success: false, error: response.error });
               return;
             }
             
         if (response && response.dataUrl) {
-          safeLog('✅ Captura de tela realizada com sucesso', 'SUCCESS');
+          window.logToSystem('✅ Captura de tela realizada com sucesso', 'SUCCESS');
           sendResponse({ success: true, dataUrl: response.dataUrl });
         } else {
-          safeLog('❌ Captura de tela falhou - resposta sem dataUrl', 'ERROR');
+          window.logToSystem('❌ Captura de tela falhou - resposta sem dataUrl', 'ERROR');
           sendResponse({ success: false, error: 'Captura falhou - sem dados' });
         }
       });
     } catch (error) {
-      safeLog(`❌ Erro ao processar captura: ${error.message}`, 'ERROR');
+      window.logToSystem(`❌ Erro ao processar captura: ${error.message}`, 'ERROR');
       sendResponse({ success: false, error: error.message });
     }
     
@@ -3230,15 +3197,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Handler para teste de captura de payout
   if (message.action === 'TEST_CAPTURE_PAYOUT') {
-    safeLog('Solicitação de teste de captura de payout recebida', 'INFO');
+    window.logToSystem('Solicitação de teste de captura de payout recebida', 'INFO');
     
     capturePayoutFromDOM()
       .then(result => {
-        safeLog(`Captura de payout concluída: ${result.payout}%`, 'SUCCESS');
+        window.logToSystem(`Captura de payout concluída: ${result.payout}%`, 'SUCCESS');
         sendResponse(result);
       })
       .catch(error => {
-        safeLog(`Erro na captura de payout: ${error.message}`, 'ERROR');
+        window.logToSystem(`Erro na captura de payout: ${error.message}`, 'ERROR');
         sendResponse({
           success: false,
           error: error.message
@@ -3250,7 +3217,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   
   // Handler para testes de ativos (já existentes)
   if (message.action === 'TEST_FIND_BEST_ASSET') {
-    safeLog('Solicitação de busca do melhor ativo recebida', 'INFO');
+    window.logToSystem('Solicitação de busca do melhor ativo recebida', 'INFO');
     
     const minPayout = message.minPayout || 85;
     
@@ -3270,7 +3237,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   
   // ❌ HANDLER DUPLICADO REMOVIDO - O handler correto está na linha 877
   // if (message.action === 'TEST_SWITCH_ASSET_CATEGORY') {
-  //   safeLog(`Solicitação de troca de categoria para ${message.category} recebida`, 'INFO');
+  //   window.logToSystem(`Solicitação de troca de categoria para ${message.category} recebida`, 'INFO');
   //   
   //   const category = message.category || 'crypto';
   //   
@@ -3290,7 +3257,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   
   // ✅ HANDLER ESPECÍFICO PARA TEST_SWITCH_TO_BEST_ASSET (usando wrapper de automação)
   if (message.action === 'TEST_SWITCH_TO_BEST_ASSET') {
-    safeLog(`🔄 Solicitação de troca inteligente recebida - Payout mínimo: ${message.minPayout}%, Categoria preferida: ${message.category}`, 'INFO');
+    window.logToSystem(`🔄 Solicitação de troca inteligente recebida - Payout mínimo: ${message.minPayout}%, Categoria preferida: ${message.category}`, 'INFO');
     
     const minPayout = message.minPayout || 85;
     const preferredCategory = message.category || 'crypto';
@@ -3303,12 +3270,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             `categoria preferida (${result.usedCategory})` : 
             `fallback para categoria ${result.usedCategory}`;
           
-          safeLog(`✅ Troca inteligente concluída: ${result.asset.name} (${result.asset.payout}%) - ${categoryInfo}`, 'SUCCESS');
+          window.logToSystem(`✅ Troca inteligente concluída: ${result.asset.name} (${result.asset.payout}%) - ${categoryInfo}`, 'SUCCESS');
         }
         sendResponse(result);
       })
       .catch(error => {
-        safeLog(`❌ Erro na troca inteligente: ${error.message}`, 'ERROR');
+        window.logToSystem(`❌ Erro na troca inteligente: ${error.message}`, 'ERROR');
         sendResponse({
           success: false,
           error: error.message
@@ -3335,30 +3302,30 @@ window.capturePayoutFromDOM = capturePayoutFromDOM;
 debugAssetCapture: () => {
   return new Promise((resolve) => {
     try {
-      safeLog('🔍 [DEBUG] Iniciando debug da captura de ativos...', 'INFO');
+      window.logToSystem('🔍 [DEBUG] Iniciando debug da captura de ativos...', 'INFO');
       
       // 1. Verificar se o modal está aberto
       const modal = document.querySelector('.drop-down-modal.trading-panel-modal.assets-list-modal');
       const activeControl = document.querySelector('.currencies-block__in.active');
       const genericModal = document.querySelector('.drop-down-modal.drop-down-modal--quotes-list');
       
-      safeLog(`🔍 [DEBUG] Modal específico: ${!!modal}`, 'DEBUG');
-      safeLog(`🔍 [DEBUG] Active control: ${!!activeControl}`, 'DEBUG');
-      safeLog(`🔍 [DEBUG] Modal genérico: ${!!genericModal}`, 'DEBUG');
+      window.logToSystem(`🔍 [DEBUG] Modal específico: ${!!modal}`, 'DEBUG');
+      window.logToSystem(`🔍 [DEBUG] Active control: ${!!activeControl}`, 'DEBUG');
+      window.logToSystem(`🔍 [DEBUG] Modal genérico: ${!!genericModal}`, 'DEBUG');
       
       // 2. Testar o seletor específico fornecido pelo usuário
       const specificList = document.querySelector("#modal-root > div > div > div > div.assets-block__col.assets-block__col-body > div.assets-block__body-wrap > div > div > div.assets-block__body-currency > ul");
-      safeLog(`🔍 [DEBUG] Lista específica encontrada: ${!!specificList}`, 'DEBUG');
+      window.logToSystem(`🔍 [DEBUG] Lista específica encontrada: ${!!specificList}`, 'DEBUG');
       
       if (specificList) {
         const specificItems = specificList.querySelectorAll('li');
-        safeLog(`🔍 [DEBUG] Itens na lista específica: ${specificItems.length}`, 'DEBUG');
+        window.logToSystem(`🔍 [DEBUG] Itens na lista específica: ${specificItems.length}`, 'DEBUG');
         
         specificItems.forEach((item, index) => {
           if (index < 5) { // Mostrar apenas os primeiros 5
             const className = item.className || '';
             const textContent = item.textContent || '';
-            safeLog(`🔍 [DEBUG] Item específico ${index}: class="${className}" text="${textContent.substring(0, 50)}..."`, 'DEBUG');
+            window.logToSystem(`🔍 [DEBUG] Item específico ${index}: class="${className}" text="${textContent.substring(0, 50)}..."`, 'DEBUG');
           }
         });
       }
@@ -3388,11 +3355,11 @@ debugAssetCapture: () => {
         }
       });
       
-      safeLog(`🔍 [DEBUG] Encontrados ${possibleAssetContainers.length} possíveis containers de ativos`, 'DEBUG');
+      window.logToSystem(`🔍 [DEBUG] Encontrados ${possibleAssetContainers.length} possíveis containers de ativos`, 'DEBUG');
       
       // 4. Mostrar os primeiros 10 possíveis ativos
       possibleAssetContainers.slice(0, 10).forEach((container, index) => {
-        safeLog(`🔍 [DEBUG] Container ${index}: <${container.tagName}> class="${container.className}" text="${container.textContent}"`, 'DEBUG');
+        window.logToSystem(`🔍 [DEBUG] Container ${index}: <${container.tagName}> class="${container.className}" text="${container.textContent}"`, 'DEBUG');
       });
       
       // 5. Testar seletores específicos
@@ -3414,14 +3381,14 @@ debugAssetCapture: () => {
       
       selectors.forEach(selector => {
         const elements = document.querySelectorAll(selector);
-        safeLog(`🔍 [DEBUG] Seletor "${selector}": ${elements.length} elementos`, 'DEBUG');
+        window.logToSystem(`🔍 [DEBUG] Seletor "${selector}": ${elements.length} elementos`, 'DEBUG');
         
         if (elements.length > 0) {
           elements.forEach((element, index) => {
             if (index < 3) { // Mostrar apenas os primeiros 3
               const className = element.className || '';
               const textContent = element.textContent || '';
-              safeLog(`🔍 [DEBUG]   Elemento ${index}: class="${className}" text="${textContent.substring(0, 50)}..."`, 'DEBUG');
+              window.logToSystem(`🔍 [DEBUG]   Elemento ${index}: class="${className}" text="${textContent.substring(0, 50)}..."`, 'DEBUG');
             }
           });
         }
@@ -3429,13 +3396,13 @@ debugAssetCapture: () => {
       
       // 6. Procurar por elementos com payout
       const payoutElements = document.querySelectorAll('[class*="payout"], [class*="percent"]');
-      safeLog(`🔍 [DEBUG] Elementos com payout: ${payoutElements.length}`, 'DEBUG');
+      window.logToSystem(`🔍 [DEBUG] Elementos com payout: ${payoutElements.length}`, 'DEBUG');
       
       payoutElements.forEach((element, index) => {
         if (index < 5) {
           const className = element.className || '';
           const textContent = element.textContent || '';
-          safeLog(`🔍 [DEBUG] Payout ${index}: class="${className}" text="${textContent}"`, 'DEBUG');
+          window.logToSystem(`🔍 [DEBUG] Payout ${index}: class="${className}" text="${textContent}"`, 'DEBUG');
         }
       });
       
@@ -3448,7 +3415,7 @@ debugAssetCapture: () => {
       });
       
     } catch (error) {
-      safeLog(`🔍 [DEBUG] Erro no debug: ${error.message}`, 'ERROR');
+      window.logToSystem(`🔍 [DEBUG] Erro no debug: ${error.message}`, 'ERROR');
       resolve({
         success: false,
         error: error.message

@@ -194,66 +194,67 @@ class IntelligentGale {
         // Log de risk score removido para performance
     }
     
-    /**
-     * Aplica Gale inteligente baseado em contexto
-     */
+    // ✅ IMPLEMENTAR STATUS: Função principal de aplicação do Gale Inteligente
     applyIntelligentGale(operationData) {
-        this.state.consecutiveLosses++;
-        this.state.level++;
+        updateStatus('Calculando Gale Inteligente...', 'info');
+        logToSystem('Iniciando aplicação do Gale Inteligente', 'INFO');
         
-        // Verificar se deve continuar com Gale
-        if (!this.shouldContinueGale()) {
-            this.notifyListeners('gale_stopped', {
-                reason: 'Risk too high or limit reached',
-                level: this.state.level,
-                riskLevel: this.state.riskLevel
+        try {
+            if (!this.active) {
+                updateStatus('Gale Inteligente desativado', 'warning', 3000);
+                logToSystem('Gale Inteligente não está ativo', 'WARN');
+                return { success: false, error: 'Sistema não ativo' };
+            }
+
+            if (!operationData || !operationData.entryValue) {
+                updateStatus('Dados insuficientes para Gale Inteligente', 'error', 5000);
+                logToSystem('Dados de operação inválidos ou incompletos', 'ERROR');
+                return { success: false, error: 'Dados inválidos' };
+            }
+
+            updateStatus('Analisando condições para Gale Inteligente...', 'info');
+            
+            // Aplicar lógica do Gale Inteligente (mantendo código existente)
+            const entryValue = parseFloat(operationData.entryValue);
+            const currentPayout = this.getCurrentPayout();
+            
+            // Incrementar nível
+            this.level++;
+            this.history.push({
+                level: this.level,
+                entryValue: entryValue,
+                timestamp: Date.now(),
+                payout: currentPayout
             });
-            return this.reset('Risk limit reached');
+
+            logToSystem(`Gale Inteligente nível ${this.level} - Entrada: ${entryValue}, Payout: ${currentPayout}%`, 'INFO');
+
+            // Calcular novo valor baseado na estratégia inteligente
+            const calculation = this.calculateIntelligentValue(entryValue, currentPayout);
+            
+            if (calculation.success) {
+                updateStatus(`Gale Inteligente aplicado: Nível ${this.level}, Valor: ${calculation.value}`, 'success', 4000);
+                logToSystem(`Gale Inteligente aplicado com sucesso - Nível: ${this.level}, Valor: ${calculation.value}, Risco: ${calculation.riskLevel}`, 'SUCCESS');
+                
+                return {
+                    success: true,
+                    level: this.level,
+                    value: calculation.value,
+                    multiplier: calculation.multiplier,
+                    riskLevel: calculation.riskLevel,
+                    confidence: calculation.confidence
+                };
+            } else {
+                updateStatus(`Erro no cálculo do Gale Inteligente: ${calculation.error}`, 'error', 5000);
+                logToSystem(`Erro no cálculo do Gale Inteligente: ${calculation.error}`, 'ERROR');
+                return calculation;
+            }
+            
+        } catch (error) {
+            updateStatus(`Erro no Gale Inteligente: ${error.message}`, 'error', 5000);
+            logToSystem(`Erro na aplicação do Gale Inteligente: ${error.message}`, 'ERROR');
+            return { success: false, error: error.message };
         }
-        
-        // Calcular multiplicador inteligente
-        const intelligentMultiplier = this.calculateIntelligentMultiplier();
-        
-        // Calcular novo valor
-        const newValue = this.calculateNewValue(intelligentMultiplier);
-        
-        // Atualizar estado
-        this.state.currentValue = newValue;
-        this.state.active = true;
-        this.state.adaptiveMultiplier = intelligentMultiplier;
-        
-        // Log detalhado
-        // Log importante de aplicação Gale
-        if (chrome && chrome.runtime && chrome.runtime.id) {
-            chrome.runtime.sendMessage({
-                action: 'addLog',
-                logMessage: `Gale Inteligente aplicado - Nível: ${this.state.level}, Valor: ${this.state.currentValue}, Risco: ${this.state.riskLevel}`,
-                logLevel: 'INFO',
-                logSource: 'intelligent-gale.js'
-            });
-        }
-        
-        // Notificar listeners
-        this.notifyListeners('gale_applied', {
-            level: this.state.level,
-            value: this.state.currentValue,
-            multiplier: intelligentMultiplier,
-            riskLevel: this.state.riskLevel,
-            confidence: this.state.lastAnalysisConfidence
-        });
-        
-        // Integrar com sistema clássico se disponível
-        if (this.modules.classicGale) {
-            this.modules.classicGale.setIntelligentValue(newValue, intelligentMultiplier);
-        }
-        
-        return {
-            success: true,
-            level: this.state.level,
-            value: newValue,
-            multiplier: intelligentMultiplier,
-            riskLevel: this.state.riskLevel
-        };
     }
     
     /**

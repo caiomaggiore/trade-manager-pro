@@ -2,6 +2,11 @@
 // ================== SISTEMA DE COMUNICAÇÃO INTERNA ==================
 // Sistema de recebimento de status via window.postMessage
 
+// Sistema anti-loop para mensagens (CORRIGIDO - menos restritivo)
+let processingMessage = false;
+let lastProcessedMessage = { content: '', timestamp: 0 };
+const PROCESSING_COOLDOWN = 100; // Reduzido para 100ms (era 300ms)
+
 // Listener para mensagens internas do iframe (PRIMEIRA COISA A SER DECLARADA)
 window.addEventListener('message', (event) => {
     // Verificar se a mensagem é para atualizar status
@@ -9,40 +14,130 @@ window.addEventListener('message', (event) => {
         try {
             const { message, type = 'info', duration = 3000 } = event.data.data;
             
-            // Log para debug
-            console.log(`[INDEX] Recebido status via window.postMessage: ${message} (${type})`);
+            // ✅ ANTI-LOOP CORRIGIDO: Só bloquear se for EXATAMENTE a mesma mensagem muito rapidamente
+            const now = Date.now();
+            const messageKey = `${message}_${type}`;
+            
+            // Verificação de duplicata mais específica
+            if (lastProcessedMessage.content === messageKey && (now - lastProcessedMessage.timestamp) < PROCESSING_COOLDOWN) {
+                console.log(`[INDEX] 🚫 Mensagem duplicada ignorada: "${message}" (cooldown: ${PROCESSING_COOLDOWN}ms)`);
+                return;
+            }
+            
+            // REMOVIDO: verificação processingMessage que estava bloqueando tudo
+            // Apenas usar verificação de duplicata baseada em conteúdo e timestamp
+            
+            // Atualizar último processamento
+            lastProcessedMessage = { content: messageKey, timestamp: now };
+            
+            // Log para debug detalhado - incluir origem da mensagem
+            const origin = event.origin || 'unknown';
+            const source = event.source === window ? 'local' : 'iframe';
+            console.log(`[INDEX] 📋 Processando status de ${source}: "${message}" (${type}) - origem: ${origin}`);
+            
+            // ✅ CORREÇÃO: Verificação de contexto mais inteligente
+            const isExtensionContext = window.location.href.includes('chrome-extension://');
+            const isLocalContext = window.location.href.includes('file://') || window.location.href.includes('localhost');
+            const canProcessLocally = isExtensionContext || isLocalContext;
+            
+            console.log(`[INDEX] 📋 Contexto da extensão: ${isExtensionContext}, pode processar localmente: ${canProcessLocally}`);
+            
+            if (!canProcessLocally) {
+                // Se não pode processar localmente, redirecionar via chrome.runtime
+                console.log(`[INDEX] 📋 Redirecionando status para a extensão via chrome.runtime.sendMessage`);
+                
+                if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+                    chrome.runtime.sendMessage({
+                        action: 'updateStatus',
+                        message: message,
+                        type: type,
+                        duration: duration
+                    }, (response) => {
+                        if (chrome.runtime.lastError) {
+                            console.warn(`[INDEX] 📋 Erro ao redirecionar status: ${chrome.runtime.lastError.message}`);
+                        } else {
+                            console.log(`[INDEX] 📋 Status redirecionado com sucesso para a extensão`);
+                        }
+                    });
+                } else {
+                    console.warn(`[INDEX] 📋 Chrome runtime não disponível para redirecionar status`);
+                }
+                return; // Não processar localmente se não pode
+            }
+            
+            // ✅ PROCESSAR LOCALMENTE (extensão ou contexto local)
+            console.log(`[INDEX] 📋 Processando status localmente no contexto da extensão`);
             
             // Atualizar status diretamente no DOM
             const statusElement = document.getElementById('status-processo');
             if (statusElement) {
-                let statusClass = 'info'; // Default class
-                switch (String(type).toLowerCase()) {
-                    case 'error': statusClass = 'error'; break;
-                    case 'warn': statusClass = 'warn'; break;
+                // ✅ USAR CLASSES ORIGINAIS DO CSS (status-processo + tipo + visible)
+                // Remover todas as classes de tipo anteriores
+                statusElement.classList.remove('info', 'success', 'error', 'warning', 'status-warning');
+                
+                // Determinar classe CSS baseada no tipo (usando classes originais)
+                let statusClass = 'info'; // Default
+                switch (type) {
                     case 'success': statusClass = 'success'; break;
-                    // default é 'info'
+                    case 'error': statusClass = 'error'; break;
+                    case 'warning': case 'warn': statusClass = 'status-warning'; break;
+                    default: statusClass = 'info';
                 }
                 
-                statusElement.className = 'status-processo'; // Reset classes
-                statusElement.classList.add(statusClass, 'visible');
+                // Aplicar as classes originais: status-processo + tipo + visible
+                statusElement.className = `status-processo ${statusClass} visible`;
                 statusElement.textContent = message;
                 
-                // Limpar status após a duração, se especificado e > 0
-                if (typeof duration === 'number' && duration > 0) {
+                console.log(`[INDEX] 📋 Status atualizado no DOM: "${message}" com classe "${statusClass}"`);
+                
+                // Auto-esconder após a duração especificada (animação suave)
+                if (duration > 0) {
                     setTimeout(() => {
-                        if (statusElement.textContent === message) { // Só limpa se ainda for a mesma mensagem
-                            statusElement.classList.remove('visible');
-                        }
+                        statusElement.classList.remove('visible');
+                        console.log(`[INDEX] 📋 Status escondido após ${duration}ms`);
                     }, duration);
+                }
+                
+            } else {
+                console.log(`[INDEX] 📋 ERRO: Elemento 'status-processo' não encontrado no DOM!`);
+                
+                // ✅ FALLBACK: Tentar criar elemento se não existir (caso extremo)
+                const footer = document.querySelector('.global-footer');
+                if (footer) {
+                    const newStatusElement = document.createElement('div');
+                    newStatusElement.id = 'status-processo';
+                    newStatusElement.className = `status-processo ${type === 'success' ? 'success' : type === 'error' ? 'error' : type === 'warning' ? 'status-warning' : 'info'} visible`;
+                    newStatusElement.textContent = message;
+                    
+                    // Inserir antes da versão
+                    const versionInfo = footer.querySelector('.version-info');
+                    if (versionInfo) {
+                        footer.insertBefore(newStatusElement, versionInfo);
+                    } else {
+                        footer.appendChild(newStatusElement);
+                    }
+                    
+                    console.log(`[INDEX] 📋 Elemento status-processo criado dinamicamente`);
+                    
+                    // Auto-esconder
+                    if (duration > 0) {
+                        setTimeout(() => {
+                            newStatusElement.classList.remove('visible');
+                        }, duration);
+                    }
+                } else {
+                    console.log(`[INDEX] 📋 ERRO CRÍTICO: Nenhum elemento de status encontrado!`);
+                    
+                    // ✅ ÚLTIMO RECURSO: Usar alert apenas se não conseguir mostrar no DOM
+                    // (Não usar alert para não interferir na UX)
                 }
             }
             
-            // Log de confirmação
-            console.log(`[INDEX] Status atualizado com sucesso via window.postMessage`);
+            console.log(`[INDEX] 📋 Processamento de status concluído com sucesso`);
             
         } catch (error) {
-            console.error(`[INDEX] ERRO CRÍTICO ao processar status: ${error.message}`);
-            throw new Error(`Sistema de status falhou: ${error.message}`);
+            console.error(`[INDEX] 📋 Erro ao processar UPDATE_STATUS:`, error);
+            // NÃO liberar flag aqui pois não estamos mais usando
         }
     }
 });
@@ -141,51 +236,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     // Verificar se o sistema de logs está disponível
     let logInitialized = false;
     
-    // Função para adicionar logs usando EXCLUSIVAMENTE chrome.runtime
-    const addLog = (message, level = 'INFO') => {
-        // Enviar para o sistema centralizado via mensagem
-        try {
-            // Certifique-se que o background script espera por 'action: logMessage' ou ajuste o 'action'
-            chrome.runtime.sendMessage({
-                action: 'addLog', // PADRONIZADO para addLog
-                logMessage: `${message}`, // Usando logMessage
-                level: level,
-                source: 'index.js' // 'source' já é explícito aqui, mas pode ser útil para o receptor
-            }); // Callback removido
-        } catch (error) {
-            // Erro silencioso
-        }
-    };
-    
-    // Função para atualizar o status no UI e registrar um log
-    const updateStatus = (message, level = 'INFO', duration = 3000) => {
-        const statusElement = document.getElementById('status-processo');
-        if (statusElement) {
-            let statusClass = 'info'; // Default class
-            switch (String(level).toUpperCase()) { // Garantir que level seja string
-                case 'ERROR': statusClass = 'error'; break;
-                case 'WARN': statusClass = 'warn'; break;
-                case 'SUCCESS': statusClass = 'success'; break;
-                // default é 'info'
-            }
-            
-            statusElement.className = 'status-processo'; // Reset classes
-            statusElement.classList.add(statusClass, 'visible');
-            statusElement.textContent = message;
-            
-            // Limpar status após a duração, se especificado e > 0
-            if (typeof duration === 'number' && duration > 0) {
-                setTimeout(() => {
-                    if (statusElement.textContent === message) { // Só limpa se ainda for a mesma mensagem
-                        statusElement.classList.remove('visible');
-                    }
-                }, duration);
-            }
-        } else {
-            // Silenciar warning para evitar spam no console
-            // console.warn('Elemento de status #status-processo não encontrado na UI');
-        }
-    };
+    // Sistema de logs global disponível via window.logToSystem e window.updateStatus
     
     // Iniciar sistema de logs ao carregar
     const initLogging = () => {
@@ -194,7 +245,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         try {
             // Verificar se o sistema de logs já existe
             if (typeof window.logToSystem === 'function') {
-                addLog('Sistema de logs disponível', 'DEBUG');
+                logToSystem('Sistema de logs disponível', 'DEBUG');
                 logInitialized = true;
                 return;
             }
@@ -202,13 +253,13 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             // Verificar se o LogSystem existe (pode estar carregado mas não inicializado)
             if (typeof window.LogSystem === 'object') {
                 window.LogSystem.init();
-                addLog('Sistema de logs inicializado', 'INFO');
+                logToSystem('Sistema de logs inicializado', 'INFO');
                 logInitialized = true;
                 return;
             }
             
             // Se o sistema não está disponível, tentar carregar via script
-            addLog('Sistema de logs não detectado, tentando carregar via script...', 'WARN');
+            logToSystem('Sistema de logs não detectado, tentando carregar via script...', 'WARN');
             
             const script = document.createElement('script');
             script.src = '../content/log-sys.js';
@@ -216,13 +267,13 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 if (typeof window.LogSystem === 'object') {
                     window.LogSystem.init();
                     logInitialized = true;
-                    addLog('Sistema de logs inicializado após carregamento dinâmico', 'SUCCESS');
+                    logToSystem('Sistema de logs inicializado após carregamento dinâmico', 'SUCCESS');
                 } else {
-                    addLog('LogSystem não disponível mesmo após carregamento', 'ERROR');
+                    logToSystem('LogSystem não disponível mesmo após carregamento', 'ERROR');
                 }
             };
             script.onerror = (err) => {
-                addLog('Erro ao carregar sistema de logs: ' + err, 'ERROR');
+                logToSystem('Erro ao carregar sistema de logs: ' + err, 'ERROR');
             };
             document.head.appendChild(script);
         } catch (error) {
@@ -276,7 +327,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     
     // ================== ORQUESTRADOR DE ANÁLISE ==================
     const analysisOrchestrator = new AnalysisOrchestrator({
-        log: addLog,
+        log: logToSystem,
         updateStatus: updateStatus,
         updateSystemStatus: updateSystemOperationalStatus,
         stateManager: window.StateManager,
@@ -297,21 +348,21 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             updateSystemOperationalStatus('Operando...');
             
             updateStatus('Iniciando análise...', 'info');
-            addLog('🚀 [RUNANALYSIS] Iniciando análise do gráfico...');
-            addLog('🚀 [RUNANALYSIS] Função runAnalysis chamada com sucesso', 'DEBUG');
+            logToSystem('🚀 [RUNANALYSIS] Iniciando análise do gráfico...');
+            logToSystem('🚀 [RUNANALYSIS] Função runAnalysis chamada com sucesso', 'DEBUG');
             
             // NOTA: Verificação de payout removida do runAnalysis para evitar duplicação
             // A verificação de payout agora é feita APENAS na automação (automation.js)
             // antes de chamar runAnalysis, eliminando verificações duplicadas
-            addLog('ℹ️ [RUNANALYSIS] Payout já verificado pela automação - prosseguindo diretamente com análise', 'INFO');
+            logToSystem('ℹ️ [RUNANALYSIS] Payout já verificado pela automação - prosseguindo diretamente com análise', 'INFO');
             
             // ETAPA 1: Capturar a tela
-            addLog('📸 [RUNANALYSIS] Iniciando captura de tela para análise...', 'INFO');
+            logToSystem('📸 [RUNANALYSIS] Iniciando captura de tela para análise...', 'INFO');
             let dataUrl;
             
             // Verificar se o sistema de captura está disponível
             if (!window.CaptureScreen || typeof window.CaptureScreen.captureForAnalysis !== 'function') {
-                addLog('Sistema de captura não disponível, tentando carregar dinamicamente', 'WARN');
+                logToSystem('Sistema de captura não disponível, tentando carregar dinamicamente', 'WARN');
                 
                 // Tentar carregar o módulo de captura dinamicamente
                 try {
@@ -320,11 +371,11 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     
                     await new Promise((resolve, reject) => {
                         script.onload = () => {
-                            addLog('Módulo de captura carregado dinamicamente', 'SUCCESS');
+                            logToSystem('Módulo de captura carregado dinamicamente', 'SUCCESS');
                             resolve();
                         };
                         script.onerror = (err) => {
-                            addLog(`Erro ao carregar módulo de captura: ${err}`, 'ERROR');
+                            logToSystem(`Erro ao carregar módulo de captura: ${err}`, 'ERROR');
                             reject(new Error('Falha ao carregar módulo de captura'));
                         };
                         document.head.appendChild(script);
@@ -342,7 +393,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             // Agora usar o módulo de captura
             try {
                 dataUrl = await window.CaptureScreen.captureForAnalysis();
-                addLog('✅ [RUNANALYSIS] Captura de tela para análise concluída com sucesso', 'SUCCESS');
+                logToSystem('✅ [RUNANALYSIS] Captura de tela para análise concluída com sucesso', 'SUCCESS');
             } catch (captureError) {
                 throw new Error(`Falha ao capturar tela para análise: ${captureError.message}`);
             }
@@ -357,7 +408,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             window.lastCapturedImageTimestamp = Date.now();
             
             // ETAPA 2: Processar a análise
-            addLog('🧠 [RUNANALYSIS] Iniciando etapa de processamento de análise...', 'INFO');
+            logToSystem('🧠 [RUNANALYSIS] Iniciando etapa de processamento de análise...', 'INFO');
             
             try {
                 // Obter configurações
@@ -365,7 +416,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 
                 // Verificar se está em modo de teste
                 if (settings.testMode) {
-                    addLog('Modo de teste ativado - usando análise simplificada', 'INFO');
+                    logToSystem('Modo de teste ativado - usando análise simplificada', 'INFO');
                     updateStatus('Executando análise de teste...', 'info');
                     
                     // Simular análise com dados mock
@@ -391,7 +442,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         updateSystemOperationalStatus('Pronto');
                     }
                     
-                    addLog(`Análise de teste concluída: ${mockResult.action}`, 'SUCCESS');
+                    logToSystem(`Análise de teste concluída: ${mockResult.action}`, 'SUCCESS');
                     updateStatus(`Análise de teste: ${mockResult.action}`, 'success');
                     
                     // Mostrar modal
@@ -407,10 +458,10 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 
                 // Enviar análise usando o analyze-graph.js diretamente se disponível
                 if (window.AnalyzeGraph && typeof window.AnalyzeGraph.analyzeImage === 'function') {
-                    addLog('🧠 [RUNANALYSIS] Usando módulo AnalyzeGraph para processamento...', 'INFO');
+                    logToSystem('🧠 [RUNANALYSIS] Usando módulo AnalyzeGraph para processamento...', 'INFO');
                     
                     const analysisResult = await window.AnalyzeGraph.analyzeImage(dataUrl, settings);
-                    addLog('🧠 [RUNANALYSIS] AnalyzeGraph.analyzeImage concluído', 'DEBUG');
+                    logToSystem('🧠 [RUNANALYSIS] AnalyzeGraph.analyzeImage concluído', 'DEBUG');
                     
                     // Formatar resultado
                     const formattedResult = {
@@ -434,20 +485,20 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     }
                     
                     // Registrar sucesso
-                    addLog(`Análise concluída com sucesso: ${analysisResult.action}`, 'SUCCESS');
+                    logToSystem(`Análise concluída com sucesso: ${analysisResult.action}`, 'SUCCESS');
                     updateStatus(`Análise: ${analysisResult.action}`, 'success');
                     
                     // Mostrar modal
                     if (typeof showAnalysisModal === 'function') {
                         showAnalysisModal(analysisResult);
                     } else {
-                        addLog('Função showAnalysisModal não disponível', 'WARN');
+                        logToSystem('Função showAnalysisModal não disponível', 'WARN');
                     }
                     
                     return formattedResult;
                 } else {
                     // Se o módulo não estiver disponível, tentar carregar
-                    addLog('Módulo AnalyzeGraph não disponível, tentando carregar dinamicamente', 'WARN');
+                    logToSystem('Módulo AnalyzeGraph não disponível, tentando carregar dinamicamente', 'WARN');
                     
                     try {
                         // Tentar carregar o módulo
@@ -456,11 +507,11 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         
                         await new Promise((resolve, reject) => {
                             analyzeScript.onload = () => {
-                                addLog('Módulo AnalyzeGraph carregado dinamicamente', 'SUCCESS');
+                                logToSystem('Módulo AnalyzeGraph carregado dinamicamente', 'SUCCESS');
                                 resolve();
                             };
                             analyzeScript.onerror = (err) => {
-                                addLog(`Erro ao carregar módulo de análise: ${err}`, 'ERROR');
+                                logToSystem(`Erro ao carregar módulo de análise: ${err}`, 'ERROR');
                                 reject(new Error('Falha ao carregar módulo de análise'));
                             };
                             document.head.appendChild(analyzeScript);
@@ -496,14 +547,14 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         }
                         
                         // Registrar sucesso
-                        addLog(`Análise concluída com sucesso: ${analysisResult.action}`, 'SUCCESS');
+                        logToSystem(`Análise concluída com sucesso: ${analysisResult.action}`, 'SUCCESS');
                         updateStatus(`Análise: ${analysisResult.action}`, 'success');
                         
                         // Mostrar modal
                         if (typeof showAnalysisModal === 'function') {
                             showAnalysisModal(analysisResult);
                         } else {
-                            addLog('Função showAnalysisModal não disponível', 'WARN');
+                            logToSystem('Função showAnalysisModal não disponível', 'WARN');
                         }
                         
                         return formattedResult;
@@ -512,7 +563,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     }
                 }
             } catch (analysisError) {
-                addLog(`Erro no processamento da análise: ${analysisError.message}`, 'ERROR');
+                logToSystem(`Erro no processamento da análise: ${analysisError.message}`, 'ERROR');
                 updateStatus('Erro ao analisar o gráfico', 'error');
                 throw analysisError;
             }
@@ -530,7 +581,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 updateStatus('Erro ao analisar o gráfico', 'error');
             }
         } catch (error) {
-            addLog(`Erro ao executar análise na aba: ${error.message}`, 'ERROR');
+            logToSystem(`Erro ao executar análise na aba: ${error.message}`, 'ERROR');
             updateStatus('Erro ao executar análise', 'error');
         }
     };
@@ -543,7 +594,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     const updateCurrentSettings = (settings) => {
         // Verificar se temos as configurações
         if (!settings) {
-            addLog('Não foi possível atualizar configurações na UI: configurações ausentes', 'WARN');
+            logToSystem('Não foi possível atualizar configurações na UI: configurações ausentes', 'WARN');
             return;
         }
         
@@ -560,18 +611,18 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         if (!indexUI.currentTime) missingElements.push('current-time');
         
         if (missingElements.length > 0) {
-            addLog(`Elementos da UI não encontrados: ${missingElements.join(', ')}`, 'WARN');
+            logToSystem(`Elementos da UI não encontrados: ${missingElements.join(', ')}`, 'WARN');
         }
 
         try {
-            addLog(`Atualizando UI com novas configurações: ${JSON.stringify(settings)}`, 'DEBUG');
+            logToSystem(`Atualizando UI com novas configurações: ${JSON.stringify(settings)}`, 'DEBUG');
             
             // Atualizar valores de lucro diário e stop loss
             if (indexUI.dailyProfit && typeof settings.dailyProfit !== 'undefined') {
                 indexUI.dailyProfit.value = settings.dailyProfit;
                 if (indexUI.currentProfit) {
                     indexUI.currentProfit.textContent = `R$ ${settings.dailyProfit}`;
-                    addLog(`currentProfit atualizado para: R$ ${settings.dailyProfit}`, 'DEBUG');
+                    logToSystem(`currentProfit atualizado para: R$ ${settings.dailyProfit}`, 'DEBUG');
                 }
             }
             
@@ -579,7 +630,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 indexUI.stopLoss.value = settings.stopLoss;
                 if (indexUI.currentStop) {
                     indexUI.currentStop.textContent = `R$ ${settings.stopLoss}`;
-                    addLog(`currentStop atualizado para: R$ ${settings.stopLoss}`, 'DEBUG');
+                    logToSystem(`currentStop atualizado para: R$ ${settings.stopLoss}`, 'DEBUG');
                 }
             }
             
@@ -588,7 +639,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 indexUI.entryValue.value = settings.tradeValue;
                 if (indexUI.currentValue) {
                     indexUI.currentValue.textContent = `R$ ${settings.tradeValue}`;
-                    addLog(`currentValue atualizado para: R$ ${settings.tradeValue}`, 'DEBUG');
+                    logToSystem(`currentValue atualizado para: R$ ${settings.tradeValue}`, 'DEBUG');
                 }
             }
             
@@ -596,7 +647,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 indexUI.timePeriod.value = settings.tradeTime;
                 if (indexUI.currentTime) {
                     indexUI.currentTime.textContent = `${settings.tradeTime} min`;
-                    addLog(`currentTime atualizado para: ${settings.tradeTime} min`, 'DEBUG');
+                    logToSystem(`currentTime atualizado para: ${settings.tradeTime} min`, 'DEBUG');
                 }
             }
             
@@ -606,11 +657,12 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             
             if (indexUI.toggleGale) {
                 indexUI.toggleGale.checked = galeEnabled;
-                addLog(`toggleGale atualizado para: ${galeEnabled}`, 'DEBUG');
+                logToSystem(`toggleGale atualizado para: ${galeEnabled}`, 'DEBUG');
             }
             
             // Atualizar status do Gale na UI
-            updateGaleStatusUI(galeEnabled, galeLevel, settings.galeProfit);
+                                        // Atualizar status do Gale na UI
+            updateGaleStatusUI(galeEnabled, galeLevel);
             
             // Atualizar payout mínimo no dashboard
             updateMinPayoutDisplay(settings);
@@ -645,14 +697,14 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 // Atualizar status do Gale novamente para garantir
                 const galeEnabled = settings.gale?.active ?? settings.galeEnabled ?? false;
                 const galeLevel = settings.gale?.level ?? settings.galeLevel ?? '20%';
-                updateGaleStatusUI(galeEnabled, galeLevel, settings.galeProfit);
+                updateGaleStatusUI(galeEnabled, galeLevel);
                 
-                addLog('Verificação adicional de atualização da UI realizada', 'DEBUG');
+                logToSystem('Verificação adicional de atualização da UI realizada', 'DEBUG');
             }, 100);
             
-            addLog('Configurações atualizadas na UI com sucesso', 'SUCCESS');
+            logToSystem('Configurações atualizadas na UI com sucesso', 'SUCCESS');
         } catch (error) {
-            addLog(`Erro ao atualizar configurações na UI: ${error.message}`, 'ERROR');
+            logToSystem(`Erro ao atualizar configurações na UI: ${error.message}`, 'ERROR');
         }
     };
 
@@ -664,9 +716,9 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         if (automationStatusElement) {
             automationStatusElement.textContent = isActive ? 'Ativado' : 'Desativado';
             automationStatusElement.className = 'status-value';
-            addLog(`Status de automação atualizado na UI: ${isActive ? 'Ativo' : 'Inativo'}`, 'DEBUG');
+            logToSystem(`Status de automação atualizado na UI: ${isActive ? 'Ativo' : 'Inativo'}`, 'DEBUG');
         } else {
-            addLog('Elemento automation-status não encontrado na UI', 'WARN');
+            logToSystem('Elemento automation-status não encontrado na UI', 'WARN');
         }
         
         // Atualizar LED de automação
@@ -677,7 +729,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     };
 
     // Função para atualizar o status de Gale na UI
-    const updateGaleStatusUI = (galeEnabled, galeLevel, galeProfit) => {
+    const updateGaleStatusUI = (galeEnabled, galeLevel) => {
         const galeStatusElement = document.querySelector('#gale-status');
         const galeLed = document.querySelector('#gale-led');
         const galeProfitElement = document.querySelector('#gale-profit-percent');
@@ -685,30 +737,35 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         if (galeStatusElement) {
             if (galeEnabled) {
                 galeStatusElement.textContent = 'Ativado';
-                addLog(`Status de Gale atualizado na UI: Ativo (Nível ${galeLevel})`, 'DEBUG');
+                logToSystem(`Status de Gale atualizado na UI: Ativo (Nível ${galeLevel})`, 'DEBUG');
             } else {
                 galeStatusElement.textContent = 'Desativado';
-                addLog('Status de Gale atualizado na UI: Inativo', 'DEBUG');
+                logToSystem('Status de Gale atualizado na UI: Inativo', 'DEBUG');
             }
             galeStatusElement.className = 'status-value';
         } else {
-            addLog('Elemento gale-status não encontrado na UI', 'WARN');
+            logToSystem('Elemento gale-status não encontrado na UI', 'WARN');
         }
         
         // Atualizar porcentagem de lucro do Gale
         if (galeProfitElement) {
-            if (galeEnabled && galeProfit) {
-                // Extrair apenas o número da porcentagem (ex: "25%" -> "25")
-                const profitNumber = galeProfit.toString().replace(/[^\d]/g, '');
+            if (galeEnabled && galeLevel) {
+                // Extrair o número da porcentagem do galeLevel (ex: "25%" -> "25")
+                const profitNumber = galeLevel.toString().replace(/[^\d]/g, '');
                 if (profitNumber && profitNumber !== '0') {
                     galeProfitElement.textContent = `lucro ${profitNumber}%`;
                     galeProfitElement.style.display = 'inline';
+                    logToSystem(`Porcentagem de lucro do Gale exibida: ${profitNumber}%`, 'DEBUG');
                 } else {
                     galeProfitElement.style.display = 'none';
+                    logToSystem('Porcentagem de lucro do Gale oculta (valor zero ou inválido)', 'DEBUG');
                 }
             } else {
                 galeProfitElement.style.display = 'none';
+                logToSystem('Porcentagem de lucro do Gale oculta (Gale desativado ou nível inválido)', 'DEBUG');
             }
+        } else {
+            logToSystem('Elemento gale-profit-percent não encontrado na UI', 'WARN');
         }
         
         // Atualizar LED de Gale
@@ -725,7 +782,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     const updateGaleLevelDisplay = () => {
         const currentGaleElement = document.querySelector('#current-gale');
         if (!currentGaleElement) {
-            addLog('Elemento current-gale não encontrado na UI', 'WARN');
+            logToSystem('Elemento current-gale não encontrado na UI', 'WARN');
             return;
         }
 
@@ -736,13 +793,13 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 if (galeStatus) {
                     const level = galeStatus.level || 0;
                     currentGaleElement.textContent = level.toString().padStart(2, '0');
-                    addLog(`Nível de Gale atualizado no dashboard: ${level}`, 'DEBUG');
+                    logToSystem(`Nível de Gale atualizado no dashboard: ${level}`, 'DEBUG');
                 } else {
                     currentGaleElement.textContent = '00';
-                    addLog('Status do Gale não disponível, definindo nível como 00', 'DEBUG');
+                    logToSystem('Status do Gale não disponível, definindo nível como 00', 'DEBUG');
                 }
             } catch (error) {
-                addLog(`Erro ao obter status do Gale: ${error.message}`, 'ERROR');
+                logToSystem(`Erro ao obter status do Gale: ${error.message}`, 'ERROR');
                 currentGaleElement.textContent = '00';
             }
         } else {
@@ -752,7 +809,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     action: 'GET_GALE_STATUS'
                 }, (response) => {
                     if (chrome.runtime.lastError) {
-                        addLog(`Erro ao obter status do Gale via runtime: ${chrome.runtime.lastError.message}`, 'ERROR');
+                        logToSystem(`Erro ao obter status do Gale via runtime: ${chrome.runtime.lastError.message}`, 'ERROR');
                         currentGaleElement.textContent = '00';
                         return;
                     }
@@ -760,14 +817,14 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     if (response && response.success && response.data) {
                         const level = response.data.level || 0;
                         currentGaleElement.textContent = level.toString().padStart(2, '0');
-                        addLog(`Nível de Gale atualizado via runtime: ${level}`, 'DEBUG');
+                        logToSystem(`Nível de Gale atualizado via runtime: ${level}`, 'DEBUG');
                     } else {
                         currentGaleElement.textContent = '00';
-                        addLog('Status do Gale não disponível via runtime, definindo nível como 00', 'DEBUG');
+                        logToSystem('Status do Gale não disponível via runtime, definindo nível como 00', 'DEBUG');
                     }
                 });
             } catch (error) {
-                addLog(`Erro ao solicitar status do Gale via runtime: ${error.message}`, 'ERROR');
+                logToSystem(`Erro ao solicitar status do Gale via runtime: ${error.message}`, 'ERROR');
                 currentGaleElement.textContent = '00';
             }
         }
@@ -777,20 +834,20 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     const updateMinPayoutDisplay = (config) => {
         const minPayoutElement = document.querySelector('#min-payout');
         if (!minPayoutElement) {
-            addLog('Elemento min-payout não encontrado na UI', 'WARN');
+            logToSystem('Elemento min-payout não encontrado na UI', 'WARN');
             return;
         }
 
         const minPayout = config.minPayout || 80;
         minPayoutElement.textContent = `${minPayout}%`;
-        addLog(`Payout mínimo atualizado no dashboard: ${minPayout}%`, 'DEBUG');
+        logToSystem(`Payout mínimo atualizado no dashboard: ${minPayout}%`, 'DEBUG');
     };
 
     // Função para atualizar ganhos e perdas no dashboard
     const updateProfitLossDisplay = () => {
         const lastProfitElement = document.querySelector('#last-profit');
         if (!lastProfitElement) {
-            addLog('Elemento last-profit não encontrado na UI', 'WARN');
+            logToSystem('Elemento last-profit não encontrado na UI', 'WARN');
             return;
         }
 
@@ -817,9 +874,9 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             const displayValue = totalProfit >= 0 ? `+R$ ${formattedProfit}` : `-R$ ${Math.abs(totalProfit).toFixed(2)}`;
             lastProfitElement.textContent = displayValue;
             
-            addLog(`Ganhos e perdas atualizados no dashboard: ${displayValue}`, 'DEBUG');
+            logToSystem(`Ganhos e perdas atualizados no dashboard: ${displayValue}`, 'DEBUG');
         } catch (error) {
-            addLog(`Erro ao calcular ganhos e perdas: ${error.message}`, 'ERROR');
+            logToSystem(`Erro ao calcular ganhos e perdas: ${error.message}`, 'ERROR');
             lastProfitElement.textContent = 'R$ 0,00';
         }
     };
@@ -844,7 +901,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         if (countdown) {
             countdown.textContent = `${tradeTime} minutos`;
             // Adicionar log para a atualização do contador
-            addLog(`Contador atualizado para ${tradeTime} minutos`, 'INFO');
+            logToSystem(`Contador atualizado para ${tradeTime} minutos`, 'INFO');
         }
     };
 
@@ -859,7 +916,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         updateAutomationStatus(true, false);
         updateTradeCountdown();
         
-        addLog('Contador de automação iniciado', 'INFO');
+        logToSystem('Contador de automação iniciado', 'INFO');
 
         const interval = setInterval(() => {
             tradeTime--;
@@ -870,14 +927,14 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 isAutomationRunning = false;
                 updateAutomationStatus(false, false);
                 updateStatus('Automação concluída', 'success');
-                addLog('Automação concluída: contador chegou a zero', 'SUCCESS');
+                logToSystem('Automação concluída: contador chegou a zero', 'SUCCESS');
             }
         }, 1000);
     };
 
     // Função para cancelar operações (pode ser chamada de qualquer lugar)
     const cancelCurrentOperation = (reason = 'Cancelado pelo usuário') => {
-        addLog(`Cancelando operação atual: ${reason}`, 'INFO');
+        logToSystem(`Cancelando operação atual: ${reason}`, 'INFO');
         
         // *** CORREÇÃO: Usar chrome.runtime ao invés de window.StateManager ***
         chrome.runtime.sendMessage({
@@ -886,7 +943,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             timestamp: Date.now()
         }, (response) => {
             if (response && response.success) {
-                addLog(`Cancelamento processado: ${reason}`, 'SUCCESS');
+                logToSystem(`Cancelamento processado: ${reason}`, 'SUCCESS');
                 
                 // Atualizar status local
                 updateSystemOperationalStatus('Pronto');
@@ -895,7 +952,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 const automationActive = response.automationActive || false;
                 updateUserControlsVisibility(automationActive, false);
             } else {
-                addLog(`Erro no cancelamento: ${response ? response.error : 'Sem resposta'}`, 'ERROR');
+                logToSystem(`Erro no cancelamento: ${response ? response.error : 'Sem resposta'}`, 'ERROR');
             }
         });
         
@@ -903,7 +960,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         if (window.TradeManager?.History) {
             window.TradeManager.History.stopMonitoring()
                 .catch(error => {
-                    addLog(`Erro ao parar monitoramento: ${error.message}`, 'ERROR');
+                    logToSystem(`Erro ao parar monitoramento: ${error.message}`, 'ERROR');
                 });
         }
         
@@ -911,16 +968,16 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         if (typeof automationTimeout !== 'undefined' && automationTimeout) {
             clearTimeout(automationTimeout);
             automationTimeout = null;
-            addLog('Temporizador de automação cancelado', 'DEBUG');
+            logToSystem('Temporizador de automação cancelado', 'DEBUG');
         }
         
         // Cancelar monitoramento de payout
         if (window.PayoutController && typeof window.PayoutController.cancelPayoutMonitoring === 'function') {
             window.PayoutController.cancelPayoutMonitoring();
-            addLog('Monitoramento de payout cancelado via PayoutController', 'DEBUG');
+            logToSystem('Monitoramento de payout cancelado via PayoutController', 'DEBUG');
         } else if (typeof cancelPayoutMonitoring === 'function') {
             cancelPayoutMonitoring();
-            addLog('Monitoramento de payout cancelado via função local', 'DEBUG');
+            logToSystem('Monitoramento de payout cancelado via função local', 'DEBUG');
         }
         
         // *** NOVO: Parar monitoramento contínuo de payout ***
@@ -929,14 +986,14 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 action: 'STOP_PAYOUT_MONITORING',
                 reason: reason
             });
-            addLog('Solicitação de parada do monitoramento contínuo enviada', 'DEBUG');
+            logToSystem('Solicitação de parada do monitoramento contínuo enviada', 'DEBUG');
         } catch (error) {
-            addLog(`Erro ao solicitar parada do monitoramento contínuo: ${error.message}`, 'WARN');
+            logToSystem(`Erro ao solicitar parada do monitoramento contínuo: ${error.message}`, 'WARN');
         }
         
         // Atualizar status
         updateStatus(reason, 'info');
-        addLog(`Operação cancelada: ${reason}`, 'SUCCESS');
+        logToSystem(`Operação cancelada: ${reason}`, 'SUCCESS');
     };
 
     // Expor função globalmente para uso em outros módulos
@@ -945,18 +1002,18 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     // Função para capturar e analisar - delegada para módulo de captura
     async function captureAndAnalyze() {
         try {
-            addLog('Iniciando processo integrado de captura e análise...', 'INFO');
+            logToSystem('Iniciando processo integrado de captura e análise...', 'INFO');
             
             // Usar o módulo de captura existente
                 if (window.CaptureScreen && typeof window.CaptureScreen.captureForAnalysis === 'function') {
                     await window.CaptureScreen.captureForAnalysis();
-                addLog('Captura realizada com sucesso pelo módulo de captura', 'SUCCESS');
+                logToSystem('Captura realizada com sucesso pelo módulo de captura', 'SUCCESS');
                     await runAnalysis();
-                addLog('Processo integrado de captura e análise concluído com sucesso', 'SUCCESS');
+                logToSystem('Processo integrado de captura e análise concluído com sucesso', 'SUCCESS');
                 updateStatus('Captura e análise realizadas com sucesso', 'success');
                 } else {
                 // Fallback para método alternativo
-                addLog('Módulo de captura não disponível, usando método alternativo', 'WARN');
+                logToSystem('Módulo de captura não disponível, usando método alternativo', 'WARN');
                     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
                     const response = await chrome.tabs.sendMessage(tab.id, { action: 'CAPTURE_SCREENSHOT' });
                     if (response && response.success) {
@@ -967,7 +1024,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 }
             }
         } catch (error) {
-            addLog(`Erro ao capturar e analisar: ${error.message}`, 'ERROR');
+            logToSystem(`Erro ao capturar e analisar: ${error.message}`, 'ERROR');
             updateStatus('Erro ao capturar e analisar', 'error');
         }
     }
@@ -988,23 +1045,23 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             elements.startOperation.addEventListener('click', async () => {
                 const currentState = window.StateManager.getAutomationState();
                 if (currentState && currentState.isRunning) {
-                    addLog('Automação já está em execução, botão não deveria estar visível.', 'WARN');
+                    logToSystem('Automação já está em execução, botão não deveria estar visível.', 'WARN');
                     return;
                 }
                 
-                addLog('Botão Iniciar Automático clicado', 'INFO');
+                logToSystem('Botão Iniciar Automático clicado', 'INFO');
                 // Inicia a automação através do StateManager
                 if (window.AutomationSystem) {
                     window.AutomationSystem.start();
                 } else {
-                    addLog('Sistema de Automação não encontrado', 'ERROR');
+                    logToSystem('Sistema de Automação não encontrado', 'ERROR');
                 }
             });
         }
         
         if (elements.cancelOperation) {
             elements.cancelOperation.addEventListener('click', () => {
-                addLog('Cancelando operação automática...', 'INFO');
+                logToSystem('Cancelando operação automática...', 'INFO');
                 updateStatus('Cancelando operação...', 'warn');
                 
                 // Limpar estado de operação no StateManager
@@ -1024,14 +1081,14 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     if (window.TradeManager?.History) {
                             window.TradeManager.History.stopMonitoring()
                                 .then(() => {
-                            addLog('Operação automática cancelada com sucesso', 'SUCCESS');
+                            logToSystem('Operação automática cancelada com sucesso', 'SUCCESS');
                             updateStatus('Operação cancelada pelo usuário', 'info');
                             
                             // *** CORREÇÃO: Atualizar status do sistema ***
                             updateSystemOperationalStatus('Pronto');
                                 })
                                 .catch(error => {
-                            addLog(`Erro ao cancelar operação: ${error.message}`, 'ERROR');
+                            logToSystem(`Erro ao cancelar operação: ${error.message}`, 'ERROR');
                             updateStatus('Erro ao cancelar operação', 'error');
                             
                             // *** CORREÇÃO: Mesmo em caso de erro, voltar para Pronto ***
@@ -1039,11 +1096,11 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                                 });
                         } else {
                     // Fallback para cancelamento direto
-                        addLog('Cancelando operação via método fallback...', 'INFO');
+                        logToSystem('Cancelando operação via método fallback...', 'INFO');
                     if (typeof automationTimeout !== 'undefined' && automationTimeout) {
                             clearTimeout(automationTimeout);
                             automationTimeout = null;
-                            addLog('Temporizador de automação cancelado', 'INFO');
+                            logToSystem('Temporizador de automação cancelado', 'INFO');
                         }
                         updateStatus('Operação cancelada pelo usuário', 'info');
                         
@@ -1054,10 +1111,10 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         // Cancelar qualquer monitoramento de payout em andamento
         if (window.PayoutController && typeof window.PayoutController.cancelPayoutMonitoring === 'function') {
             window.PayoutController.cancelPayoutMonitoring();
-            addLog('Monitoramento de payout cancelado via PayoutController', 'DEBUG');
+            logToSystem('Monitoramento de payout cancelado via PayoutController', 'DEBUG');
         } else if (typeof cancelPayoutMonitoring === 'function') {
             cancelPayoutMonitoring();
-            addLog('Monitoramento de payout cancelado via função local', 'DEBUG');
+            logToSystem('Monitoramento de payout cancelado via função local', 'DEBUG');
         }
             });
         }
@@ -1073,7 +1130,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 if (window.Navigation) {
                     window.Navigation.openPage('logs');
                 } else {
-                    addLog('Navigation não está disponível', 'ERROR');
+                    logToSystem('Navigation não está disponível', 'ERROR');
                 }
             });
         }
@@ -1083,7 +1140,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 if (window.Navigation) {
                     window.Navigation.openPage('settings');
                 } else {
-                    addLog('Navigation não está disponível', 'ERROR');
+                    logToSystem('Navigation não está disponível', 'ERROR');
                 }
             });
         }
@@ -1095,19 +1152,19 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         initLogging();
         
         // Adicionar log de inicialização
-        addLog('Interface principal inicializada', 'INFO');
+        logToSystem('Interface principal inicializada', 'INFO');
         
         // Tentar obter a versão do Manifest e mostrar no rodapé
         try {
             const manifest = chrome.runtime.getManifest();
             if (indexUI.version) {
                 indexUI.version.textContent = manifest.version || '1.0.0';
-                addLog(`Versão do Trade Manager Pro: ${manifest.version}`, 'INFO');
+                logToSystem(`Versão do Trade Manager Pro: ${manifest.version}`, 'INFO');
             }
-            addLog(`Sistema Trade Manager Pro v${manifest.version} inicializado`, 'INFO');
-            addLog(`Ambiente: ${manifest.name} / ${navigator.userAgent}`, 'DEBUG');
+            logToSystem(`Sistema Trade Manager Pro v${manifest.version} inicializado`, 'INFO');
+            logToSystem(`Ambiente: ${manifest.name} / ${navigator.userAgent}`, 'DEBUG');
         } catch (e) {
-            addLog('Sistema Trade Manager Pro inicializado (versão desconhecida)', 'INFO');
+            logToSystem('Sistema Trade Manager Pro inicializado (versão desconhecida)', 'INFO');
             if (indexUI.version) {
                 indexUI.version.textContent = '1.0.0';
             }
@@ -1127,7 +1184,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         
         // Configurar event listeners
         addEventListeners();
-        addLog('Event listeners configurados com sucesso', 'DEBUG');
+        logToSystem('Event listeners configurados com sucesso', 'DEBUG');
         
         // Configurar os botões de teste do sistema de Gale
         // setupGaleTestButtons(); // Migrado para dev-tools.js
@@ -1138,10 +1195,10 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         // Inicializar DevTools se devMode ativo
         if (window.StateManager) {
             const config = window.StateManager.getConfig();
-            addLog(`Configuração carregada - devMode: ${config?.devMode}`, 'DEBUG');
+            logToSystem(`Configuração carregada - devMode: ${config?.devMode}`, 'DEBUG');
             
             if (config && config.devMode) {
-                addLog('Modo desenvolvedor ativo, verificando DevTools...', 'INFO');
+                logToSystem('Modo desenvolvedor ativo, verificando DevTools...', 'INFO');
                 
                 // Inicializar DevTools via chrome.runtime (seguindo arquitetura)
                 try {
@@ -1149,19 +1206,19 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         action: 'INIT_DEV_TOOLS'
                     }, (response) => {
                         if (chrome.runtime.lastError) {
-                            addLog(`Erro ao inicializar DevTools: ${chrome.runtime.lastError.message}`, 'WARN');
+                            logToSystem(`Erro ao inicializar DevTools: ${chrome.runtime.lastError.message}`, 'WARN');
                         } else if (response && response.success) {
-                            addLog('DevTools inicializado via chrome.runtime', 'SUCCESS');
+                            logToSystem('DevTools inicializado via chrome.runtime', 'SUCCESS');
                         }
                     });
                 } catch (error) {
-                    addLog(`Erro ao enviar mensagem de inicialização para DevTools: ${error.message}`, 'WARN');
+                    logToSystem(`Erro ao enviar mensagem de inicialização para DevTools: ${error.message}`, 'WARN');
                 }
                 
                 // Atualizar visibilidade do painel de desenvolvimento na inicialização
                 updateDevPanelVisibility(config.devMode);
             } else {
-                addLog('Modo desenvolvedor não ativo', 'DEBUG');
+                logToSystem('Modo desenvolvedor não ativo', 'DEBUG');
                 // Garantir que o painel esteja oculto na inicialização
                 updateDevPanelVisibility(false);
             }
@@ -1185,12 +1242,12 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     updateMinPayoutDisplay(config);
                     updateProfitLossDisplay();
                     updateGaleLevelDisplay();
-                    addLog('Dashboard atualizado com configurações iniciais', 'DEBUG');
+                    logToSystem('Dashboard atualizado com configurações iniciais', 'DEBUG');
                 }
                 
                 if (operationalStatus) {
                     updateSystemOperationalStatus(operationalStatus.status);
-                    addLog(`Status operacional carregado: ${operationalStatus.status}`, 'DEBUG');
+                    logToSystem(`Status operacional carregado: ${operationalStatus.status}`, 'DEBUG');
                 }
             }
         }, 1500);
@@ -1199,15 +1256,14 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         window.addEventListener('message', (event) => {
             // Verificar se é uma mensagem de atualização de configurações
             if (event.data && event.data.action === 'configUpdated' && event.data.settings) {
-                addLog('Recebida mensagem direta de atualização de configurações', 'INFO');
-                addLog(`Dados recebidos: ${JSON.stringify(event.data.settings)}`, 'DEBUG');
+                logToSystem('Recebida mensagem direta de atualização de configurações', 'INFO');
+                logToSystem(`Dados recebidos: ${JSON.stringify(event.data.settings)}`, 'DEBUG');
                 
                 const config = event.data.settings;
                 // Atualizar campos da página principal
                 updateCurrentSettings({
                     galeEnabled: config.gale?.active || false,
                     galeLevel: config.gale?.level || '1.2x',
-                    galeProfit: config.gale?.level || '20%', // Adicionando galeProfit
                     dailyProfit: config.dailyProfit || 150,
                     stopLoss: config.stopLoss || 30,
                     tradeValue: config.value || 10,
@@ -1220,17 +1276,17 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     updateMinPayoutDisplay(config);
                     updateProfitLossDisplay();
                     updateGaleLevelDisplay();
-                    addLog('Dashboard forçado a atualizar após receber configurações', 'DEBUG');
+                    logToSystem('Dashboard forçado a atualizar após receber configurações', 'DEBUG');
                 }, 100);
                                 
                 updateStatus('Configurações atualizadas via mensagem direta', 'success', 2000);
-                addLog('Configurações atualizadas com sucesso via postMessage', 'SUCCESS');
+                logToSystem('Configurações atualizadas com sucesso via postMessage', 'SUCCESS');
             }
         });
-        addLog('Listener de mensagens diretas configurado com sucesso', 'INFO');
+        logToSystem('Listener de mensagens diretas configurado com sucesso', 'INFO');
         
         updateStatus('Sistema iniciado com sucesso!', 'success');
-        addLog('Interface principal carregada e pronta', 'SUCCESS');
+        logToSystem('Interface principal carregada e pronta', 'SUCCESS');
         
         // Verificar conexão com a extensão e processar operações pendentes
         checkExtensionConnection();
@@ -1239,13 +1295,13 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         // testGeminiConnection() // Migrado para dev-tools.js
         //     .then(connected => {
         //         if (connected) {
-        //             addLog('API Gemini conectada com sucesso', 'SUCCESS');
+        //             logToSystem('API Gemini conectada com sucesso', 'SUCCESS');
         //         } else {
-        //             addLog('Não foi possível conectar à API Gemini', 'WARN');
+        //             logToSystem('Não foi possível conectar à API Gemini', 'WARN');
         //         }
         //     })
         //     .catch(err => {
-        //         addLog(`Erro ao testar conexão com API: ${err.message}`, 'ERROR');
+        //         logToSystem(`Erro ao testar conexão com API: ${err.message}`, 'ERROR');
         //     });
     }
 
@@ -1269,7 +1325,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     function clearOldConfig() {
         return new Promise((resolve) => {
             chrome.storage.sync.remove(['userConfig'], () => {
-                addLog('Configurações antigas removidas do storage.');
+                logToSystem('Configurações antigas removidas do storage.');
                 resolve();
             });
         });
@@ -1278,7 +1334,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     // Função para carregar configurações
     function loadConfig() {
         return new Promise((resolve) => {
-            addLog('Iniciando carregamento das configurações...', 'INFO');
+            logToSystem('Iniciando carregamento das configurações...', 'INFO');
             updateStatus('Carregando configurações...', 'info');
 
             // Aguardar StateManager estar disponível
@@ -1291,13 +1347,13 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         attempts++;
                         
                         if (window.StateManager && typeof window.StateManager.getConfig === 'function') {
-                            addLog('StateManager encontrado e disponível para loadConfig', 'SUCCESS');
+                            logToSystem('StateManager encontrado e disponível para loadConfig', 'SUCCESS');
                             resolveWait(true);
                         } else if (attempts >= maxAttempts) {
-                            addLog('StateManager não encontrado após múltiplas tentativas em loadConfig', 'WARN');
+                            logToSystem('StateManager não encontrado após múltiplas tentativas em loadConfig', 'WARN');
                             resolveWait(false);
                         } else {
-                            addLog(`Aguardando StateManager em loadConfig... tentativa ${attempts}/${maxAttempts}`, 'DEBUG');
+                            logToSystem(`Aguardando StateManager em loadConfig... tentativa ${attempts}/${maxAttempts}`, 'DEBUG');
                             setTimeout(checkStateManager, 100);
                         }
                     };
@@ -1309,22 +1365,21 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             // Utilizar o StateManager para carregar as configurações
             waitForStateManager().then(stateManagerAvailable => {
                 if (stateManagerAvailable) {
-                    addLog('Utilizando StateManager para carregar configurações', 'INFO');
+                    logToSystem('Utilizando StateManager para carregar configurações', 'INFO');
                     
                     try {
                         const config = window.StateManager.getConfig();
                         
                         if (config) {
-                            addLog('Configurações carregadas via StateManager', 'SUCCESS');
+                            logToSystem('Configurações carregadas via StateManager', 'SUCCESS');
                             
                             // Log específico para status de automação e gale
-                            addLog(`Status carregado - Gale: ${config.gale?.active} (${config.gale?.level}), Automação: ${config.automation}`, 'DEBUG');
+                            logToSystem(`Status carregado - Gale: ${config.gale?.active} (${config.gale?.level}), Automação: ${config.automation}`, 'DEBUG');
                             
                             // Atualizar campos da página principal
                             updateCurrentSettings({
                                 galeEnabled: config.gale?.active || false,
                                 galeLevel: config.gale?.level || '20%',
-                                galeProfit: config.gale?.level || '20%', // Adicionando galeProfit
                                 dailyProfit: config.dailyProfit || 150,
                                 stopLoss: config.stopLoss || 30,
                                 tradeValue: config.value || 10,
@@ -1343,19 +1398,19 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                             updateStatus('Configurações carregadas com sucesso', 'success');
                             resolve(config);
                         } else {
-                            addLog('StateManager retornou configuração vazia, usando fallback', 'WARN');
+                            logToSystem('StateManager retornou configuração vazia, usando fallback', 'WARN');
                             loadConfigLegacy().then(config => resolve(config));
                         }
                     } catch (error) {
-                        addLog(`Erro ao acessar StateManager: ${error.message}`, 'ERROR');
+                        logToSystem(`Erro ao acessar StateManager: ${error.message}`, 'ERROR');
                         loadConfigLegacy().then(config => resolve(config));
                     }
                                  } else {
-                     addLog('StateManager não disponível, usando método legacy', 'WARN');
+                     logToSystem('StateManager não disponível, usando método legacy', 'WARN');
                      loadConfigLegacy().then(config => resolve(config));
                  }
              }).catch(error => {
-                addLog(`Erro ao aguardar StateManager: ${error.message}`, 'ERROR');
+                logToSystem(`Erro ao aguardar StateManager: ${error.message}`, 'ERROR');
                 loadConfigLegacy().then(config => resolve(config));
             });
         });
@@ -1364,22 +1419,22 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     // Método legacy para carregar configurações (para compatibilidade)
     function loadConfigLegacy() {
         return new Promise((resolve, reject) => {
-            addLog('Utilizando método legacy para carregar configurações', 'INFO');
+            logToSystem('Utilizando método legacy para carregar configurações', 'INFO');
             
             chrome.storage.sync.get(['userConfig'], (result) => {
-                addLog(`Resultado do storage: ${JSON.stringify(result)}`, 'DEBUG');
+                logToSystem(`Resultado do storage: ${JSON.stringify(result)}`, 'DEBUG');
                 
                 if (!result.userConfig || Object.keys(result.userConfig).length === 0) {
-                    addLog('Configuração do usuário não encontrada ou vazia. Usando configuração padrão.', 'INFO');
+                    logToSystem('Configuração do usuário não encontrada ou vazia. Usando configuração padrão.', 'INFO');
                     updateStatus('Usando configurações padrão...', 'info');
                     
                     // Se não houver configuração do usuário, usa a padrão
                     chrome.storage.sync.set({ userConfig: indexDefaultConfig }, () => {
-                        addLog('Configurações padrão salvas no storage.', 'INFO');
+                        logToSystem('Configurações padrão salvas no storage.', 'INFO');
                         updateStatus('Configurações padrão salvas', 'success');
                         
                         // Log das configurações padrão sendo aplicadas
-                        addLog(`Aplicando configurações padrão - Gale: ${indexDefaultConfig.gale?.active} (${indexDefaultConfig.gale?.level}), Automação: ${indexDefaultConfig.automation}`, 'DEBUG');
+                        logToSystem(`Aplicando configurações padrão - Gale: ${indexDefaultConfig.gale?.active} (${indexDefaultConfig.gale?.level}), Automação: ${indexDefaultConfig.automation}`, 'DEBUG');
                         
                         // Atualizar campos da página principal
                         updateCurrentSettings({
@@ -1400,11 +1455,11 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         result.userConfig.period = parseInt(result.userConfig.period.replace(/[^0-9]/g, '')) || 1;
                     }
                     
-                    addLog('Configuração do usuário encontrada e carregada.', 'INFO');
+                    logToSystem('Configuração do usuário encontrada e carregada.', 'INFO');
                     updateStatus('Configurações do usuário carregadas', 'success');
                     
                     // Log das configurações do usuário sendo aplicadas
-                    addLog(`Aplicando configurações do usuário - Gale: ${result.userConfig.gale?.active} (${result.userConfig.gale?.level}), Automação: ${result.userConfig.automation}`, 'DEBUG');
+                    logToSystem(`Aplicando configurações do usuário - Gale: ${result.userConfig.gale?.active} (${result.userConfig.gale?.level}), Automação: ${result.userConfig.automation}`, 'DEBUG');
                     
                     // Atualizar campos da página principal
                     updateCurrentSettings({
@@ -1426,17 +1481,16 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     // Inicialização do StateManager listener
     function initStateManagerListener() {
         if (window.StateManager) {
-            addLog('Registrando listener para StateManager', 'INFO');
+            logToSystem('Registrando listener para StateManager', 'INFO');
             
             // Carregar configurações iniciais imediatamente
             try {
                 const initialConfig = window.StateManager.getConfig();
                 if (initialConfig) {
-                    addLog('Carregando configurações iniciais do StateManager', 'INFO');
+                    logToSystem('Carregando configurações iniciais do StateManager', 'INFO');
                     updateCurrentSettings({
                         galeEnabled: initialConfig.gale?.active || false,
                         galeLevel: initialConfig.gale?.level || '20%',
-                        galeProfit: initialConfig.gale?.level || '20%',
                         dailyProfit: initialConfig.dailyProfit || 150,
                         stopLoss: initialConfig.stopLoss || 30,
                         tradeValue: initialConfig.value || 10,
@@ -1448,7 +1502,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     updateGaleLevelDisplay();
                 }
             } catch (error) {
-                addLog(`Erro ao carregar configurações iniciais: ${error.message}`, 'ERROR');
+                logToSystem(`Erro ao carregar configurações iniciais: ${error.message}`, 'ERROR');
             }
             
             // Registrar listener para atualizações de estado
@@ -1457,18 +1511,17 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 const { state, type, timestamp } = notification;
                 
                 if (type === 'config') {
-                    addLog(`Recebida atualização de configurações do StateManager (${new Date(timestamp).toLocaleTimeString()})`, 'INFO');
+                    logToSystem(`Recebida atualização de configurações do StateManager (${new Date(timestamp).toLocaleTimeString()})`, 'INFO');
                     
                     const config = state.config;
                     if (config) {
                         // Log detalhado das configurações atualizadas
-                        addLog(`Configurações atualizadas - Gale: ${config.gale?.active} (${config.gale?.level}), Automação: ${config.automation}`, 'DEBUG');
+                        logToSystem(`Configurações atualizadas - Gale: ${config.gale?.active} (${config.gale?.level}), Automação: ${config.automation}`, 'DEBUG');
                         
                         // Atualizar campos da página principal
                         updateCurrentSettings({
                             galeEnabled: config.gale?.active || false,
                             galeLevel: config.gale?.level || '1.2x',
-                            galeProfit: config.gale?.level || '20%', // Adicionando galeProfit
                             dailyProfit: config.dailyProfit || 150,
                             stopLoss: config.stopLoss || 30,
                             tradeValue: config.value || 10,
@@ -1483,16 +1536,16 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         updateDevPanelVisibility(config.devMode);
                         
                         // Log específico para debug do painel de desenvolvimento
-                        addLog(`Painel de desenvolvimento - devMode: ${config.devMode}, chamando updateDevPanelVisibility`, 'DEBUG');
+                        logToSystem(`Painel de desenvolvimento - devMode: ${config.devMode}, chamando updateDevPanelVisibility`, 'DEBUG');
                         
                         // Aplicar configurações de modo de teste
                         if (config.testMode) {
-                            addLog('Modo de teste ativado - análises usarão algoritmo simplificado', 'INFO');
+                            logToSystem('Modo de teste ativado - análises usarão algoritmo simplificado', 'INFO');
                         }
                         
                         // Aplicar configurações de modo desenvolvedor
                         if (config.devMode) {
-                            addLog('Modo desenvolvedor ativado - painel de testes disponível', 'INFO');
+                            logToSystem('Modo desenvolvedor ativado - painel de testes disponível', 'INFO');
                             // setupDevAnalysisButton(); // Migrado para dev-tools.js
                         }
                         
@@ -1503,7 +1556,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         if (!config.automation) {
                             const currentState = window.StateManager.getAutomationState();
                             if (currentState.currentOperation) {
-                                addLog('Automação desativada com operação em andamento - cancelando operação', 'WARN');
+                                logToSystem('Automação desativada com operação em andamento - cancelando operação', 'WARN');
                                 cancelCurrentOperation('Automação desativada nas configurações');
                             }
                         }
@@ -1513,7 +1566,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 } 
                 else if (type === 'automation') {
                     // Tratar atualizações específicas do estado de automação
-                    addLog(`Recebida atualização de estado de AUTOMAÇÃO (${new Date(timestamp).toLocaleTimeString()})`, 'WARN');
+                    logToSystem(`Recebida atualização de estado de AUTOMAÇÃO (${new Date(timestamp).toLocaleTimeString()})`, 'WARN');
                     
                     const automationState = state.automation;
                     if (automationState) {
@@ -1526,7 +1579,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         }
                         
                         // Log adicional para depuração
-                        addLog(`Estado de automação atualizado na UI: isRunning=${isRunning}`, 'WARN');
+                        logToSystem(`Estado de automação atualizado na UI: isRunning=${isRunning}`, 'WARN');
                         
                         // Atualizar visibilidade dos botões baseado no estado da automação
                         const operationInProgress = automationState.currentOperation ? true : false;
@@ -1534,13 +1587,13 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         
                         // Se houver uma operação atual, podemos mostrar informações adicionais
                         if (automationState.currentOperation) {
-                            addLog(`Operação atual: ${JSON.stringify(automationState.currentOperation)}`, 'DEBUG');
+                            logToSystem(`Operação atual: ${JSON.stringify(automationState.currentOperation)}`, 'DEBUG');
                         }
                     }
                 }
                 else if (type === 'operationalStatus') {
                     // Tratar atualizações do status operacional
-                    addLog(`Recebida atualização de STATUS OPERACIONAL (${new Date(timestamp).toLocaleTimeString()})`, 'INFO');
+                    logToSystem(`Recebida atualização de STATUS OPERACIONAL (${new Date(timestamp).toLocaleTimeString()})`, 'INFO');
                     
                     const operationalStatus = state.operationalStatus;
                     if (operationalStatus) {
@@ -1548,23 +1601,23 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         
                         // Se for erro, mostrar detalhes no log
                         if (operationalStatus.status === 'Parado Erro' && operationalStatus.errorDetails) {
-                            addLog(`Detalhes do erro: ${operationalStatus.errorDetails.message}`, 'ERROR');
+                            logToSystem(`Detalhes do erro: ${operationalStatus.errorDetails.message}`, 'ERROR');
                         }
                         
-                        addLog(`Status operacional atualizado via listener: ${operationalStatus.status}`, 'INFO');
+                        logToSystem(`Status operacional atualizado via listener: ${operationalStatus.status}`, 'INFO');
                     }
                 }
             });
             
-            addLog('Listener registrado com sucesso', 'SUCCESS');
+            logToSystem('Listener registrado com sucesso', 'SUCCESS');
         } else {
-            addLog('StateManager não disponível para registro de listener', 'WARN');
+            logToSystem('StateManager não disponível para registro de listener', 'WARN');
         }
     }
 
     // ================== ANALISADOR DE DADOS ==================
     // A classe DataAnalyzer foi movida para o seu próprio arquivo em src/content/analyzers/data-analyzer.js
-    const analyzer = new DataAnalyzer(addLog);
+    const analyzer = new DataAnalyzer(logToSystem);
 
     /**
      * @typedef {object} GeminiAnalysisResult
@@ -1574,12 +1627,12 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     document.addEventListener('DOMContentLoaded', () => {
         // Verificar se estamos na página de análise
         if (window.location.pathname.includes('/analysis.html')) {
-            addLog('Inicializando página de análise', 'INFO');
+            logToSystem('Inicializando página de análise', 'INFO');
             
             // Configurar área de exibição de gráficos
             const chartContainer = document.getElementById('chart-container');
             if (chartContainer) {
-                addLog('Container de gráfico encontrado, configurando...', 'DEBUG');
+                logToSystem('Container de gráfico encontrado, configurando...', 'DEBUG');
                 
                 // Configuração de botões e controles
                 const symbolInput = document.getElementById('symbol-input');
@@ -1592,11 +1645,11 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         const timeframe = timeframeSelect.value;
                         
                         if (!symbol) {
-                            addLog('Símbolo não informado', 'WARN');
+                            logToSystem('Símbolo não informado', 'WARN');
                             return;
                         }
                         
-                        addLog(`Carregando dados para ${symbol} (${timeframe})`, 'INFO');
+                        logToSystem(`Carregando dados para ${symbol} (${timeframe})`, 'INFO');
                         
                         // Simulação de carregamento de dados
                         setTimeout(() => {
@@ -1607,22 +1660,22 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                                 // Analisar dados
                                 analyzer.analyze(simulatedData)
                                     .then(result => {
-                                        addLog(`Análise concluída para ${symbol}`, 'SUCCESS');
+                                        logToSystem(`Análise concluída para ${symbol}`, 'SUCCESS');
                                         renderAnalysisResults(result);
                                     })
                                     .catch(error => {
-                                        addLog(`Falha na análise: ${error.message}`, 'ERROR');
+                                        logToSystem(`Falha na análise: ${error.message}`, 'ERROR');
                                     });
                             } catch (error) {
-                                addLog(`Erro ao processar dados: ${error.message}`, 'ERROR');
+                                logToSystem(`Erro ao processar dados: ${error.message}`, 'ERROR');
                             }
                         }, 1000);
                     });
                 } else {
-                    addLog('Elementos de controle não encontrados', 'ERROR');
+                    logToSystem('Elementos de controle não encontrados', 'ERROR');
                 }
             } else {
-                addLog('Container de gráfico não encontrado', 'ERROR');
+                logToSystem('Container de gráfico não encontrado', 'ERROR');
             }
         }
     });
@@ -1638,7 +1691,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Verificar se é uma mensagem de atualização de configurações
         if (message && message.action === 'configUpdated' && message.settings) {
-            addLog('Recebida mensagem via chrome.runtime para atualização de configurações', 'INFO');
+            logToSystem('Recebida mensagem via chrome.runtime para atualização de configurações', 'INFO');
             
             const config = message.settings;
             // Atualizar campos da página principal
@@ -1654,7 +1707,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             
             window.sendLog('Configurações atualizadas via runtime', 'SUCCESS', 'index.js');
             window.sendStatus('Configurações atualizadas via runtime', 'success', 2000);
-            addLog('Configurações atualizadas com sucesso via chrome.runtime', 'SUCCESS');
+            logToSystem('Configurações atualizadas com sucesso via chrome.runtime', 'SUCCESS');
             
             // Responder à mensagem se necessário
             if (sendResponse) {
@@ -1664,7 +1717,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         
         // *** NOVO: Handler para cancelamento de operação pelo controle de payout ***
         if (message && message.action === 'CANCEL_OPERATION_NOTIFICATION') {
-            addLog(`Recebida notificação de cancelamento: ${message.reason}`, 'INFO');
+            logToSystem(`Recebida notificação de cancelamento: ${message.reason}`, 'INFO');
             
             // Executar cancelamento usando a função existente
             cancelCurrentOperation(message.reason);
@@ -1770,7 +1823,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         };
 
         if (isExtensionContextValid()) {
-            addLog('Conexão com a extensão estabelecida', 'SUCCESS');
+            logToSystem('Conexão com a extensão estabelecida', 'SUCCESS');
             
             // Verificar operações pendentes
             checkPendingOperations();
@@ -1780,7 +1833,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 window.LogSystem.syncPendingLogs();
             }
         } else {
-            addLog('Contexto da extensão inválido, tentando novamente em 5 segundos...', 'WARN');
+            logToSystem('Contexto da extensão inválido, tentando novamente em 5 segundos...', 'WARN');
             setTimeout(checkExtensionConnection, 5000);
         }
     };
@@ -1793,11 +1846,11 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             
             // Verificar se o módulo está disponível
             if (!window.TradeManager?.History) {
-                addLog('Módulo de histórico não disponível. O monitoramento de operações não estará ativo.', 'WARN');
+                logToSystem('Módulo de histórico não disponível. O monitoramento de operações não estará ativo.', 'WARN');
                 return false;
             }
             
-            addLog('Inicializando integração com módulo de histórico...', 'INFO');
+            logToSystem('Inicializando integração com módulo de histórico...', 'INFO');
             
             // Inicializar o módulo se ainda não estiver inicializado
             if (typeof window.TradeManager.History.init === 'function') {
@@ -1805,10 +1858,10 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             }
             
             historyModuleInitialized = true;
-            addLog('Integração com módulo de histórico concluída', 'SUCCESS');
+            logToSystem('Integração com módulo de histórico concluída', 'SUCCESS');
             return true;
         } catch (error) {
-            addLog(`Erro ao inicializar módulo de histórico: ${error.message}`, 'ERROR');
+            logToSystem(`Erro ao inicializar módulo de histórico: ${error.message}`, 'ERROR');
             return false;
         }
     };
@@ -1872,14 +1925,14 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         // Limpar operação atual mas manter estado de automação
                         window.StateManager.updateAutomationState(isAutomationActive, null);
                         
-                        addLog(`Operação cancelada via FORCE_CANCEL: ${message.reason}`, 'SUCCESS');
+                        logToSystem(`Operação cancelada via FORCE_CANCEL: ${message.reason}`, 'SUCCESS');
                     }
                     
                     // Interromper monitoramento se disponível
                     if (window.TradeManager?.History) {
                         window.TradeManager.History.stopMonitoring()
                             .catch(error => {
-                                addLog(`Erro ao parar monitoramento: ${error.message}`, 'ERROR');
+                                logToSystem(`Erro ao parar monitoramento: ${error.message}`, 'ERROR');
                             });
                     }
                     
@@ -1887,10 +1940,10 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     if (typeof automationTimeout !== 'undefined' && automationTimeout) {
                         clearTimeout(automationTimeout);
                         automationTimeout = null;
-                        addLog('Temporizador de automação cancelado', 'DEBUG');
+                        logToSystem('Temporizador de automação cancelado', 'DEBUG');
                     }
                 } catch (error) {
-                    addLog(`Erro no cancelamento forçado: ${error.message}`, 'ERROR');
+                    logToSystem(`Erro no cancelamento forçado: ${error.message}`, 'ERROR');
                 }
                 
                 return; // Sair do handler
@@ -1900,7 +1953,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             if (message.action === 'AUTOMATION_STOPPED_NOTIFICATION') {
                 const { reason, data } = message;
                 
-                addLog(`Recebida notificação de parada automática: ${reason}`, 'INFO');
+                logToSystem(`Recebida notificação de parada automática: ${reason}`, 'INFO');
                 
                 try {
                     // Atualizar UI baseado no motivo da parada
@@ -1921,9 +1974,9 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     // Atualizar visibilidade dos controles
                     updateUserControlsVisibility(false, false);
                     
-                    addLog(`Interface atualizada após parada automática: ${reason}`, 'SUCCESS');
+                    logToSystem(`Interface atualizada após parada automática: ${reason}`, 'SUCCESS');
                 } catch (error) {
-                    addLog(`Erro ao processar notificação de parada automática: ${error.message}`, 'ERROR');
+                    logToSystem(`Erro ao processar notificação de parada automática: ${error.message}`, 'ERROR');
                 }
                 
                 return; // Sair do handler
@@ -1933,7 +1986,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             if (message.action === 'LIMITS_VIOLATION') {
                 const { type, data } = message;
                 
-                addLog(`Violação de limite detectada: ${type}`, 'WARN');
+                logToSystem(`Violação de limite detectada: ${type}`, 'WARN');
                 
                 try {
                     // Resetar UI
@@ -1971,11 +2024,11 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                                         window.StateManager.updateOperationalStatus('Pronto');
                                         window.StateManager.updateAutomationState(false, null);
                                     } catch (error) {
-                                        addLog(`Erro ao resetar StateManager: ${error.message}`, 'WARN');
+                                        logToSystem(`Erro ao resetar StateManager: ${error.message}`, 'WARN');
                                     }
                                 }
                                 
-                                addLog('🎯 Sistema resetado para "Pronto" após meta atingida', 'SUCCESS');
+                                logToSystem('🎯 Sistema resetado para "Pronto" após meta atingida', 'SUCCESS');
                             }, 2000);
                             break;
                         default:
@@ -1984,10 +2037,10 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     }
                     
                     updateStatus(notificationMsg, notificationType, 15000);
-                    addLog(`Interface atualizada após violação de limite: ${type}`, 'SUCCESS');
+                    logToSystem(`Interface atualizada após violação de limite: ${type}`, 'SUCCESS');
                     
                 } catch (error) {
-                    addLog(`Erro ao processar violação de limite: ${error.message}`, 'ERROR');
+                    logToSystem(`Erro ao processar violação de limite: ${error.message}`, 'ERROR');
                 }
                 
                 return; // Sair do handler
@@ -2012,22 +2065,22 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                             startTime: Date.now()
                         });
                         
-                        addLog('Operação iniciada via FORCE_START_OPERATION', 'SUCCESS');
+                        logToSystem('Operação iniciada via FORCE_START_OPERATION', 'SUCCESS');
                     }
                     
                     // Iniciar monitoramento se disponível
                     if (window.TradeManager?.History) {
                         window.TradeManager.History.startMonitoring()
                             .then(() => {
-                                addLog('Monitoramento de operações iniciado com sucesso', 'SUCCESS');
+                                logToSystem('Monitoramento de operações iniciado com sucesso', 'SUCCESS');
                             })
                             .catch(error => {
-                                addLog(`Erro ao iniciar monitoramento: ${error.message}`, 'ERROR');
+                                logToSystem(`Erro ao iniciar monitoramento: ${error.message}`, 'ERROR');
                             });
                     }
                     
                 } catch (error) {
-                    addLog(`Erro no handler FORCE_START_OPERATION: ${error.message}`, 'ERROR');
+                    logToSystem(`Erro no handler FORCE_START_OPERATION: ${error.message}`, 'ERROR');
                 }
                 
                 sendResponse({ success: true, force_start_processed: true });
@@ -2050,7 +2103,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     }
     
     // Configurar funcionalidades para o sistema de gale
-    function setupGaleTestButtons() {
+    function setupGaleTestButtons(retryCount = 0) {
         try {
             const simulateLossBtn = document.getElementById('simulate-loss');
             const simulateWinBtn = document.getElementById('simulate-win');
@@ -2059,9 +2112,20 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             const galeValueDisplay = document.getElementById('gale-value');
             
             if (!simulateLossBtn || !simulateWinBtn || !checkGaleStatusBtn) {
-                console.warn('Botões de teste de gale não encontrados');
+                if (retryCount < 5) {
+                    logToSystem(`Botões de teste de gale não encontrados ainda (tentativa ${retryCount + 1}/5), tentando novamente em 1s...`, 'DEBUG');
+                    
+                    // Tentar novamente após 1 segundo se os elementos não estiverem prontos
+                    setTimeout(() => {
+                        setupGaleTestButtons(retryCount + 1);
+                    }, 1000);
+                } else {
+                    logToSystem('Botões de teste de gale não encontrados após 5 tentativas. Possivelmente não estão disponíveis nesta página.', 'WARN');
+                }
                 return;
             }
+            
+            logToSystem('Botões de teste de gale encontrados e configurando eventos...', 'DEBUG');
             
             // Função para atualizar o display de status do gale
             const updateGaleStatusDisplay = (status) => {
@@ -2115,7 +2179,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     updateGaleStatusDisplay(status);
                     
                     // Adicionar log com detalhes completos
-                    addLog(`Status do Gale - Nível: ${status.level}, Ativo: ${status.active}, Valor original: ${status.originalValue}, Próximo valor: ${status.nextValue}`, 'INFO');
+                    logToSystem(`Status do Gale - Nível: ${status.level}, Ativo: ${status.active}, Valor original: ${status.originalValue}, Próximo valor: ${status.nextValue}`, 'INFO');
                 } else {
                     updateStatus('Sistema de Gale não está disponível', 'error');
                 }
@@ -2130,20 +2194,20 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         if (wasReset) {
                             updateSystemOperationalStatus('Pronto');
                             updateStatus('Status de erro resetado com sucesso', 'success');
-                            addLog('Status de erro do sistema resetado manualmente', 'INFO');
+                            logToSystem('Status de erro do sistema resetado manualmente', 'INFO');
                         } else {
                             updateStatus('Sistema não estava em estado de erro', 'info');
-                            addLog('Tentativa de reset, mas sistema não estava em erro', 'DEBUG');
+                            logToSystem('Tentativa de reset, mas sistema não estava em erro', 'DEBUG');
                         }
                     } else {
                         updateStatus('StateManager não disponível', 'error');
-                        addLog('StateManager não disponível para reset de erro', 'ERROR');
+                        logToSystem('StateManager não disponível para reset de erro', 'ERROR');
                     }
                 });
-                addLog('Botão de reset de status de erro configurado', 'DEBUG');
+                logToSystem('Botão de reset de status de erro configurado', 'DEBUG');
             }
             
-            addLog('Botões de teste do sistema de Gale configurados', 'INFO');
+            logToSystem('Botões de teste do sistema de Gale configurados', 'INFO');
             
             // =================== CONFIGURAR BOTÕES DE TESTE DE ATIVOS ===================
             
@@ -2208,7 +2272,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 });
             }
             
-            addLog('Botões de teste de ativos configurados', 'INFO');
+            logToSystem('Botões de teste de ativos configurados', 'INFO');
 
             // =================== BOTÃO DE TESTE DE PAYOUT ===================
             // Configurar botão de teste de captura de payout
@@ -2223,7 +2287,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         payoutResult.style.backgroundColor = '#f0f8ff';
                     }
                     
-                    addLog('Iniciando teste de captura de payout via content.js', 'INFO');
+                    logToSystem('Iniciando teste de captura de payout via content.js', 'INFO');
                     updateStatus('Capturando payout do DOM...', 'info');
                     
                     try {
@@ -2254,7 +2318,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         });
                         
                         const message = `Payout: ${response.payout}% (Fonte: ${response.source})`;
-                        addLog(`Payout capturado com sucesso: ${message}`, 'SUCCESS');
+                        logToSystem(`Payout capturado com sucesso: ${message}`, 'SUCCESS');
                         updateStatus(message, 'success');
                         
                         // Atualizar elemento de resultado na interface
@@ -2269,7 +2333,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         }
                     } catch (error) {
                         const errorMsg = error.message || error;
-                        addLog(`Erro na captura: ${errorMsg}`, 'ERROR');
+                        logToSystem(`Erro na captura: ${errorMsg}`, 'ERROR');
                         updateStatus(`Erro: ${errorMsg}`, 'error');
                         
                         if (payoutResult) {
@@ -2279,9 +2343,9 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     }
                 });
                 
-                addLog('Botão de teste de captura de payout configurado (via PayoutController)', 'INFO');
+                logToSystem('Botão de teste de captura de payout configurado (via PayoutController)', 'INFO');
             } else {
-                addLog('Botão de teste de captura de payout não encontrado', 'WARN');
+                logToSystem('Botão de teste de captura de payout não encontrado', 'WARN');
             }
 
             // =================== BOTÕES DE DEBUG DO MODAL ===================
@@ -2357,7 +2421,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 });
             }
 
-            addLog('Botões de debug do modal configurados', 'INFO');
+            logToSystem('Botões de debug do modal configurados', 'INFO');
             
             // =================== CONFIGURAÇÕES DE ATIVOS MOVIDAS PARA SETTINGS.HTML ===================
             // As configurações de troca de ativos agora estão na página de configurações
@@ -2369,7 +2433,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     if (window.GaleSystem) {
                         const updatedStatus = window.GaleSystem.getStatus();
                         updateGaleStatusDisplay(updatedStatus);
-                        addLog(`Status do Gale atualizado automaticamente - Nível: ${updatedStatus.level}, Valor atual: ${updatedStatus.currentValue}`, 'DEBUG');
+                        logToSystem(`Status do Gale atualizado automaticamente - Nível: ${updatedStatus.level}, Valor atual: ${updatedStatus.currentValue}`, 'DEBUG');
                     }
                 }
                 return true;
@@ -2387,35 +2451,35 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             }
         } catch (error) {
             console.error('Erro ao configurar botões de teste do gale:', error);
-            addLog(`Erro ao configurar botões de teste do gale: ${error.message}`, 'ERROR');
+            logToSystem(`Erro ao configurar botões de teste do gale: ${error.message}`, 'ERROR');
         }
     }
 
     // Função para atualizar a visibilidade do painel de desenvolvimento baseado no modo desenvolvedor
     const updateDevPanelVisibility = (devModeEnabled) => {
-        addLog(`Tentando atualizar visibilidade do painel de desenvolvimento: ${devModeEnabled}`, 'DEBUG');
+        logToSystem(`Tentando atualizar visibilidade do painel de desenvolvimento: ${devModeEnabled}`, 'DEBUG');
         
         // Teste direto primeiro
         const devPanel = document.getElementById('gale-test-panel');
         if (!devPanel) {
-            addLog('Painel de desenvolvimento não encontrado no DOM', 'ERROR');
+            logToSystem('Painel de desenvolvimento não encontrado no DOM', 'ERROR');
             return;
         }
         
-        addLog(`Estado atual do painel: ${devPanel.classList.contains('hidden') ? 'oculto' : 'visível'}`, 'DEBUG');
+        logToSystem(`Estado atual do painel: ${devPanel.classList.contains('hidden') ? 'oculto' : 'visível'}`, 'DEBUG');
         
         if (devModeEnabled) {
             devPanel.classList.remove('hidden');
-            addLog('Painel de desenvolvimento EXIBIDO', 'INFO');
+            logToSystem('Painel de desenvolvimento EXIBIDO', 'INFO');
             } else {
             devPanel.classList.add('hidden');
-            addLog('Painel de desenvolvimento OCULTO', 'INFO');
+            logToSystem('Painel de desenvolvimento OCULTO', 'INFO');
         }
         
         // Verificar se funcionou
         setTimeout(() => {
             const isVisible = !devPanel.classList.contains('hidden');
-            addLog(`Verificação pós-alteração: painel de desenvolvimento ${isVisible ? 'visível' : 'ainda oculto'}`, 'DEBUG');
+            logToSystem(`Verificação pós-alteração: painel de desenvolvimento ${isVisible ? 'visível' : 'ainda oculto'}`, 'DEBUG');
         }, 100);
         
         // Notificar DevTools via chrome.runtime (seguindo arquitetura)
@@ -2425,13 +2489,13 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 devModeEnabled: devModeEnabled
             }, (response) => {
                 if (chrome.runtime.lastError) {
-                    addLog(`Erro ao notificar DevTools: ${chrome.runtime.lastError.message}`, 'WARN');
+                    logToSystem(`Erro ao notificar DevTools: ${chrome.runtime.lastError.message}`, 'WARN');
                 } else if (response && response.success) {
-                    addLog('DevTools notificado sobre mudança de visibilidade', 'DEBUG');
+                    logToSystem('DevTools notificado sobre mudança de visibilidade', 'DEBUG');
                 }
             });
         } catch (error) {
-            addLog(`Erro ao enviar mensagem para DevTools: ${error.message}`, 'WARN');
+            logToSystem(`Erro ao enviar mensagem para DevTools: ${error.message}`, 'WARN');
         }
     };
 
@@ -2441,10 +2505,10 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         const startOperationBtn = document.getElementById('start-operation');
         const cancelOperationBtn = document.getElementById('cancel-operation');
         
-        addLog(`Atualizando visibilidade dos controles: automação=${automationActive}, operação=${operationInProgress}`, 'DEBUG');
+        logToSystem(`Atualizando visibilidade dos controles: automação=${automationActive}, operação=${operationInProgress}`, 'DEBUG');
         
         if (!analyzeBtn || !startOperationBtn || !cancelOperationBtn) {
-            addLog('Botões de controle não encontrados para atualização de visibilidade', 'WARN');
+            logToSystem('Botões de controle não encontrados para atualização de visibilidade', 'WARN');
             return;
         }
 
@@ -2458,19 +2522,19 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             analyzeBtn.classList.add('hidden');
             startOperationBtn.classList.add('hidden');
             // cancelOperationBtn fica visível
-            addLog('✅ Controles atualizados: OPERAÇÃO EM ANDAMENTO - Apenas botão "Cancelar Operação" visível', 'INFO');
+            logToSystem('✅ Controles atualizados: OPERAÇÃO EM ANDAMENTO - Apenas botão "Cancelar Operação" visível', 'INFO');
         } else if (automationActive) {
             // Quando automação ativa mas sem operação: apenas botão iniciar automático
             analyzeBtn.classList.add('hidden');
             cancelOperationBtn.classList.add('hidden');
             // startOperationBtn fica visível
-            addLog('✅ Controles atualizados: AUTOMAÇÃO ATIVA - Apenas botão "Iniciar Automático" visível', 'INFO');
+            logToSystem('✅ Controles atualizados: AUTOMAÇÃO ATIVA - Apenas botão "Iniciar Automático" visível', 'INFO');
         } else {
             // Quando automação desativa: apenas botão análise manual
             startOperationBtn.classList.add('hidden');
             cancelOperationBtn.classList.add('hidden');
             // analyzeBtn fica visível
-            addLog('✅ Controles atualizados: AUTOMAÇÃO INATIVA - Apenas botão "Iniciar Análise" visível', 'INFO');
+            logToSystem('✅ Controles atualizados: AUTOMAÇÃO INATIVA - Apenas botão "Iniciar Análise" visível', 'INFO');
         }
     };
 
@@ -2492,7 +2556,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             // Atualizar nível de Gale quando houver mudanças
             if (message.action === 'GALE_UPDATED' || message.action === 'GALE_RESET') {
-                addLog(`Recebida atualização do sistema de Gale: ${message.action}`, 'DEBUG');
+                logToSystem(`Recebida atualização do sistema de Gale: ${message.action}`, 'DEBUG');
                 updateGaleLevelDisplay();
                 
                 // Também atualizar ganhos e perdas quando houver operações
@@ -2504,7 +2568,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             
             // Atualizar ganhos e perdas quando houver nova operação
             if (message.type === 'TRADE_RESULT' || message.action === 'OPERATION_ADDED') {
-                addLog('Recebida nova operação, atualizando ganhos e perdas', 'DEBUG');
+                logToSystem('Recebida nova operação, atualizando ganhos e perdas', 'DEBUG');
                 updateProfitLossDisplay();
                 
                 sendResponse({ success: true });
@@ -2514,7 +2578,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             // Tratar erros do sistema reportados por outros módulos
             if (message.action === 'SYSTEM_ERROR_OCCURRED') {
                 const { error } = message;
-                addLog(`ERRO DO SISTEMA (${error.source}): ${error.message}`, 'ERROR');
+                logToSystem(`ERRO DO SISTEMA (${error.source}): ${error.message}`, 'ERROR');
                 
                 // Se o StateManager estiver disponível, reportar o erro
                 if (window.StateManager) {
@@ -2535,7 +2599,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             
             // Tratar reset de erro do sistema via DevTools
             if (message.action === 'SYSTEM_ERROR_RESET') {
-                addLog('Reset de erro do sistema confirmado via DevTools', 'INFO');
+                logToSystem('Reset de erro do sistema confirmado via DevTools', 'INFO');
                 updateSystemOperationalStatus('Pronto');
                 updateStatus('Status de erro resetado com sucesso', 'success');
                 sendResponse({ success: true });
@@ -2545,7 +2609,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             return false;
         });
         
-        addLog('Listener do sistema de Gale configurado', 'DEBUG');
+        logToSystem('Listener do sistema de Gale configurado', 'DEBUG');
     };
 
     // Função para atualizar o status operacional do sistema na UI
@@ -2555,7 +2619,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         
         if (systemStatusElement) {
             systemStatusElement.textContent = status;
-            addLog(`Status operacional do sistema atualizado: ${status}`, 'INFO');
+            logToSystem(`Status operacional do sistema atualizado: ${status}`, 'INFO');
         }
         
         if (systemLed) {
@@ -2581,7 +2645,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
 
     // Função para reportar erro ao StateManager e atualizar UI
     function reportSystemError(errorMessage, errorDetails = null) {
-        addLog(`ERRO DO SISTEMA: ${errorMessage}`, 'ERROR');
+        logToSystem(`ERRO DO SISTEMA: ${errorMessage}`, 'ERROR');
         
         if (window.StateManager) {
             const errorInfo = window.StateManager.reportError(errorMessage, errorDetails);
@@ -2589,7 +2653,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             updateStatus(`Sistema parou por erro: ${errorMessage}`, 'error');
             return errorInfo;
         } else {
-            addLog('StateManager não disponível para reportar erro', 'ERROR');
+            logToSystem('StateManager não disponível para reportar erro', 'ERROR');
             updateSystemOperationalStatus('Parado Erro');
             updateStatus(`Sistema parou por erro: ${errorMessage}`, 'error');
             return null;
@@ -2644,51 +2708,11 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     });
 
     // ================== COMUNICAÇÃO INTERNA VIA WINDOW.POSTMESSAGE ==================
-    // Teste de comunicação direta entre arquivos do iframe (sem chrome.runtime)
+    // REMOVIDO COMPLETAMENTE: Listener duplicado que causava loop infinito
+    // O listener principal já processa UPDATE_STATUS no início do arquivo (linha ~5)
     
-    // Listener para mensagens internas do iframe
-    window.addEventListener('message', (event) => {
-        // Verificar se a mensagem é para atualizar status
-        if (event.data && event.data.type === 'UPDATE_STATUS') {
-            try {
-                const { message, type = 'info', duration = 3000 } = event.data.data;
-                
-                // Log para debug
-                console.log(`[INDEX] Recebido status via window.postMessage: ${message} (${type})`);
-                
-                // Usar a função updateStatus existente
-                updateStatus(message, type.toUpperCase(), duration);
-                
-                // Log de confirmação
-                console.log(`[INDEX] Status atualizado com sucesso via window.postMessage`);
-                
-            } catch (error) {
-                console.error(`[INDEX] Erro ao processar status via window.postMessage:`, error);
-            }
-        }
-        
-        // Verificar se a mensagem é para adicionar log
-        if (event.data && event.data.type === 'LOG_MESSAGE') {
-            try {
-                const { message, level = 'INFO', source = 'SYSTEM' } = event.data.data;
-                
-                // Log para debug
-                console.log(`[INDEX] Recebido log via window.postMessage: ${message} (${level}) de ${source}`);
-                
-                // Usar a função addLog existente
-                addLog(message, level, source);
-                
-                // Log de confirmação
-                console.log(`[INDEX] Log adicionado com sucesso via window.postMessage`);
-                
-            } catch (error) {
-                console.error(`[INDEX] Erro ao processar log via window.postMessage:`, error);
-            }
-        }
-    });
-    
-    // Log de inicialização do sistema de comunicação interna
-    console.log('[INDEX] Sistema de comunicação interna via window.postMessage inicializado');
+    // Log simplificado - sem console.log para evitar confusão nos logs
+    logToSystem('Sistema de comunicação interna inicializado (sem duplicação)', 'DEBUG');
 } else {
     console.log('Trade Manager Pro - Index Module já foi carregado anteriormente');
 }

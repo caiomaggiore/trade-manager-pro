@@ -7,24 +7,7 @@ let settings = {
 };
 
 // ================== FUNÇÕES AUXILIARES ==================
-/**
- * Atualiza o status na interface
- * @param {string} message - Mensagem de status
- * @param {string} type - Tipo de status (success, error, info)
- */
-const updateStatus = (message, type = 'info') => {
-    const status = document.getElementById('status');
-    if (!status) return;
-    
-    status.textContent = message;
-    status.className = `status ${type}`;
-    status.style.display = 'block';
-    
-    // Auto-esconder após 3 segundos
-    setTimeout(() => {
-        status.style.display = 'none';
-    }, 3000);
-};
+// Sistema de logs global disponível via window.updateStatus
 
 /**
  * Carrega as configurações salvas

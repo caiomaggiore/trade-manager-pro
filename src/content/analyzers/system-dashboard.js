@@ -145,19 +145,43 @@ class SystemDashboard {
         // Botão atualizar
         const refreshBtn = document.getElementById('dashboard-refresh');
         if (refreshBtn) {
-            refreshBtn.addEventListener('click', () => this.updateDashboard());
+            refreshBtn.addEventListener('click', () => {
+                updateStatus('Atualizando dashboard do sistema...', 'info');
+                try {
+                    this.updateDashboard();
+                    updateStatus('Dashboard atualizado com sucesso', 'success', 3000);
+                } catch (error) {
+                    updateStatus(`Erro ao atualizar dashboard: ${error.message}`, 'error', 5000);
+                }
+            });
         }
         
         // Botão limpar cache
         const clearCacheBtn = document.getElementById('dashboard-clear-cache');
         if (clearCacheBtn) {
-            clearCacheBtn.addEventListener('click', () => this.clearCache());
+            clearCacheBtn.addEventListener('click', () => {
+                updateStatus('Limpando cache do sistema...', 'info');
+                try {
+                    this.clearCache();
+                    updateStatus('Cache do sistema limpo com sucesso', 'success', 3000);
+                } catch (error) {
+                    updateStatus(`Erro ao limpar cache: ${error.message}`, 'error', 5000);
+                }
+            });
         }
         
         // Botão testar Gale
         const testGaleBtn = document.getElementById('dashboard-test-gale');
         if (testGaleBtn) {
-            testGaleBtn.addEventListener('click', () => this.testIntelligentGale());
+            testGaleBtn.addEventListener('click', () => {
+                updateStatus('Executando teste do Gale inteligente...', 'info');
+                try {
+                    this.testIntelligentGale();
+                    updateStatus('Teste do Gale inteligente concluído', 'success', 3000);
+                } catch (error) {
+                    updateStatus(`Erro no teste do Gale: ${error.message}`, 'error', 5000);
+                }
+            });
         }
         
         // Atalho de teclado para mostrar/ocultar (Ctrl+Shift+D)

@@ -1,57 +1,17 @@
+// Sistema de logs otimizado (novo padrão)
+// logToSystem removido - usando window.logToSystem global
+
+// Sistema de status otimizado (novo padrão)
+// updateStatus removido - usando window.updateStatus global
+
 // =============================================
 // Configurações Globais
 // =============================================
-// Definir a função para log primeiro para evitar problemas de referência circular
-function logFromAnalyzer(message, level = 'INFO') {
-    // console.log(`%c[${level}][analyze-graph.js] ${message}`, 'background: #3498db; color: white; padding: 3px; border-radius: 3px;'); // Manter para depuração local se desejar
-    
-    // Enviar para o sistema centralizado de logs (log-sys.js ou background)
-    try {
-        if (chrome && chrome.runtime && chrome.runtime.id) { // Verificar se o contexto da extensão é válido
-            chrome.runtime.sendMessage({
-                action: 'addLog', // PADRONIZADO para addLog
-                logMessage: message, // MODIFICADO: Remover prefixo
-                level: level,
-                source: 'analyze-graph.js' // Redundante se já prefixado, mas bom para o receptor
-            }); // Callback removido
-        }
-    } catch (error) {
-        console.warn('[analyze-graph.js] Exceção ao tentar enviar log via runtime:', error);
-    }
-}
 
-// Agora podemos usar a função de log corrigida
-logFromAnalyzer('AnalyzeGraph: Iniciando carregamento...', 'INFO');
+// Log de inicialização
+logToSystem('AnalyzeGraph: Iniciando carregamento...', 'INFO');
 
 // Removendo as constantes duplicadas e usando as do index.js
-
-// =============================================
-// Funções de Log
-// =============================================
-/**
- * Função centralizada para adicionar logs
- * @param {string} message - Mensagem a ser registrada
- * @param {string} level - Nível do log: 'INFO', 'WARN', 'ERROR', 'SUCCESS' ou 'DEBUG'
- * @param {string} source - Origem do log (padrão: 'analyze-graph.js')
- */
-function graphAddLog(message, level = 'INFO', source = 'analyze-graph.js') {
-    // Chama a função de log padronizada deste módulo
-    // O parâmetro 'source' aqui é mais para compatibilidade se a função era chamada com ele,
-    // mas logFromAnalyzer já adiciona um prefixo [analyze-graph.js]
-    logFromAnalyzer(message, level); 
-}
-
-// Função padronizada para enviar status para o index
-function toUpdateStatus(message, type = 'info', duration = 3000) {
-    if (chrome && chrome.runtime && chrome.runtime.id) {
-        chrome.runtime.sendMessage({
-            action: 'updateStatus',
-            message: message,
-            type: type,
-            duration: duration
-        });
-    }
-}
 
 // =============================================
 // Funções de Análise
@@ -168,7 +128,7 @@ const validateAndProcessResponse = (rawText) => {
  */
 const processAnalysis = async (imageData, settings) => {
     try {
-        graphAddLog('Iniciando análise...', 'INFO');
+        logToSystem('Iniciando análise...', 'INFO');
         
         // Verificar se o imageData é válido
         if (!imageData || typeof imageData !== 'string' || !imageData.startsWith('data:image')) {
@@ -177,21 +137,21 @@ const processAnalysis = async (imageData, settings) => {
         
         // *** NOVO: Análise prévia com Local Pattern Detector ***
         if (window.localPatternDetector) {
-            graphAddLog('Executando análise prévia local da imagem...', 'INFO');
+            logToSystem('Executando análise prévia local da imagem...', 'INFO');
             
             try {
                 const localAnalysis = await window.localPatternDetector.analyzeImage(imageData);
-                graphAddLog(`Análise local concluída - Confiança: ${localAnalysis.confidence}%`, 'INFO');
+                logToSystem(`Análise local concluída - Confiança: ${localAnalysis.confidence}%`, 'INFO');
                 
                 // Verificar se a imagem tem qualidade suficiente para IA
                 if (!localAnalysis.readyForAI) {
                     const reason = localAnalysis.recommendation.reason;
                     const suggestions = localAnalysis.recommendation.suggestions || [];
                     
-                    graphAddLog(`Imagem rejeitada pela análise local: ${reason}`, 'WARN');
+                    logToSystem(`Imagem rejeitada pela análise local: ${reason}`, 'WARN');
                     
                     if (suggestions.length > 0) {
-                        graphAddLog(`Sugestões: ${suggestions.join(', ')}`, 'INFO');
+                        logToSystem(`Sugestões: ${suggestions.join(', ')}`);
                     }
                     
                     // Retornar resultado de espera com base na análise local
@@ -206,7 +166,7 @@ const processAnalysis = async (imageData, settings) => {
                 }
                 
                 // Log detalhes da análise local para contexto
-                graphAddLog(`Elementos detectados: Candlesticks=${localAnalysis.candlesticks.detected}, Indicadores=${localAnalysis.indicators.detected}`, 'DEBUG');
+                logToSystem(`Elementos detectados: Candlesticks=${localAnalysis.candlesticks.detected}, Indicadores=${localAnalysis.indicators.detected}`);
                 
                 // Adicionar contexto da análise local para a IA
                 settings.localContext = {
@@ -217,11 +177,11 @@ const processAnalysis = async (imageData, settings) => {
                 };
                 
             } catch (localError) {
-                graphAddLog(`Erro na análise local: ${localError.message}`, 'ERROR');
+                logToSystem(`Erro na análise local: ${localError.message}`, 'ERROR');
                 // Continuar com análise da IA mesmo se análise local falhar
             }
         } else {
-            graphAddLog('Local Pattern Detector não disponível, prosseguindo direto para IA', 'WARN');
+            logToSystem('Local Pattern Detector não disponível, prosseguindo direto para IA');
         }
         
         // *** NOVO: Verificar cache antes de chamar IA ***
@@ -235,14 +195,14 @@ const processAnalysis = async (imageData, settings) => {
             
             const cachedResult = window.cacheAnalyzer.getAIAnalysis(imageHash, context);
             if (cachedResult) {
-                graphAddLog(`Resultado obtido do cache - economizando tokens da IA`, 'SUCCESS');
+                logToSystem(`Resultado obtido do cache - economizando tokens da IA`, 'SUCCESS');
                 return {
                     ...cachedResult,
                     fromCache: true,
                     cacheStats: window.cacheAnalyzer.getStats()
                 };
             } else {
-                graphAddLog('Análise não encontrada no cache, enviando para IA...', 'INFO');
+                logToSystem('Análise não encontrada no cache, enviando para IA...');
             }
         }
 
@@ -261,8 +221,8 @@ const processAnalysis = async (imageData, settings) => {
             }]
         };
 
-        // Log direto para o console e para o sistema de logs
-        console.log("%c[ANÁLISE] Iniciando processamento de análise de gráfico", "background: #e74c3c; color: white; padding: 5px; font-weight: bold;");
+        // Log de início de análise
+        logToSystem('Iniciando processamento de análise de gráfico', 'INFO');
         
         // Obter URL da API de forma segura
         let apiUrl;
@@ -302,9 +262,8 @@ const processAnalysis = async (imageData, settings) => {
             throw new Error('Texto de resposta vazio ou ausente');
         }
         
-        // Log direto da resposta recebida
-        console.log("%c[ANÁLISE] Resposta recebida da API", "background: #2ecc71; color: white; padding: 5px; font-weight: bold;");
-        console.log(text.substring(0, 200) + "...");
+        // Log da resposta recebida
+        logToSystem('Resposta recebida da API', 'DEBUG');
         
         // Extrair JSON da resposta
         const jsonMatch = text.match(/{[\s\S]*?}/);
@@ -318,7 +277,7 @@ const processAnalysis = async (imageData, settings) => {
             // Primeiro, tentar analisar o JSON diretamente
             result = JSON.parse(jsonMatch[0]);
         } catch (jsonError) {
-            console.log('Erro ao analisar JSON diretamente, tentando sanitizar', jsonError);
+            logToSystem('Erro ao analisar JSON diretamente, tentando sanitizar', 'WARN');
             
             // Tentar sanitizar e analisar novamente
             try {
@@ -333,7 +292,7 @@ const processAnalysis = async (imageData, settings) => {
             }
         }
         
-        graphAddLog(`Análise concluída: ${result.action} (${result.trust}% de confiança)`, 'success');
+        logToSystem(`Análise concluída: ${result.action} (${result.trust}% de confiança)`, 'SUCCESS');
         
         // *** NOVO: Armazenar resultado no cache ***
         if (window.cacheAnalyzer) {
@@ -349,9 +308,9 @@ const processAnalysis = async (imageData, settings) => {
                 const estimatedTokens = 1500; // Base + prompt + imagem
                 
                 window.cacheAnalyzer.setAIAnalysis(imageHash, context, result, estimatedTokens);
-                graphAddLog(`Resultado armazenado no cache (${estimatedTokens} tokens estimados)`, 'DEBUG');
+                logToSystem(`Resultado armazenado no cache (${estimatedTokens} tokens estimados)`, 'DEBUG');
             } catch (cacheError) {
-                graphAddLog(`Erro ao armazenar no cache: ${cacheError.message}`, 'WARN');
+                logToSystem(`Erro ao armazenar no cache: ${cacheError.message}`, 'WARN');
             }
         }
         
@@ -361,12 +320,12 @@ const processAnalysis = async (imageData, settings) => {
         };
 
     } catch (error) {
-        console.error('Erro na análise:', error);
+        logToSystem(`Erro na análise: ${error.message}`, 'ERROR');
         
         try {
-            graphAddLog(`Erro na análise: ${error.message}`, 'ERROR');
+            logToSystem(`Erro na análise: ${error.message}`, 'ERROR');
         } catch (logError) {
-            console.error('Também falhou ao registrar o erro:', logError);
+            // Erro silencioso no log
         }
         
         return {
@@ -392,7 +351,7 @@ async function getSystemConfig() {
             });
         }
     } catch (error) {
-        logFromAnalyzer('Erro ao obter configurações:', 'ERROR');
+        logToSystem('Erro ao obter configurações:', 'ERROR');
         return {};
     }
 }
@@ -409,7 +368,7 @@ async function getSystemConfig() {
  */
 async function analyzeImage(imageData, settings = {}) {
     try {
-        logFromAnalyzer('Iniciando análise direta de imagem', 'INFO');
+        logToSystem('Iniciando análise direta de imagem', 'INFO');
         
         // Verificar se a imagem é válida
         if (!imageData || typeof imageData !== 'string' || !imageData.startsWith('data:image')) {
@@ -447,7 +406,7 @@ async function analyzeImage(imageData, settings = {}) {
         const apiUrl = window.API_URL || "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyDeYcYUxAN52DNrgZeFNcEfceVMoWJDjWk";
         
         // Enviar para a API
-        logFromAnalyzer('Enviando solicitação para a API Gemini...', 'INFO');
+        logToSystem('Enviando solicitação para a API Gemini...', 'INFO');
         const response = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -475,10 +434,10 @@ async function analyzeImage(imageData, settings = {}) {
         // Adicionar timestamp
         result.timestamp = new Date().toISOString();
         
-        logFromAnalyzer(`Análise concluída com sucesso: ${result.action}`, 'SUCCESS');
+        logToSystem(`Análise concluída com sucesso: ${result.action}`, 'SUCCESS');
         return result;
     } catch (error) {
-        logFromAnalyzer(`Erro na análise: ${error.message}`, 'ERROR');
+        logToSystem(`Erro na análise: ${error.message}`, 'ERROR');
         throw error;
     }
 }
@@ -493,13 +452,13 @@ window.AnalyzeGraph = {
 // =============================================
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'PROCESS_ANALYSIS') {
-        console.log('[Análise] Solicitação de análise recebida');
+        logToSystem('Solicitação de análise recebida', 'INFO');
         
         // Executar em um bloco try-catch para garantir que sendResponse seja sempre chamado
         try {
             // Usar um timeout para garantir que alguma resposta seja enviada
             const timeout = setTimeout(() => {
-                console.log('[Análise] Timeout atingido, enviando resposta de erro');
+                logToSystem('Timeout atingido, enviando resposta de erro', 'WARN');
                 sendResponse({
                     success: false,
                     error: 'Timeout ao processar análise'
@@ -510,7 +469,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             processAnalysis(request.imageData, request.settings)
                 .then(result => {
                     clearTimeout(timeout);
-                    console.log('[Análise] Enviando resposta de análise concluída');
+                    logToSystem('Enviando resposta de análise concluída', 'DEBUG');
                     sendResponse({
                         success: true,
                         results: result
@@ -518,14 +477,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 })
                 .catch(error => {
                     clearTimeout(timeout);
-                    console.error('[Análise] Erro no processamento:', error);
+                    logToSystem(`Erro no processamento: ${error.message}`, 'ERROR');
                     sendResponse({
                         success: false,
                         error: error.message || 'Erro desconhecido no processamento'
                     });
                 });
         } catch (error) {
-            console.error('[Análise] Erro crítico no processamento:', error);
+            logToSystem(`Erro crítico no processamento: ${error.message}`, 'ERROR');
             sendResponse({
                 success: false,
                 error: 'Erro crítico ao iniciar processamento'
@@ -540,4 +499,4 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return false;
 });
 
-logFromAnalyzer('AnalyzeGraph: Carregamento concluído', 'INFO');
+logToSystem('AnalyzeGraph: Carregamento concluído', 'INFO');

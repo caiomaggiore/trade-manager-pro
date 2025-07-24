@@ -32,19 +32,7 @@ window.TradeManager.History = (function() {
         clearHistoryBtn: null
     };
     
-    // Sistema de logs (integração)
-    const logToSystem = (message, level = 'INFO') => {
-        try {
-            chrome.runtime.sendMessage({
-                action: 'addLog', // Padronizado
-                logMessage: message,
-                level: level,
-                source: 'trade-history.js'
-            });
-        } catch (error) {
-            // Erro silencioso
-        }
-    };
+    // Sistema de logs global disponível via window.logToSystem e window.updateStatus
     
     /**
      * Adiciona uma operação à tabela de histórico
@@ -71,12 +59,12 @@ window.TradeManager.History = (function() {
             if (row.dataset.timestamp === timestampStr && 
                 row.dataset.symbol === symbol &&
                 row.dataset.status === status) {
-                logToSystem(`Operação duplicada ignorada: ${symbol} em ${new Date(operation.timestamp).toLocaleTimeString()} com status ${status}`, 'DEBUG');
+                // Operação duplicada - não logar para evitar spam
                 return; // Encerra a função se encontrar duplicata
             }
         }
 
-        logToSystem(`Adicionando operação: ${operation.status} ${operation.symbol}`, 'INFO');
+        logToSystem(`Nova operação registrada: ${operation.symbol} - ${operation.status}`, 'INFO');
         
         // Cria a nova linha se não houver duplicata
         const row = document.createElement('tr');
@@ -268,8 +256,7 @@ window.TradeManager.History = (function() {
 
                         // Verificar se já existe um observer
                         if (window._tradeObserver) {
-                            const logMsg = 'Observer já existe, não será criado novamente';
-                            chrome.runtime.sendMessage({ action: 'addLog', logMessage: logMsg, level: 'DEBUG', source: 'trade-history.js-injected' });
+                            // Observer já existe - não logar para evitar spam
                             return;
                         }
                         
@@ -338,21 +325,10 @@ window.TradeManager.History = (function() {
                                                     const configValue = parseFloat(config.value || 0);
                                                     if (configValue > 0) {
                                                         realEntryAmount = configValue.toFixed(2);
-                                                        chrome.runtime.sendMessage({ 
-                                                            action: 'addLog', 
-                                                            logMessage: `Valor real da entrada capturado do StateManager: ${realEntryAmount}`, 
-                                                            level: 'DEBUG', 
-                                                            source: 'trade-history.js-injected' 
-                                                        });
                                                     }
                                                 }
                                             } catch (error) {
-                                                chrome.runtime.sendMessage({ 
-                                                    action: 'addLog', 
-                                                    logMessage: `Erro ao obter valor real do StateManager: ${error.message}`, 
-                                                    level: 'WARN', 
-                                                    source: 'trade-history.js-injected' 
-                                                });
+                                                // Erro ao obter valor do StateManager - usar valor padrão
                                             }
                                             
                                             // Armazenar último valor para cálculos (usar valor real)
@@ -378,14 +354,10 @@ window.TradeManager.History = (function() {
                                             
                                             // Verificar se é uma operação duplicada
                                             if (isProcessedRecently(result)) {
-                                                const logMsg = `Operação duplicada ignorada: ${result.symbol} ${result.status}`;
-                                                chrome.runtime.sendMessage({ action: 'addLog', logMessage: logMsg, level: 'DEBUG', source: 'trade-history.js-injected' });
+                                                // Operação duplicada - não logar para evitar spam
                                                 return;
                                             }
 
-                                            const detectedLogMsg = `Operação detectada: ${JSON.stringify(result)}`;
-                                            chrome.runtime.sendMessage({ action: 'addLog', logMessage: detectedLogMsg, level: 'INFO', source: 'trade-history.js-injected' });            
-                                            
                                             // Enviar o resultado para a extensão
                                             try {
                                                 chrome.runtime.sendMessage({
@@ -393,8 +365,7 @@ window.TradeManager.History = (function() {
                                                     data: result
                                                 }); 
                                             } catch (error) {
-                                                const errorMsg = `Erro ao enviar operação: ${error.message}`;
-                                                chrome.runtime.sendMessage({ action: 'addLog', logMessage: errorMsg, level: 'ERROR', source: 'trade-history.js-injected' });
+                                                // Erro ao enviar operação - não logar para evitar spam
                                             }
                                         }
                                     }
@@ -411,8 +382,6 @@ window.TradeManager.History = (function() {
                         // Armazenar referência ao observer
                         window._tradeObserver = observer;
                         
-                        const startedLogMsg = 'Monitoramento de operações iniciado';
-                        chrome.runtime.sendMessage({ action: 'addLog', logMessage: startedLogMsg, level: 'INFO', source: 'trade-history.js-injected' });
                         return true;
                     }
                     
@@ -421,7 +390,8 @@ window.TradeManager.History = (function() {
                 }
             });
             
-            logToSystem("Monitoramento de operações iniciado com sucesso", "SUCCESS");
+            updateStatus("Monitoramento de operações iniciado", "success", 3000);
+            logToSystem("Monitoramento de operações iniciado", "INFO");
         } catch (error) {
             logToSystem(`Erro ao iniciar monitoramento: ${error.message}`, "ERROR");
             throw error;
@@ -452,20 +422,13 @@ window.TradeManager.History = (function() {
                     if (window._tradeObserver) {
                         window._tradeObserver.disconnect();
                         window._tradeObserver = null;
-                        const logMsg = 'Monitoramento de operações interrompido';
-                        // console.warn(`${scriptName} Attempting to log: "${logMsg}", Runtime ID: ${localRuntimeId}`);
-                        // if (localRuntimeId && localRuntimeId !== 'undefined') {
-                        chrome.runtime.sendMessage({ action: 'addLog', logMessage: logMsg, level: 'INFO', source: 'trade-history.js-injected' });
-                        //     console.warn(`${scriptName} Log message SENT for "Monitoring stopped".`);
-                        // } else {
-                        //     console.warn(`${scriptName} Log message NOT SENT for "Monitoring stopped" (invalid runtime).`);
-                        // }
                         return true;
                     }
                     return false;
                 }
             });
             
+            updateStatus("Monitoramento de operações interrompido", "info", 3000);
             logToSystem("Monitoramento de operações interrompido", "INFO");
         } catch (error) {
             logToSystem(`Erro ao parar monitoramento: ${error.message}`, "ERROR");
@@ -504,6 +467,7 @@ window.TradeManager.History = (function() {
             // Ignorar erros de comunicação
         }
         
+        updateStatus("Histórico de operações limpo", "success", 3000);
         logToSystem("Histórico de operações limpo", "INFO");
     };
     
@@ -514,20 +478,17 @@ window.TradeManager.History = (function() {
         // Exportar para CSV
         if (UI.exportBtn) {
             UI.exportBtn.addEventListener('click', exportToCSV);
-            logToSystem("Listener de exportação configurado", "DEBUG");
         }
         
         // Limpar histórico
         if (UI.clearHistoryBtn) {
             UI.clearHistoryBtn.addEventListener('click', clearHistory);
-            logToSystem("Listener de limpar histórico configurado", "DEBUG");
         }
         
         // Listener para receber mensagens do background
         chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             if (message.type === 'TRADE_RESULT') {
                 const trade = message.data;
-                logToSystem(`Operação recebida: ${trade.symbol} - ${trade.status}`, "INFO");
                 addOperation(trade);
                 
                 if (sendResponse) sendResponse({ success: true });
@@ -553,7 +514,8 @@ window.TradeManager.History = (function() {
             return;
         }
         
-        logToSystem("Inicializando módulo de histórico...", "INFO");
+        updateStatus("Inicializando módulo de histórico...", "info", 2000);
+        logToSystem("Inicializando módulo de histórico", "INFO");
         
         // Atualizar referências de elementos UI
         UI.operationsBody = document.querySelector('#operations-body');
@@ -574,6 +536,7 @@ window.TradeManager.History = (function() {
         loadOperationsFromLocalStorage();
         
         isInitialized = true;
+        updateStatus("Módulo de histórico inicializado", "success", 3000);
         logToSystem("Módulo de histórico inicializado com sucesso", "SUCCESS");
     };
     
@@ -588,30 +551,27 @@ window.TradeManager.History = (function() {
         try {
             // Verificação mais robusta para garantir que só operações realmente fechadas sejam consideradas
             if (operation.status !== 'Closed') {
-                logToSystem(`Ignorando notificação para operação não fechada: ${operation.symbol} - ${operation.status}`, 'DEBUG');
                 return;
             }
 
             // Validação adicional para garantir que temos dados válidos
             if (!operation.symbol || typeof operation.success !== 'boolean') {
-                logToSystem(`Dados de operação inválidos ou incompletos, cancelando notificação`, 'WARN');
+                logToSystem(`Dados de operação inválidos`, 'WARN');
                 return;
             }
             
             // Verificar se é uma operação histórica carregada do localStorage
             if (operation.isHistorical) {
-                logToSystem(`Ignorando notificação para operação histórica: ${operation.symbol}`, 'INFO');
                 return;
             }
             
             // Verificar se a operação é recente (menos de 30 segundos atrás)
             const isRecent = Date.now() - operation.timestamp < 30000; // 30 segundos
             if (!isRecent) {
-                logToSystem(`Ignorando notificação para operação antiga: ${operation.symbol}`, 'INFO');
                 return;
             }
             
-            logToSystem(`Notificando sistema de automação: operação ${operation.success ? 'vencedora' : 'perdedora'} - ${operation.symbol}`, 'INFO');
+            logToSystem(`Notificando automação: ${operation.symbol} - ${operation.success ? 'ganhou' : 'perdeu'}`, 'INFO');
             
             // Notificar o sistema de Gale, com verificação mais robusta
             let galeSystemNotified = false;
@@ -622,22 +582,20 @@ window.TradeManager.History = (function() {
                     if (operation.success) {
                         // Se for sucesso, resetar o gale (usando função de interface)
                         if (typeof window.GaleSystem.simulateReset === 'function') {
-                            logToSystem(`Operação bem-sucedida, chamando simulateReset para resetar gale`, 'SUCCESS');
                             const result = window.GaleSystem.simulateReset();
-                            logToSystem(`Resultado do reset: ${result.message}`, 'SUCCESS');
+                            logToSystem(`Gale resetado: ${result.message}`, 'SUCCESS');
                             galeSystemNotified = true;
                         } else if (typeof window.GaleSystem.resetGale === 'function') {
                             // Fallback para método direto
                             const result = window.GaleSystem.resetGale();
-                            logToSystem(`Operação bem-sucedida, sistema de gale: ${result.message}`, 'SUCCESS');
+                            logToSystem(`Gale resetado: ${result.message}`, 'SUCCESS');
                             galeSystemNotified = true;
                         }
                     } else {
                         // Se for falha, aplicar o gale usando simulateGale (mesma função do botão)
                         if (typeof window.GaleSystem.simulateGale === 'function') {
-                            logToSystem(`Operação com perda, chamando simulateGale para aplicar gale`, 'WARN');
                             const result = window.GaleSystem.simulateGale();
-                            logToSystem(`Resultado da aplicação de gale: ${result.message}`, 'WARN');
+                            logToSystem(`Gale aplicado: ${result.message}`, 'WARN');
                             galeSystemNotified = true;
                         } else if (typeof window.GaleSystem.applyGale === 'function') {
                             // Fallback para método direto apenas se o simulateGale não existir
@@ -646,15 +604,15 @@ window.TradeManager.History = (function() {
                                 source: 'trade-history',
                                 notifyTime: Date.now()
                             });
-                            logToSystem(`Operação com perda, sistema de gale: ${result.message}`, 'WARN');
+                            logToSystem(`Gale aplicado: ${result.message}`, 'WARN');
                             galeSystemNotified = true;
                         }
                     }
                 } catch (galeError) {
-                    logToSystem(`Erro ao notificar GaleSystem diretamente: ${galeError.message}`, 'ERROR');
+                    logToSystem(`Erro ao notificar GaleSystem: ${galeError.message}`, 'ERROR');
                 }
             } else {
-                logToSystem(`GaleSystem não encontrado para notificação direta`, 'WARN');
+                logToSystem(`GaleSystem não encontrado`, 'WARN');
             }
             
             // Método 2: Se a comunicação direta falhar, tentar via mensagem do Chrome
@@ -670,7 +628,7 @@ window.TradeManager.History = (function() {
                         }
                     });
                 } catch (msgError) {
-                    logToSystem(`Erro ao enviar mensagem para sistema de gale: ${msgError.message}`, 'ERROR');
+                    logToSystem(`Erro ao enviar mensagem para gale: ${msgError.message}`, 'ERROR');
                 }
             }
             
@@ -688,15 +646,14 @@ window.TradeManager.History = (function() {
                 
                 // Disparar o evento
                 document.dispatchEvent(operationResultEvent);
-                logToSystem(`Evento 'operationResult' disparado`, 'DEBUG');
                 
                 // *** REMOVIDO: A chamada completeOperationCycle estava causando mudança indevida de status ***
                 // O StateManager já controla adequadamente o status baseado na configuração de automação
             } catch (eventError) {
-                logToSystem(`Erro ao disparar evento: ${eventError.message}`, 'ERROR');
+                logToSystem(`Erro ao disparar evento de operação: ${eventError.message}`, 'ERROR');
             }
         } catch (error) {
-            logToSystem(`Erro ao notificar sistema de automação: ${error.message}`, 'ERROR');
+            logToSystem(`Erro ao notificar automação: ${error.message}`, 'ERROR');
         }
     };
     
@@ -734,14 +691,3 @@ if (document.readyState === 'loading') {
     }
 }
 
-// Função padronizada para enviar status para o index
-function toUpdateStatus(message, type = 'info', duration = 3000) {
-    if (chrome && chrome.runtime && chrome.runtime.id) {
-        chrome.runtime.sendMessage({
-            action: 'updateStatus',
-            message: message,
-            type: type,
-            duration: duration
-        });
-    }
-}
