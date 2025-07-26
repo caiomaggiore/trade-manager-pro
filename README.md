@@ -56,12 +56,7 @@ cp .env.example .env
 # Edite .env com suas chaves de API
 ```
 
-4. Build do projeto
-```bash
-npm run build
-```
-
-5. Carregue a extensão no Chrome
+4. Carregue a extensão no Chrome
 - Abra chrome://extensions/
 - Ative o "Modo do desenvolvedor"
 - Clique em "Carregar sem compactação"
