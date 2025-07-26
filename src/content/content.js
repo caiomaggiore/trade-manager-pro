@@ -68,14 +68,7 @@ function updateStatus(message, type = 'info', duration = 5000) {
     }
 }
   
-  // ======================================================================
-// =================== CAPTURA DE PAYOUT ===============================
-// ======================================================================
-
-/**
- * Função para capturar payout diretamente do DOM da PocketOption
- * Esta função tem acesso direto ao DOM da página principal
- */
+// Captura de payout do DOM da PocketOption
 function capturePayoutFromDOM() {
     return new Promise((resolve, reject) => {
         try {
@@ -95,46 +88,41 @@ function capturePayoutFromDOM() {
                 '[class*="profit"]'
             ];
             
-            // ✅ DEBUG: Primeiro, vamos listar TODOS os elementos que contêm %
-            window.logToSystem('🔍 [DEBUG] Listando TODOS os elementos que contêm % na página:', 'DEBUG');
             const allElementsWithPercent = document.querySelectorAll('*');
             let elementCount = 0;
             for (const elem of allElementsWithPercent) {
                 const text = elem.textContent?.trim() || '';
                 if (text.includes('%') && text.length < 50) {
                     elementCount++;
-                    if (elementCount <= 10) { // Limitar para não poluir logs
-                        window.logToSystem(`🔍 [DEBUG] Elemento ${elementCount}: "${text}" (tag: ${elem.tagName}, classes: ${elem.className})`, 'DEBUG');
+                    if (elementCount <= 10) {
+                        window.logToSystem(`Elemento ${elementCount}: "${text}" (tag: ${elem.tagName}, classes: ${elem.className})`, 'DEBUG');
                     }
                 }
             }
-            window.logToSystem(`🔍 [DEBUG] Total de elementos com % encontrados: ${elementCount}`, 'DEBUG');
+            window.logToSystem(`Total de elementos com % encontrados: ${elementCount}`, 'DEBUG');
             
             let payoutElement = null;
             let payoutValue = 0;
             let foundSelector = '';
             
-            // Tentar encontrar o elemento de payout
             for (const selector of payoutSelectors) {
                 const elements = document.querySelectorAll(selector);
-                window.logToSystem(`🔎 Testando seletor "${selector}" - encontrados ${elements.length} elementos`, 'DEBUG');
+                window.logToSystem(`Testando seletor "${selector}" - encontrados ${elements.length} elementos`, 'DEBUG');
                 
                 if (elements.length > 0) {
-                    // Testar cada elemento encontrado
                     for (let i = 0; i < elements.length; i++) {
                         const element = elements[i];
                         const text = element.textContent || element.innerText || '';
-                        window.logToSystem(`📝 Elemento ${i+1}: "${text}"`, 'DEBUG');
+                        window.logToSystem(`Elemento ${i+1}: "${text}"`, 'DEBUG');
                         
-                        // Verificar se contém um valor de payout válido
                         const payoutMatch = text.match(/(\d+(?:\.\d+)?)\s*%?/);
                         if (payoutMatch) {
                             const value = parseFloat(payoutMatch[1]);
-                            if (value >= 50 && value <= 200) { // Payout válido entre 50% e 200%
+                            if (value >= 50 && value <= 200) {
                                 payoutElement = element;
                                 payoutValue = value;
                                 foundSelector = selector;
-                                window.logToSystem(`✅ Elemento de payout encontrado com seletor: ${selector} (${i+1}º elemento)`, 'SUCCESS');
+                                window.logToSystem(`Elemento de payout encontrado com seletor: ${selector} (${i+1}º elemento)`, 'SUCCESS');
                                 break;
                             }
                         }
@@ -144,16 +132,13 @@ function capturePayoutFromDOM() {
                 }
             }
             
-            // Se não encontrou com seletores específicos, fazer busca ampla
             if (!payoutElement) {
-                window.logToSystem('🔍 Seletores específicos não funcionaram, fazendo busca ampla...', 'DEBUG');
+                window.logToSystem('Seletores específicos não funcionaram, fazendo busca ampla...', 'DEBUG');
                 
-                // Busca ampla por elementos que contêm %
                 const allElements = document.querySelectorAll('*');
                 for (const element of allElements) {
                     const text = element.textContent || element.innerText || '';
                     
-                    // Procurar por padrão de porcentagem
                     if (text.includes('%') && text.match(/\d+\s*%/)) {
                         const match = text.match(/(\d+(?:\.\d+)?)\s*%/);
                         if (match) {
@@ -162,7 +147,7 @@ function capturePayoutFromDOM() {
                                 payoutValue = value;
                                 payoutElement = element;
                                 foundSelector = 'busca-ampla';
-                                window.logToSystem(`🎯 Payout encontrado em busca ampla: ${payoutValue}%`, 'INFO');
+                                window.logToSystem(`Payout encontrado em busca ampla: ${payoutValue}%`, 'INFO');
                                 break;
                             }
                         }
@@ -170,7 +155,6 @@ function capturePayoutFromDOM() {
                 }
             }
             
-            // Preparar resultado
             if (payoutElement && payoutValue > 0) {
                 const result = {
                     success: true,
@@ -181,22 +165,21 @@ function capturePayoutFromDOM() {
                     elementText: payoutElement.textContent || payoutElement.innerText || ''
                 };
                 
-                window.logToSystem(`✅ Payout capturado com sucesso: ${payoutValue}% (seletor: ${foundSelector})`, 'SUCCESS');
+                window.logToSystem(`Payout capturado com sucesso: ${payoutValue}% (seletor: ${foundSelector})`, 'SUCCESS');
                 updateStatus(`Payout encontrado: ${payoutValue}%`, 'success');
                 
                 resolve(result);
             } else {
-                // Valor padrão se não conseguir encontrar
                 const defaultResult = {
                     success: true,
-                    payout: 85, // Valor padrão realista
+                    payout: 85,
                     source: 'default',
                     selector: 'none',
                     timestamp: new Date().toISOString(),
                     elementText: 'Valor padrão'
                 };
                 
-                window.logToSystem('⚠️ Payout não encontrado no DOM, usando valor padrão: 85%', 'WARN');
+                window.logToSystem('Payout não encontrado no DOM, usando valor padrão: 85%', 'WARN');
                 updateStatus('Payout não encontrado, usando padrão: 85%', 'warn');
                 
                 resolve(defaultResult);
@@ -211,49 +194,36 @@ function capturePayoutFromDOM() {
     });
 }
   
-  // ======================================================================
-  // =================== MONITORAMENTO DE OPERAÇÕES ======================
-  // ======================================================================
-  
-  // Inicializar monitoramento de operações
   const startTradeMonitoring = () => {
-    // Verificar se o observer já existe
     if (window._tradeObserver) {
       window.logToSystem("Observer já existe, não será criado novamente", "INFO");
       return;
     }
     
     window.logToSystem("Iniciando monitoramento de operações", "INFO");
-    
-    // Função para processar modal de notificação de trade
     const processTradeModal = (modal) => {
       try {
-        // Verificar se é realmente um modal de operação
         if (!modal.classList.contains('deals-noty')) {
           return;
         }
         
-        // Obter título da operação
         const titleElement = modal.querySelector('.deals-noty__title');
         if (!titleElement) return;
         
         const titleText = titleElement.textContent.trim();
         
-        // Determinar tipo de operação
         let tradeType = null;
         if (titleText.includes('placed')) {
           tradeType = 'Open';
         } else if (titleText.includes('closed')) {
           tradeType = 'Closed';
         } else {
-          return; // Não é um modal de operação relevante
+          return;
         }
         
-        // Obter símbolo
         const symbolElement = modal.querySelector('.deals-noty__symbol-title');
         const symbol = symbolElement ? symbolElement.textContent.trim() : 'Desconhecido';
         
-        // Obter dados da operação
         const textColumns = modal.querySelectorAll('.deals-noty__text-col');
         if (!textColumns || textColumns.length === 0) return;
         
@@ -261,7 +231,6 @@ function capturePayoutFromDOM() {
         let profit = 0;
         let forecast = '';
         
-        // Procurar nos elementos de texto os valores
         textColumns.forEach(column => {
           const label = column.querySelector('.deals-noty__label');
           const value = column.querySelector('.deals-noty__value');
@@ -280,16 +249,13 @@ function capturePayoutFromDOM() {
           }
         });
         
-        // Armazenar último valor para cálculos em operações fechadas
         if (tradeType === 'Open' && amount > 0) {
           window.lastTradeAmount = amount.toFixed(2);
         }
         
-        // Calcular valores para registro (payment = lucro + valor investido)
         const lastAmount = window.lastTradeAmount || amount.toFixed(2);
         const payment = (parseFloat(profit) + parseFloat(lastAmount)).toFixed(2);
         
-        // Estruturar o resultado da operação
         const result = {
           status: tradeType,
           success: profit > 0,
@@ -302,7 +268,6 @@ function capturePayoutFromDOM() {
         
         window.logToSystem(`Operação detectada: ${result.status} ${result.symbol}`, 'INFO');
         
-        // Enviar resultado para processamento
         chrome.runtime.sendMessage({
           type: 'TRADE_RESULT',
           data: result
@@ -442,22 +407,17 @@ function capturePayoutFromDOM() {
                     canvas.width = width;
                     canvas.height = img.height;
                     
-                    // Desenhar apenas a parte da imagem sem o iframe
                     ctx.drawImage(img, 0, 0, width, img.height, 0, 0, width, img.height);
                 }
                 
-                // Garantir que a imagem seja PNG
                 const dataUrl = canvas.toDataURL('image/png');
                 
-                // Verificar se o dataUrl está no formato correto
                 if (!dataUrl.startsWith('data:image/png')) {
                     window.logToSystem('Aviso: dataUrl não está no formato esperado', 'WARN');
-                    // Tentar forçar o formato correto
                     const fixedDataUrl = 'data:image/png;base64,' + dataUrl.split(',')[1];
                     window.logToSystem('Formato corrigido manualmente', 'INFO');
                     sendResponse({ dataUrl: fixedDataUrl });
                 } else {
-                    // Imagem válida, retornar normalmente
                     window.logToSystem('Captura processada com sucesso', 'SUCCESS');
                     sendResponse({ dataUrl: dataUrl });
                 }
@@ -472,14 +432,12 @@ function capturePayoutFromDOM() {
             sendResponse({ error: 'Erro ao carregar imagem' });
         };
         
-        // Verificar se a dataUrl recebida é válida
         if (!message.dataUrl || typeof message.dataUrl !== 'string' || !message.dataUrl.startsWith('data:')) {
             window.logToSystem('dataUrl recebida inválida: ' + (message.dataUrl ? message.dataUrl.substring(0, 20) + '...' : 'undefined'), 'ERROR');
             sendResponse({ error: 'URL de dados de imagem inválida' });
             return true;
         }
         
-        // Carregar a imagem
         img.src = message.dataUrl;
         return true;
     }
@@ -559,8 +517,7 @@ function capturePayoutFromDOM() {
         return false; // Resposta síncrona
     }
     
-    // Handler para executar operações de compra/venda
-    if (message.action === 'EXECUTE_TRADE_ACTION') {
+          if (message.action === 'EXECUTE_TRADE_ACTION') {
       window.logToSystem(`Recebido comando para executar ${message.tradeAction}`, 'INFO');
       
       // Log para registrar a solicitação da operação
@@ -762,19 +719,18 @@ function capturePayoutFromDOM() {
       return true;
     }
 
-    // Handler para solicitação de payout do automation.js - USANDO A MESMA FUNÇÃO DO PAINEL
     if (message.action === 'GET_CURRENT_PAYOUT') {
       try {
         window.logToSystem('🔍 Capturando payout atual usando capturePayoutFromDOM (mesma função do painel)...', 'INFO');
         
-        // ✅ CORREÇÃO: Usar a MESMA função que o painel de desenvolvimento usa
+    
         capturePayoutFromDOM()
           .then(result => {
-            window.logToSystem(`✅ Payout capturado via capturePayoutFromDOM: ${result.payout}%`, 'SUCCESS');
+            window.logToSystem(`Payout capturado via capturePayoutFromDOM: ${result.payout}%`, 'SUCCESS');
           sendResponse(result);
           })
           .catch(error => {
-            window.logToSystem(`❌ Erro na captura via capturePayoutFromDOM: ${error.message}`, 'ERROR');
+            window.logToSystem(`Erro na captura via capturePayoutFromDOM: ${error.message}`, 'ERROR');
           sendResponse({ success: false, error: error.message });
         });
         
@@ -787,9 +743,8 @@ function capturePayoutFromDOM() {
       }
     }
 
-    // =================== HANDLERS PARA TESTE DE ATIVOS ===================
+
     
-    // Handler para abrir modal de ativos
     if (message.action === 'TEST_OPEN_ASSET_MODAL') {
       try {
         window.logToSystem('Recebida solicitação para abrir modal de ativos', 'INFO');
@@ -828,7 +783,6 @@ function capturePayoutFromDOM() {
       }
     }
 
-    // Handler para buscar melhor ativo
     if (message.action === 'TEST_FIND_BEST_ASSET') {
       try {
         window.logToSystem('Recebida solicitação para buscar melhor ativo', 'INFO');
@@ -1000,8 +954,7 @@ function capturePayoutFromDOM() {
       }
     }
 
-    // ❌ HANDLER REMOVIDO: Era duplicado e chamava função errada
-    // O handler correto está na linha 2537 usando switchToBestAssetForAutomation
+
 
     // Handler para verificar ativo atual
     if (message.action === 'GET_CURRENT_ASSET') {
@@ -1216,9 +1169,7 @@ function capturePayoutFromDOM() {
 
   });
 
-// ======================================================================
-// =================== CONFIGURAÇÃO DE OPERAÇÕES =======================
-// ======================================================================
+// Configuração de operações na plataforma
 
   // Funções para configurar operações na plataforma - consolidando funções duplicadas
 const TradingConfig = {
@@ -1914,12 +1865,10 @@ function inspectTradingInterface() {
   }
 }
 
-// ================== SISTEMA DE LOGS PADRÃO ==================
+
 // Sistema de logs global disponível via window.logToSystem
 
-// ======================================================================
-// =================== SISTEMA DE MANIPULAÇÃO DE ATIVOS ================
-// ======================================================================
+// Sistema de manipulação de ativos
 
 const AssetManager = {
   // Função para abrir o modal de seleção de ativos
@@ -2884,9 +2833,7 @@ const AssetManager = {
   }
 };
 
-// ======================================================================
-// =================== LISTENERS DE MENSAGENS ==========================
-// ======================================================================
+// Listeners de mensagens do sistema de extensão
 
 // Listener para mensagens do sistema de extensão
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -3235,25 +3182,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // Resposta assíncrona
   }
   
-  // ❌ HANDLER DUPLICADO REMOVIDO - O handler correto está na linha 877
-  // if (message.action === 'TEST_SWITCH_ASSET_CATEGORY') {
-  //   window.logToSystem(`Solicitação de troca de categoria para ${message.category} recebida`, 'INFO');
-  //   
-  //   const category = message.category || 'crypto';
-  //   
-  //   AssetManager.switchToBestAsset(85, category)
-  //     .then(result => {
-  //       sendResponse(result);
-  //     })
-  //     .catch(error => {
-  //       sendResponse({
-  //         success: false,
-  //         error: error.message
-  //       });
-  //     });
-  //   
-  //   return true; // Resposta assíncrona
-  // }
+
   
   // ✅ HANDLER ESPECÍFICO PARA TEST_SWITCH_TO_BEST_ASSET (usando wrapper de automação)
   if (message.action === 'TEST_SWITCH_TO_BEST_ASSET') {
@@ -3291,9 +3220,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return false; // Não processou a mensagem
 });
 
-// ======================================================================
-// =================== EXPOSIÇÃO GLOBAL DE FUNÇÕES ====================
-// ======================================================================
+// Exposição global de funções
 
 // Expor função capturePayoutFromDOM globalmente para acesso do PayoutController
 window.capturePayoutFromDOM = capturePayoutFromDOM;
