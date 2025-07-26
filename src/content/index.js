@@ -1,50 +1,36 @@
 // Trade Manager Pro - Index Module
-// ================== SISTEMA DE COMUNICAÇÃO INTERNA ==================
-// Sistema de recebimento de status via window.postMessage
+// Sistema de comunicação interna e recebimento de status
 
-// Sistema anti-loop para mensagens (CORRIGIDO - menos restritivo)
 let processingMessage = false;
 let lastProcessedMessage = { content: '', timestamp: 0 };
-const PROCESSING_COOLDOWN = 100; // Reduzido para 100ms (era 300ms)
-
-// Listener para mensagens internas do iframe (PRIMEIRA COISA A SER DECLARADA)
+const PROCESSING_COOLDOWN = 100;
 window.addEventListener('message', (event) => {
-    // Verificar se a mensagem é para atualizar status
-    if (event.data && event.data.type === 'UPDATE_STATUS') {
-        try {
-            const { message, type = 'info', duration = 3000 } = event.data.data;
+            if (event.data && event.data.type === 'UPDATE_STATUS') {
+            try {
+                const { message, type = 'info', duration = 3000 } = event.data.data;
+                
+                const now = Date.now();
+                const messageKey = `${message}_${type}`;
+                
+                if (lastProcessedMessage.content === messageKey && (now - lastProcessedMessage.timestamp) < PROCESSING_COOLDOWN) {
+                    console.log(`[INDEX] Mensagem duplicada ignorada: "${message}" (cooldown: ${PROCESSING_COOLDOWN}ms)`);
+                    return;
+                }
             
-            // ✅ ANTI-LOOP CORRIGIDO: Só bloquear se for EXATAMENTE a mesma mensagem muito rapidamente
-            const now = Date.now();
-            const messageKey = `${message}_${type}`;
-            
-            // Verificação de duplicata mais específica
-            if (lastProcessedMessage.content === messageKey && (now - lastProcessedMessage.timestamp) < PROCESSING_COOLDOWN) {
-                console.log(`[INDEX] 🚫 Mensagem duplicada ignorada: "${message}" (cooldown: ${PROCESSING_COOLDOWN}ms)`);
-                return;
-            }
-            
-            // REMOVIDO: verificação processingMessage que estava bloqueando tudo
-            // Apenas usar verificação de duplicata baseada em conteúdo e timestamp
-            
-            // Atualizar último processamento
             lastProcessedMessage = { content: messageKey, timestamp: now };
             
-            // Log para debug detalhado - incluir origem da mensagem
             const origin = event.origin || 'unknown';
             const source = event.source === window ? 'local' : 'iframe';
-            console.log(`[INDEX] 📋 Processando status de ${source}: "${message}" (${type}) - origem: ${origin}`);
+            console.log(`[INDEX] Processando status de ${source}: "${message}" (${type}) - origem: ${origin}`);
             
-            // ✅ CORREÇÃO: Verificação de contexto mais inteligente
             const isExtensionContext = window.location.href.includes('chrome-extension://');
             const isLocalContext = window.location.href.includes('file://') || window.location.href.includes('localhost');
             const canProcessLocally = isExtensionContext || isLocalContext;
             
-            console.log(`[INDEX] 📋 Contexto da extensão: ${isExtensionContext}, pode processar localmente: ${canProcessLocally}`);
+            console.log(`[INDEX] Contexto da extensão: ${isExtensionContext}, pode processar localmente: ${canProcessLocally}`);
             
             if (!canProcessLocally) {
-                // Se não pode processar localmente, redirecionar via chrome.runtime
-                console.log(`[INDEX] 📋 Redirecionando status para a extensão via chrome.runtime.sendMessage`);
+                console.log(`[INDEX] Redirecionando status para a extensão via chrome.runtime.sendMessage`);
                 
                 if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
                     chrome.runtime.sendMessage({
@@ -54,29 +40,24 @@ window.addEventListener('message', (event) => {
                         duration: duration
                     }, (response) => {
                         if (chrome.runtime.lastError) {
-                            console.warn(`[INDEX] 📋 Erro ao redirecionar status: ${chrome.runtime.lastError.message}`);
+                            console.warn(`[INDEX] Erro ao redirecionar status: ${chrome.runtime.lastError.message}`);
                         } else {
-                            console.log(`[INDEX] 📋 Status redirecionado com sucesso para a extensão`);
+                            console.log(`[INDEX] Status redirecionado com sucesso para a extensão`);
                         }
                     });
                 } else {
-                    console.warn(`[INDEX] 📋 Chrome runtime não disponível para redirecionar status`);
+                    console.warn(`[INDEX] Chrome runtime não disponível para redirecionar status`);
                 }
-                return; // Não processar localmente se não pode
+                return;
             }
             
-            // ✅ PROCESSAR LOCALMENTE (extensão ou contexto local)
-            console.log(`[INDEX] 📋 Processando status localmente no contexto da extensão`);
+            console.log(`[INDEX] Processando status localmente no contexto da extensão`);
             
-            // Atualizar status diretamente no DOM
             const statusElement = document.getElementById('status-processo');
             if (statusElement) {
-                // ✅ USAR CLASSES ORIGINAIS DO CSS (status-processo + tipo + visible)
-                // Remover todas as classes de tipo anteriores
                 statusElement.classList.remove('info', 'success', 'error', 'warning', 'status-warning');
                 
-                // Determinar classe CSS baseada no tipo (usando classes originais)
-                let statusClass = 'info'; // Default
+                let statusClass = 'info';
                 switch (type) {
                     case 'success': statusClass = 'success'; break;
                     case 'error': statusClass = 'error'; break;
@@ -84,24 +65,22 @@ window.addEventListener('message', (event) => {
                     default: statusClass = 'info';
                 }
                 
-                // Aplicar as classes originais: status-processo + tipo + visible
                 statusElement.className = `status-processo ${statusClass} visible`;
                 statusElement.textContent = message;
                 
-                console.log(`[INDEX] 📋 Status atualizado no DOM: "${message}" com classe "${statusClass}"`);
+                console.log(`[INDEX] Status atualizado no DOM: "${message}" com classe "${statusClass}"`);
                 
-                // Auto-esconder após a duração especificada (animação suave)
                 if (duration > 0) {
                     setTimeout(() => {
                         statusElement.classList.remove('visible');
-                        console.log(`[INDEX] 📋 Status escondido após ${duration}ms`);
+                        console.log(`[INDEX] Status escondido após ${duration}ms`);
                     }, duration);
                 }
                 
             } else {
                 console.log(`[INDEX] 📋 ERRO: Elemento 'status-processo' não encontrado no DOM!`);
                 
-                // ✅ FALLBACK: Tentar criar elemento se não existir (caso extremo)
+
                 const footer = document.querySelector('.global-footer');
                 if (footer) {
                     const newStatusElement = document.createElement('div');
@@ -128,7 +107,7 @@ window.addEventListener('message', (event) => {
                 } else {
                     console.log(`[INDEX] 📋 ERRO CRÍTICO: Nenhum elemento de status encontrado!`);
                     
-                    // ✅ ÚLTIMO RECURSO: Usar alert apenas se não conseguir mostrar no DOM
+        
                     // (Não usar alert para não interferir na UX)
                 }
             }
@@ -145,7 +124,7 @@ window.addEventListener('message', (event) => {
 // Log de inicialização do sistema de comunicação
 console.log('[INDEX] Sistema de comunicação interna inicializado');
 
-// ================== VALIDAÇÃO DE DOMÍNIO ==================
+// Validação de domínio
 // IMPORTANTE: Esta extensão só deve funcionar na Pocket Option
 const validateDomain = () => {
     try {
@@ -204,7 +183,7 @@ const validateDomain = () => {
                 `;
                 document.body.appendChild(warningDiv);
                 
-                // Remover aviso após 10 segundos
+
                 setTimeout(() => {
                     if (warningDiv.parentNode) {
                         warningDiv.parentNode.removeChild(warningDiv);
@@ -218,7 +197,7 @@ const validateDomain = () => {
         return true; // Domínio autorizado
         
     } catch (error) {
-        // Em caso de erro, permitir execução para não quebrar a funcionalidade
+
         return true;
     }
 };
@@ -228,29 +207,21 @@ if (!validateDomain()) {
     // Não continuar com a inicialização
 } else {
 
-// Verifica se o módulo já foi inicializado para evitar duplicações
 if (typeof window.TradeManagerIndexLoaded === 'undefined') {
-    // Marca o módulo como carregado
     window.TradeManagerIndexLoaded = true;
     
-    // Verificar se o sistema de logs está disponível
     let logInitialized = false;
     
-    // Sistema de logs global disponível via window.logToSystem e window.updateStatus
-    
-    // Iniciar sistema de logs ao carregar
     const initLogging = () => {
         if (logInitialized) return;
         
         try {
-            // Verificar se o sistema de logs já existe
             if (typeof window.logToSystem === 'function') {
                 logToSystem('Sistema de logs disponível', 'DEBUG');
                 logInitialized = true;
                 return;
             }
             
-            // Verificar se o LogSystem existe (pode estar carregado mas não inicializado)
             if (typeof window.LogSystem === 'object') {
                 window.LogSystem.init();
                 logToSystem('Sistema de logs inicializado', 'INFO');
@@ -258,7 +229,6 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 return;
             }
             
-            // Se o sistema não está disponível, tentar carregar via script
             logToSystem('Sistema de logs não detectado, tentando carregar via script...', 'WARN');
             
             const script = document.createElement('script');
@@ -281,7 +251,6 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         }
     };
     
-    // ================== VERIFICAÇÃO DE ELEMENTOS ==================
     // Função para obter elementos da UI de forma segura
     const getUIElements = () => {
         return {
@@ -316,7 +285,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     // Inicializar elementos da UI
     let indexUI = getUIElements();
     
-    // ================== VARIÁVEIS GLOBAIS ==================
+    // Variáveis globais
     let isAutomationRunning = false;
     let automationTimeout = null;
     let historyModuleInitialized = false;
@@ -325,7 +294,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
     window.API_KEY = 'AIzaSyDeYcYUxAN52DNrgZeFNcEfceVMoWJDjWk';
     window.API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${window.API_KEY}`;
     
-    // ================== ORQUESTRADOR DE ANÁLISE ==================
+    // Orquestrador de análise
     const analysisOrchestrator = new AnalysisOrchestrator({
         log: logToSystem,
         updateStatus: updateStatus,
@@ -586,10 +555,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         }
     };
 
-    // ================== INICIALIZAÇÃO ==================
-    // Inicialização removida - usando _setupLateInitialization
-
-    // ================== NOVAS FUNÇÕES PARA AUTOMAÇÃO ==================
+    // Funções para automação
     // Função para atualizar os elementos de UI com as configurações atuais
     const updateCurrentSettings = (settings) => {
         // Verificar se temos as configurações
@@ -617,7 +583,6 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         try {
             logToSystem(`Atualizando UI com novas configurações: ${JSON.stringify(settings)}`, 'DEBUG');
             
-            // Atualizar valores de lucro diário e stop loss
             if (indexUI.dailyProfit && typeof settings.dailyProfit !== 'undefined') {
                 indexUI.dailyProfit.value = settings.dailyProfit;
                 if (indexUI.currentProfit) {
@@ -634,7 +599,6 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 }
             }
             
-            // Atualizar valor de entrada e periodo
             if (indexUI.entryValue && typeof settings.tradeValue !== 'undefined') {
                 indexUI.entryValue.value = settings.tradeValue;
                 if (indexUI.currentValue) {
@@ -651,7 +615,6 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 }
             }
             
-            // Atualizar configurações de Gale (usando estrutura correta)
             const galeEnabled = settings.gale?.active ?? settings.galeEnabled ?? false;
             const galeLevel = settings.gale?.level ?? settings.galeLevel ?? '20%';
             
@@ -660,23 +623,16 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 logToSystem(`toggleGale atualizado para: ${galeEnabled}`, 'DEBUG');
             }
             
-            // Atualizar status do Gale na UI
-                                        // Atualizar status do Gale na UI
             updateGaleStatusUI(galeEnabled, galeLevel);
-            
-            // Atualizar payout mínimo no dashboard
             updateMinPayoutDisplay(settings);
-            
-            // Atualizar ganhos e perdas no dashboard
             updateProfitLossDisplay();
             
-            // Atualizar status de automação (usando estrutura correta)
             const automationActive = settings.automation ?? settings.autoActive ?? false;
             if (indexUI.automationStatus) {
                 updateAutomationStatusUI(automationActive);
             }
             
-            // Salvar as configurações globalmente para acesso fácil
+
             window.currentSettings = settings;
             
             // Força uma atualização da UI para garantir que as mudanças sejam visíveis
@@ -1615,7 +1571,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         }
     }
 
-    // ================== ANALISADOR DE DADOS ==================
+    // Analisador de dados
     // A classe DataAnalyzer foi movida para o seu próprio arquivo em src/content/analyzers/data-analyzer.js
     const analyzer = new DataAnalyzer(logToSystem);
 
@@ -1623,7 +1579,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
      * @typedef {object} GeminiAnalysisResult
      */
 
-    // ================== LISTENERS ==================
+    // Event listeners
     document.addEventListener('DOMContentLoaded', () => {
         // Verificar se estamos na página de análise
         if (window.location.pathname.includes('/analysis.html')) {
@@ -2209,7 +2165,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             
             logToSystem('Botões de teste do sistema de Gale configurados', 'INFO');
             
-            // =================== CONFIGURAR BOTÕES DE TESTE DE ATIVOS ===================
+            // Configurar botões de teste de ativos
             
             // Obter elementos dos botões de teste de ativos
             const testFindBestAssetBtn = document.getElementById('test-find-best-asset');
@@ -2274,7 +2230,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             
             logToSystem('Botões de teste de ativos configurados', 'INFO');
 
-            // =================== BOTÃO DE TESTE DE PAYOUT ===================
+            // Botão de teste de payout
             // Configurar botão de teste de captura de payout
             const testCapturePayoutBtn = document.getElementById('test-capture-payout');
             const payoutResult = document.getElementById('payout-result');
@@ -2291,7 +2247,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                     updateStatus('Capturando payout do DOM...', 'info');
                     
                     try {
-                        // ✅ CORREÇÃO: Usar chrome.runtime para comunicar com content.js que tem acesso ao DOM
+                
                         const response = await new Promise((resolve, reject) => {
                             // Timeout de segurança
                             const timeoutId = setTimeout(() => {
@@ -2348,7 +2304,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                 logToSystem('Botão de teste de captura de payout não encontrado', 'WARN');
             }
 
-            // =================== BOTÕES DE DEBUG DO MODAL ===================
+            // Botões de debug do modal
             // Configurar botões de debug para testar abertura/fechamento do modal
             const debugOpenModalBtn = document.getElementById('debug-open-modal');
             const debugCloseModalBtn = document.getElementById('debug-close-modal');
@@ -2423,7 +2379,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
 
             logToSystem('Botões de debug do modal configurados', 'INFO');
             
-            // =================== CONFIGURAÇÕES DE ATIVOS MOVIDAS PARA SETTINGS.HTML ===================
+            // Configurações de ativos movidas para settings.html
             // As configurações de troca de ativos agora estão na página de configurações
             
             // Adicionar listener para atualização automática do status do Gale
@@ -2707,7 +2663,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         }
     });
 
-    // ================== COMUNICAÇÃO INTERNA VIA WINDOW.POSTMESSAGE ==================
+    // Comunicação interna via window.postMessage
     // REMOVIDO COMPLETAMENTE: Listener duplicado que causava loop infinito
     // O listener principal já processa UPDATE_STATUS no início do arquivo (linha ~5)
     
