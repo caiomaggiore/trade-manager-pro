@@ -1,27 +1,15 @@
 // Dev Tools Module - Trade Manager Pro
-// ================== SISTEMA DE LOGS PADRÃO ==================
-// Usar o sistema global de logs declarado em log-sys.js
-// window.logToSystem e window.updateStatus estão disponíveis globalmente
 
-// Log de inicialização do módulo dev-tools
 logToSystem('Módulo de ferramentas de desenvolvimento inicializado', 'INFO');
 
-// ================== FUNÇÕES AUXILIARES ==================
-
-// ================== FUNÇÕES DE CAPTURA SEGUINDO A ARQUITETURA ==================
-
-/**
- * Função 1: Captura de tela básica (função base)
- * Usa o handler existente CAPTURE_SCREENSHOT
- */
+// Captura de tela básica
 const captureScreen = () => {
     return new Promise((resolve, reject) => {
         logToSystem('Iniciando captura de tela básica...', 'INFO');
         
-        // Usar o handler existente no content.js com iframeWidth para remover o painel
         chrome.runtime.sendMessage({ 
             action: 'CAPTURE_SCREENSHOT',
-            iframeWidth: 480 // Largura do painel lateral para remover
+            iframeWidth: 480
         }, (response) => {
             if (chrome.runtime.lastError) {
                 const errorMsg = chrome.runtime.lastError.message;
@@ -42,15 +30,11 @@ const captureScreen = () => {
     });
 };
 
-/**
- * Função 2: Obter informações do canvas (função complementar)
- * Usa o handler existente CAPTURE_CHART_ONLY mas apenas para obter canvas info
- */
+// Obter informações do canvas
 const getCanvasInfo = () => {
     return new Promise((resolve, reject) => {
         logToSystem('Obtendo informações do canvas...', 'INFO');
         
-        // Usar o handler existente no content.js
         chrome.runtime.sendMessage({ action: 'CAPTURE_CHART_ONLY' }, (response) => {
             if (chrome.runtime.lastError) {
                 const errorMsg = chrome.runtime.lastError.message;
@@ -71,25 +55,17 @@ const getCanvasInfo = () => {
     });
 };
 
-/**
- * Função 3: Captura apenas do gráfico (combina as duas funções anteriores)
- * 1. Captura tela completa
- * 2. Obtém informações do canvas
- * 3. Faz crop da imagem
- */
+// Captura apenas do gráfico
 const captureChartOnly = async () => {
     logToSystem('Iniciando captura apenas do gráfico (combinando funções)...', 'INFO');
     
     try {
-        // Passo 1: Capturar tela completa
         const screenDataUrl = await captureScreen();
         logToSystem('Tela capturada, obtendo informações do canvas...', 'INFO');
         
-        // Passo 2: Obter informações do canvas
         const canvasInfo = await getCanvasInfo();
         logToSystem('Canvas info obtida, fazendo crop...', 'INFO');
         
-        // Passo 3: Fazer crop da imagem usando as informações do canvas
         const croppedImage = await cropImage(screenDataUrl, canvasInfo);
         logToSystem('Crop realizado com sucesso', 'SUCCESS');
         
@@ -141,7 +117,7 @@ const cropImage = (dataUrl, canvasInfo) => {
     });
 };
 
-// ================== PADRÃO UI - CONTROLE DE ELEMENTOS ==================
+// Controle de elementos UI
 
 // Objeto UI para controle centralizado dos elementos (padrão arquitetural)
 const UI = {
@@ -172,7 +148,7 @@ const UI = {
     debugAssetCapture: document.getElementById('debug-asset-capture')
 };
 
-// ================== CONFIGURAÇÃO DOS BOTÕES ==================
+// Configuração dos botões
 
 function setupCaptureDebugButtons() {
     logToSystem('Configurando botões de captura no DevTools...', 'INFO');
@@ -203,7 +179,6 @@ function setupCaptureDebugButtons() {
             updateStatus(`Erro na captura: ${error.message}`, 'error');
         }
     });
-    logToSystem('Botão de captura de tela configurado com sucesso', 'DEBUG');
 
     // Botão de informações do canvas (dimensões do gráfico)
     UI.canvasInfo.addEventListener('click', async () => {
@@ -232,7 +207,6 @@ function setupCaptureDebugButtons() {
             updateStatus(`Erro: ${error.message}`, 'error');
         }
     });
-    logToSystem('Botão de dimensão do gráfico configurado com sucesso', 'DEBUG');
 
     // Botão de captura apenas do gráfico (combina as duas funções)
     UI.chartOnly.addEventListener('click', async () => {
@@ -255,10 +229,9 @@ function setupCaptureDebugButtons() {
             updateStatus(`Erro na captura: ${error.message}`, 'error');
         }
     });
-    logToSystem('Botão de captura de gráfico configurado com sucesso', 'DEBUG');
 }
 
-// ================== CONFIGURAÇÃO DOS BOTÕES DE TESTE DO SISTEMA GALE ==================
+// Configuração dos botões de teste do sistema Gale
 
 function setupGaleTestButtons() {
     logToSystem('Configurando botões de teste do sistema Gale...', 'INFO');
@@ -356,10 +329,10 @@ function setupGaleTestButtons() {
         logToSystem('Botão de reset de status de erro configurado', 'DEBUG');
     }
     
-    logToSystem('Botões de teste do sistema de Gale configurados com sucesso', 'INFO');
+
 }
 
-// ================== CONFIGURAÇÃO DO BOTÃO DE TESTE DE ANÁLISE ==================
+// Configuração do botão de teste de análise
 
 function setupDevAnalysisButton() {
     logToSystem('Configurando botão de teste de análise...', 'INFO');
@@ -399,10 +372,10 @@ function setupDevAnalysisButton() {
         }
     });
     
-    logToSystem('Botão de teste de análise configurado com sucesso', 'DEBUG');
+
 }
 
-// ================== CONFIGURAÇÃO DOS BOTÕES DE TESTE DE PAYOUT E ATIVOS ==================
+// Configuração dos botões de teste de payout e ativos
 
 function setupPayoutAndAssetTestButtons() {
     logToSystem('Configurando botões de teste de payout e ativos...', 'INFO');
@@ -497,7 +470,7 @@ function setupPayoutAndAssetTestButtons() {
                 logToSystem(`Erro ao buscar melhor ativo: ${errorMsg}`, 'ERROR');
             }
         });
-        logToSystem('Botão de busca de melhor ativo configurado', 'DEBUG');
+
     }
     
     // Botão para mudar para moedas
@@ -516,7 +489,6 @@ function setupPayoutAndAssetTestButtons() {
                 logToSystem(`Erro ao mudar para moedas: ${errorMsg}`, 'ERROR');
             }
         });
-        logToSystem('Botão de mudança para moedas configurado', 'DEBUG');
     }
     
     // Botão para mudar para crypto
@@ -535,13 +507,10 @@ function setupPayoutAndAssetTestButtons() {
                 logToSystem(`Erro ao mudar para crypto: ${errorMsg}`, 'ERROR');
             }
         });
-        logToSystem('Botão de mudança para crypto configurado', 'DEBUG');
     }
-    
-    logToSystem('Botões de teste de payout e ativos configurados com sucesso', 'INFO');
 }
 
-// ================== CONFIGURAÇÃO DOS BOTÕES DE DEBUG DO MODAL ==================
+// Configuração dos botões de debug do modal
 
 function setupModalDebugButtons() {
     logToSystem('Configurando botões de debug do modal...', 'INFO');
@@ -587,7 +556,7 @@ function setupModalDebugButtons() {
                 logToSystem(`Erro ao abrir modal: ${errorMsg}`, 'ERROR');
             }
         });
-        logToSystem('Botão de abrir modal configurado', 'DEBUG');
+
     }
     
     // Botão para fechar modal
@@ -622,7 +591,7 @@ function setupModalDebugButtons() {
                 logToSystem(`Erro ao fechar modal: ${errorMsg}`, 'ERROR');
             }
         });
-        logToSystem('Botão de fechar modal configurado', 'DEBUG');
+
     }
     
     // Botão para verificar status do modal
@@ -717,7 +686,7 @@ function setupModalDebugButtons() {
         });
     }
     
-    // ================== BOTÃO DE TESTE DE COMUNICAÇÃO INTERNA ==================
+    // Botão de teste de comunicação interna
     // Botão para testar comunicação via window.postMessage
     const testInternalCommunicationBtn = document.createElement('button');
     testInternalCommunicationBtn.className = 'dev-button dev-info';
@@ -800,10 +769,10 @@ function setupModalDebugButtons() {
         }
     }
     
-    logToSystem('Botões de debug do modal configurados com sucesso', 'INFO');
+
 }
 
-// ================== FUNÇÕES DE VISIBILIDADE DO PAINEL ==================
+// Funções de visibilidade do painel
 
 function updateDevPanelVisibility(devModeEnabled) {
     const devPanel = document.getElementById('gale-test-panel');
@@ -821,7 +790,7 @@ function updateDevPanelVisibility(devModeEnabled) {
     }
 }
 
-// ================== INICIALIZAÇÃO ==================
+// Inicialização
 
 function initDevTools() {
     try {
@@ -855,7 +824,7 @@ function setupAllDevToolsButtons() {
     }
 }
 
-// ================== LISTENER PARA MENSAGENS ==================
+// Listener para mensagens
 
 // Listener para mensagens do chrome.runtime (seguindo arquitetura)
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -969,14 +938,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false; // Não processou a mensagem
 });
 
-// ================== EXPOSIÇÃO GLOBAL ==================
+// Exposição global
 
 // Não expor funções globalmente - usar chrome.runtime para comunicação
 // Todas as funções são acessadas via mensagens do chrome.runtime
 
 logToSystem('Módulo DevTools carregado (seguindo arquitetura)', 'INFO');
 
-// ================== FUNÇÕES DE ANÁLISE E TESTE ==================
+// Funções de análise e teste
 
 // Função para teste de conectividade da API Gemini
 const testGeminiConnection = async () => {
@@ -1109,7 +1078,7 @@ const renderAnalysisResults = (result) => {
     }
 };
 
-// ================== FUNÇÕES DE TESTE DE ATIVOS ==================
+// Funções de teste de ativos
 
 // Função para testar troca de categoria de ativos
 const testSwitchAssetCategory = async (category) => {
@@ -1226,7 +1195,7 @@ const testFindBestAsset = async (minPayout = 85) => {
     });
 };
 
-// ================== INICIALIZAÇÃO AUTOMÁTICA ==================
+// Inicialização automática
 
 // Inicializar quando o DOM estiver pronto
 if (document.readyState === 'loading') {
