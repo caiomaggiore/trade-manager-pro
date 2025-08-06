@@ -849,7 +849,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
 
     // Função simplificada removida - usar chrome.tabs.query diretamente
 
-    // Função testGeminiConnection() migrada para dev-tools.js
+
 
     // Função para atualizar o contador
     const updateTradeCountdown = () => {
@@ -1126,8 +1126,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             }
         }
         
-        // Testar conexão com a API Gemini
-        // testGeminiConnection(); // Migrado para dev-tools.js
+        // Conexão com API Gemini delegada para dev-tools.js
         
         // Carregar configurações
         loadConfig();
@@ -1142,11 +1141,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         addEventListeners();
         logToSystem('Event listeners configurados com sucesso', 'DEBUG');
         
-        // Configurar os botões de teste do sistema de Gale
-        // setupGaleTestButtons(); // Migrado para dev-tools.js
-        
-        // Configurar botão de teste de análise no modo desenvolvedor
-        // setupDevAnalysisButton(); // Migrado para dev-tools.js
+        // Botões de desenvolvimento delegados para dev-tools.js
         
         // Inicializar DevTools se devMode ativo
         if (window.StateManager) {
@@ -1247,18 +1242,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         // Verificar conexão com a extensão e processar operações pendentes
         checkExtensionConnection();
         
-        // Tentar testar a conexão com a API Gemini
-        // testGeminiConnection() // Migrado para dev-tools.js
-        //     .then(connected => {
-        //         if (connected) {
-        //             logToSystem('API Gemini conectada com sucesso', 'SUCCESS');
-        //         } else {
-        //             logToSystem('Não foi possível conectar à API Gemini', 'WARN');
-        //         }
-        //     })
-        //     .catch(err => {
-        //         logToSystem(`Erro ao testar conexão com API: ${err.message}`, 'ERROR');
-        //     });
+        // Teste de conectividade delegado para dev-tools.js
     }
 
     // Chamar a inicialização tardia quando o documento estiver pronto
@@ -1502,7 +1486,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
                         // Aplicar configurações de modo desenvolvedor
                         if (config.devMode) {
                             logToSystem('Modo desenvolvedor ativado - painel de testes disponível', 'INFO');
-                            // setupDevAnalysisButton(); // Migrado para dev-tools.js
+                
                         }
                         
                         // Atualizar visibilidade dos botões principais baseado no estado da automação
@@ -2165,219 +2149,11 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
             
             logToSystem('Botões de teste do sistema de Gale configurados', 'INFO');
             
-            // Configurar botões de teste de ativos
-            
-            // Obter elementos dos botões de teste de ativos
-            const testFindBestAssetBtn = document.getElementById('test-find-best-asset');
-            const testSwitchToCryptoBtn = document.getElementById('test-switch-to-crypto');
-            const testSwitchToCurrencyBtn = document.getElementById('test-switch-to-currency');
-            const minPayoutInput = document.getElementById('min-payout-input');
-            const assetTestResult = document.getElementById('asset-test-result');
-            
-            // Função para atualizar resultado dos testes de ativos
-            const updateAssetTestResult = (message, isError = false) => {
-                if (assetTestResult) {
-                    assetTestResult.innerHTML = message;
-                    assetTestResult.style.color = isError ? '#d32f2f' : '#333';
-                    assetTestResult.style.backgroundColor = isError ? '#ffebee' : '#f9f9f9';
-                }
-            };
-            
+            // Botões de teste de ativos delegados para dev-tools.js
 
-            
-            // Event listener para buscar melhor ativo
-            if (testFindBestAssetBtn) {
-                testFindBestAssetBtn.addEventListener('click', async () => {
-                    const minPayout = parseInt(minPayoutInput?.value || '85', 10);
-                    updateAssetTestResult(`Buscando melhor ativo (payout >= ${minPayout}%)...`);
-                    
-                    try {
-                        const result = await testFindBestAsset(minPayout);
-                        updateAssetTestResult(result.message);
-                    } catch (error) {
-                        updateAssetTestResult(typeof error === 'string' ? error : error.message, true);
-                    }
-                });
-            }
+            // Teste de captura de payout delegado para dev-tools.js
 
-            // Event listener para mudar para moedas
-            if (testSwitchToCurrencyBtn) {
-                testSwitchToCurrencyBtn.addEventListener('click', async () => {
-                    updateAssetTestResult('Mudando para categoria Currencies...');
-                    
-                    try {
-                        const result = await testSwitchAssetCategory('currency');
-                        updateAssetTestResult(result.message);
-                    } catch (error) {
-                        updateAssetTestResult(typeof error === 'string' ? error : error.message, true);
-                    }
-                });
-            }
-            
-            // Event listener para mudar para crypto
-            if (testSwitchToCryptoBtn) {
-                testSwitchToCryptoBtn.addEventListener('click', async () => {
-                    updateAssetTestResult('Mudando para categoria Cryptocurrencies...');
-                    
-                    try {
-                        const result = await testSwitchAssetCategory('crypto');
-                        updateAssetTestResult(result.message);
-                    } catch (error) {
-                        updateAssetTestResult(typeof error === 'string' ? error : error.message, true);
-                    }
-                });
-            }
-            
-            logToSystem('Botões de teste de ativos configurados', 'INFO');
-
-            // Botão de teste de payout
-            // Configurar botão de teste de captura de payout
-            const testCapturePayoutBtn = document.getElementById('test-capture-payout');
-            const payoutResult = document.getElementById('payout-result');
-            
-            if (testCapturePayoutBtn) {
-                testCapturePayoutBtn.addEventListener('click', async () => {
-                    // Atualizar resultado na tela
-                    if (payoutResult) {
-                        payoutResult.textContent = 'Capturando payout...';
-                        payoutResult.style.backgroundColor = '#f0f8ff';
-                    }
-                    
-                    logToSystem('Iniciando teste de captura de payout via content.js', 'INFO');
-                    updateStatus('Capturando payout do DOM...', 'info');
-                    
-                    try {
-                
-                        const response = await new Promise((resolve, reject) => {
-                            // Timeout de segurança
-                            const timeoutId = setTimeout(() => {
-                                reject(new Error('Timeout: Captura de payout demorou mais de 10 segundos'));
-                            }, 10000);
-                            
-                            chrome.runtime.sendMessage({
-                                action: 'TEST_CAPTURE_PAYOUT'
-                            }, (response) => {
-                                clearTimeout(timeoutId);
-                                
-                                if (chrome.runtime.lastError) {
-                                    reject(new Error(`Erro de comunicação: ${chrome.runtime.lastError.message}`));
-                                    return;
-                                }
-                                
-                                if (!response || !response.success) {
-                                    reject(new Error(response?.error || 'Erro desconhecido na captura'));
-                                    return;
-                                }
-                                
-                                resolve(response);
-                            });
-                        });
-                        
-                        const message = `Payout: ${response.payout}% (Fonte: ${response.source})`;
-                        logToSystem(`Payout capturado com sucesso: ${message}`, 'SUCCESS');
-                        updateStatus(message, 'success');
-                        
-                        // Atualizar elemento de resultado na interface
-                        if (payoutResult) {
-                            payoutResult.innerHTML = `
-                                <div><strong>Resultado:</strong> ${response.payout}%</div>
-                                <div><strong>Fonte:</strong> ${response.source}</div>
-                                <div><strong>Seletor:</strong> ${response.selector || 'N/A'}</div>
-                                <div><strong>Timestamp:</strong> ${response.timestamp || 'N/A'}</div>
-                            `;
-                            payoutResult.style.backgroundColor = '#ddffdd';
-                        }
-                    } catch (error) {
-                        const errorMsg = error.message || error;
-                        logToSystem(`Erro na captura: ${errorMsg}`, 'ERROR');
-                        updateStatus(`Erro: ${errorMsg}`, 'error');
-                        
-                        if (payoutResult) {
-                            payoutResult.textContent = `Erro: ${errorMsg}`;
-                            payoutResult.style.backgroundColor = '#ffdddd';
-                        }
-                    }
-                });
-                
-                logToSystem('Botão de teste de captura de payout configurado (via PayoutController)', 'INFO');
-            } else {
-                logToSystem('Botão de teste de captura de payout não encontrado', 'WARN');
-            }
-
-            // Botões de debug do modal
-            // Configurar botões de debug para testar abertura/fechamento do modal
-            const debugOpenModalBtn = document.getElementById('debug-open-modal');
-            const debugCloseModalBtn = document.getElementById('debug-close-modal');
-            const debugCheckStatusBtn = document.getElementById('debug-check-status');
-            const debugToggleModalBtn = document.getElementById('debug-toggle-modal');
-            const modalDebugResult = document.getElementById('modal-debug-result');
-
-            // Função para atualizar resultado do debug
-            const updateModalDebugResult = (message, isError = false) => {
-                const resultEl = document.getElementById('modal-debug-result');
-                if (resultEl) {
-                    resultEl.textContent = message;
-                    resultEl.style.color = isError ? '#ff6b6b' : '#a9a9a9';
-                }
-            };
-
-            // Event listener para abrir modal (debug)
-            if (debugOpenModalBtn) {
-                debugOpenModalBtn.addEventListener('click', async () => {
-                    updateModalDebugResult('🔄 Executando: AssetManager.openAssetModal()...');
-                    
-                    try {
-                        const result = await testOpenAssetModal();
-                        updateModalDebugResult(result);
-                    } catch (error) {
-                        updateModalDebugResult(error, true);
-                    }
-                });
-            }
-
-            // Event listener para fechar modal (debug)
-            if (debugCloseModalBtn) {
-                debugCloseModalBtn.addEventListener('click', async () => {
-                    updateModalDebugResult('🔄 Executando: AssetManager.closeAssetModal()...');
-                    
-                    try {
-                        const result = await testCloseAssetModal();
-                        updateModalDebugResult(result);
-                    } catch (error) {
-                        updateModalDebugResult(error, true);
-                    }
-                });
-            }
-
-            // Event listener para verificar status do modal
-            if (debugCheckStatusBtn) {
-                debugCheckStatusBtn.addEventListener('click', async () => {
-                    updateModalDebugResult('🔍 Verificando status do modal...');
-                    
-                    try {
-                        const result = await checkModalStatus();
-                        updateModalDebugResult(result);
-                    } catch (error) {
-                        updateModalDebugResult(error, true);
-                    }
-                });
-            }
-
-            // Event listener para toggle do modal (abrir/fechar automaticamente)
-            if (debugToggleModalBtn) {
-                debugToggleModalBtn.addEventListener('click', async () => {
-                    updateModalDebugResult('🔄 Executando toggle do modal...');
-                    
-                    try {
-                        const result = await testToggleModal();
-                        updateModalDebugResult(result);
-                    } catch (error) {
-                        updateModalDebugResult(error, true);
-                    }
-                });
-            }
-
-            logToSystem('Botões de debug do modal configurados', 'INFO');
+            // Debug de modal delegado para dev-tools.js
             
             // Configurações de ativos movidas para settings.html
             // As configurações de troca de ativos agora estão na página de configurações
@@ -2494,7 +2270,7 @@ if (typeof window.TradeManagerIndexLoaded === 'undefined') {
         }
     };
 
-    // Função setupDevAnalysisButton() migrada para dev-tools.js
+
 
     // Adicionar um listener para mensagens do chrome.runtime
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

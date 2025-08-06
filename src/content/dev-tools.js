@@ -461,7 +461,7 @@ function setupPayoutAndAssetTestButtons() {
             updateAssetTestResult(`Buscando melhor ativo (payout >= ${minPayout}%)...`);
             
             try {
-                const result = await testFindBestAsset(minPayout);
+                                        const result = await findBestAsset(minPayout);
                 updateAssetTestResult(result.message);
                 logToSystem(`Melhor ativo encontrado: ${result.message}`, 'SUCCESS');
             } catch (error) {
@@ -480,7 +480,7 @@ function setupPayoutAndAssetTestButtons() {
             updateAssetTestResult('Mudando para categoria Currencies...');
             
             try {
-                const result = await testSwitchAssetCategory('currency');
+                                        const result = await switchAssetCategory('currency');
                 updateAssetTestResult(result.message);
                 logToSystem(`Mudança para moedas: ${result.message}`, 'SUCCESS');
             } catch (error) {
@@ -498,7 +498,7 @@ function setupPayoutAndAssetTestButtons() {
             updateAssetTestResult('Mudando para categoria Cryptocurrencies...');
             
             try {
-                const result = await testSwitchAssetCategory('crypto');
+                                        const result = await switchAssetCategory('crypto');
                 updateAssetTestResult(result.message);
                 logToSystem(`Mudança para crypto: ${result.message}`, 'SUCCESS');
             } catch (error) {
@@ -945,10 +945,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 logToSystem('Módulo DevTools carregado (seguindo arquitetura)', 'INFO');
 
-// Funções de análise e teste
+// Funções de análise e conectividade
 
-// Função para teste de conectividade da API Gemini
-const testGeminiConnection = async () => {
+// Função para verificar conectividade da API Gemini
+const checkGeminiConnection = async () => {
     try {
         logToSystem('Verificando conectividade do sistema...', 'INFO');
         updateStatus('Sistema verificando conectividade...', 'info');
@@ -1078,10 +1078,10 @@ const renderAnalysisResults = (result) => {
     }
 };
 
-// Funções de teste de ativos
+// Funções de gestão de ativos
 
-// Função para testar troca de categoria de ativos
-const testSwitchAssetCategory = async (category) => {
+// Função para trocar categoria de ativos
+const switchAssetCategory = async (category) => {
     return new Promise((resolve, reject) => {
         logToSystem(`Iniciando teste de troca para categoria: ${category}`, 'INFO');
         
@@ -1160,8 +1160,8 @@ const formatAssetsList = (assets) => {
     ).join('<br>');
 };
 
-// Função para testar busca de melhor ativo
-const testFindBestAsset = async (minPayout = 85) => {
+// Função para buscar melhor ativo
+const findBestAsset = async (minPayout = 85) => {
     return new Promise((resolve, reject) => {
         logToSystem(`Iniciando busca de melhor ativo (payout >= ${minPayout}%)`, 'INFO');
         
