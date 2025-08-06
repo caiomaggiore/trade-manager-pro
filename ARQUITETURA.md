@@ -614,3 +614,220 @@ try {
     // Não há fallback - o erro deve ser corrigido
 }
 ``` 
+
+## 9. Arquitetura Central: dev-tools.js como Hub de Funcionalidades
+
+### 🎯 **Novo Padrão Arquitetural Implementado**
+
+O `dev-tools.js` foi redefinido como o **hub central de todas as funcionalidades** do sistema, não apenas um painel de desenvolvimento. Esta arquitetura concentra toda a lógica principal em um local, promovendo maior organização e reduzindo duplicações.
+
+### Responsabilidades por Arquivo
+
+#### **1. dev-tools.js - HUB CENTRAL 🎛️**
+**Papel:** Concentrador de todas as funcionalidades principais do sistema
+
+**Responsabilidades:**
+- ✅ **Todas as funções de captura** (payout, ativos, canvas, análise)
+- ✅ **Todas as funções de manipulação de dados** (processamento, validação)
+- ✅ **Todas as funções de teste e debugging** (simulações, verificações)
+- ✅ **Coordenação de operações complexas** (automação, gale, switching)
+- ✅ **Interface para outras partes do sistema** via `chrome.runtime.sendMessage`
+
+**Padrão de Implementação:**
+```javascript
+// Função completa com toda a lógica
+const executeCompleteOperation = async (params) => {
+    try {
+        // 1. Validação dos parâmetros
+        const validatedParams = validateParams(params);
+        
+        // 2. Solicitar dados específicos do DOM (se necessário)
+        const domData = await requestDOMData('SPECIFIC_DOM_ACTION', validatedParams);
+        
+        // 3. Processar lógica completa
+        const result = processCompleteLogic(domData, validatedParams);
+        
+        // 4. Retornar resultado processado
+        return { success: true, result };
+    } catch (error) {
+        logToSystem(`Erro em executeCompleteOperation: ${error.message}`, 'ERROR');
+        return { success: false, error: error.message };
+    }
+};
+
+// Exposição via mensagens (não global)
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'EXECUTE_COMPLETE_OPERATION') {
+        executeCompleteOperation(message.params)
+            .then(sendResponse)
+            .catch(error => sendResponse({ success: false, error: error.message }));
+        return true; // Resposta assíncrona
+    }
+});
+```
+
+#### **2. content.js - ESPECIALISTA EM DOM 🔧**
+**Papel:** Manipulação específica e focada do DOM da PocketOption
+
+**Responsabilidades:**
+- ✅ **Apenas operações diretas no DOM** (cliques, leituras, verificações)
+- ✅ **Captura de dados simples** sem processamento complexo
+- ✅ **Responder a solicitações específicas** do dev-tools.js
+- ❌ **NÃO deve conter lógica de negócio complexa**
+- ❌ **NÃO deve tomar decisões sobre o que fazer com os dados**
+
+**Padrão de Implementação:**
+```javascript
+// Função simples e focada
+const captureSpecificDOMData = (selector, dataType) => {
+    try {
+        const element = document.querySelector(selector);
+        if (!element) {
+            return { success: false, error: `Elemento ${selector} não encontrado` };
+        }
+        
+        // Captura simples sem processamento complexo
+        const rawData = element.textContent.trim();
+        return { success: true, data: rawData, selector };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+};
+
+// Responder apenas a solicitações específicas
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'CAPTURE_SPECIFIC_DOM_DATA') {
+        const result = captureSpecificDOMData(message.selector, message.dataType);
+        sendResponse(result);
+        return true;
+    }
+});
+```
+
+#### **3. index.js - CONTROLADOR DE UI 🖥️**
+**Papel:** Controle da interface do usuário e coordenação de eventos
+
+**Responsabilidades:**
+- ✅ **Controle de elementos UI** (botões, displays, modais)
+- ✅ **Event listeners básicos** (cliques, inputs)
+- ✅ **Atualizações de status e displays**
+- ✅ **Coordenação simples** entre UI e funcionalidades
+- ❌ **NÃO deve implementar lógica de negócio**
+- ❌ **NÃO deve conter funções de captura complexas**
+
+**Padrão de Implementação:**
+```javascript
+// Coordenação simples
+const handleAnalysisButtonClick = async () => {
+    try {
+        updateStatus('Iniciando análise...', 'info');
+        
+        // Delegar toda a lógica para dev-tools.js
+        const response = await chrome.runtime.sendMessage({
+            action: 'EXECUTE_COMPLETE_ANALYSIS',
+            params: getUIParameters()
+        });
+        
+        if (response.success) {
+            updateStatus('Análise concluída!', 'success');
+            updateAnalysisDisplay(response.result);
+        } else {
+            updateStatus(`Erro: ${response.error}`, 'error');
+        }
+    } catch (error) {
+        updateStatus(`Erro de comunicação: ${error.message}`, 'error');
+    }
+};
+
+// Event listener simples
+document.getElementById('analyzeBtn').addEventListener('click', handleAnalysisButtonClick);
+```
+
+### Fluxo de Comunicação
+
+```mermaid
+graph TD
+    A[index.js - UI] -->|chrome.runtime.sendMessage| B[dev-tools.js - HUB]
+    B -->|chrome.runtime.sendMessage| C[content.js - DOM]
+    C -->|sendResponse| B
+    B -->|sendResponse| A
+    
+    D[automation.js] -->|chrome.runtime.sendMessage| B
+    E[settings.js] -->|chrome.runtime.sendMessage| B
+    F[Outros módulos] -->|chrome.runtime.sendMessage| B
+    
+    B -->|logToSystem| G[log-sys.js]
+    B -->|updateStatus| A
+```
+
+### Vantagens da Nova Arquitetura
+
+#### **🎯 Centralização de Funcionalidades**
+- **Uma fonte de verdade** para cada funcionalidade
+- **Redução drástica de código duplicado**
+- **Manutenção facilitada** (alterar em um local apenas)
+
+#### **🔄 Separação Clara de Responsabilidades**
+- **dev-tools.js:** Lógica e processamento
+- **content.js:** Manipulação de DOM
+- **index.js:** Controle de UI
+
+#### **📡 Comunicação Padronizada**
+- **Todas as operações** via `chrome.runtime.sendMessage`
+- **Sem exposição global** de funções
+- **Controle total de acesso** e segurança
+
+#### **🧪 Testabilidade Aprimorada**
+- **Funções isoladas** e testáveis
+- **Mocking facilitado** para testes
+- **Debug centralizado** no dev-tools.js
+
+### Exemplo de Refatoração
+
+#### **ANTES (Código Duplicado):**
+```javascript
+// content.js - Função complexa duplicada
+const findBestAsset = async (minPayout) => {
+    // 50+ linhas de lógica complexa
+};
+
+// index.js - Mesma função duplicada  
+const findBestAsset = async (minPayout) => {
+    // 50+ linhas de lógica complexa (DUPLICADA)
+};
+
+// dev-tools.js - Versão "de teste"
+const testFindBestAsset = async (minPayout) => {
+    // 50+ linhas de lógica complexa (TRIPLICADA)
+};
+```
+
+#### **DEPOIS (Centralizado):**
+```javascript
+// dev-tools.js - ÚNICA implementação
+const findBestAsset = async (minPayout) => {
+    // Lógica completa centralizada
+    const domData = await requestDOMData('GET_AVAILABLE_ASSETS');
+    const processedResult = processAssetSelection(domData, minPayout);
+    return processedResult;
+};
+
+// content.js - Apenas captura
+const getAvailableAssets = () => {
+    // Apenas captura do DOM, sem lógica
+};
+
+// index.js - Apenas coordenação
+const handleFindBestAssetClick = () => {
+    // Apenas chama dev-tools.js
+    chrome.runtime.sendMessage({ action: 'FIND_BEST_ASSET' });
+};
+```
+
+### Migração Gradual
+
+**Fase 1:** Identificar duplicações (✅ CONCLUÍDA)
+**Fase 2:** Consolidar funções no dev-tools.js
+**Fase 3:** Refatorar content.js para operações DOM simples
+**Fase 4:** Refatorar index.js para controle UI básico
+**Fase 5:** Remover código duplicado e obsoleto
